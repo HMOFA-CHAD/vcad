@@ -8,6 +8,7 @@ repository = "https://github.com/ecto/vcad"
 readme = "README.md"
 keywords = ["cad", "csg", "stl", "gltf", "parametric"]
 categories = ["rendering::data-formats", "science"]
+exclude = ["web/", "assets/", "*.glb", "*.stl", "*.dxf"]
 
 [features]
 default = ["gltf"]
