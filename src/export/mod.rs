@@ -18,7 +18,7 @@ pub mod gltf_export;
 pub use dxf::DxfDocument;
 pub use materials::{Material, Materials};
 pub use stl::export_stl;
-pub use usd::{export_usd, export_robot_usd, RobotPhysics, WheelConfig};
+pub use usd::{export_robot_usd, export_usd, RobotPhysics, WheelConfig};
 
 #[cfg(feature = "gltf")]
 pub use gltf_export::{export_glb, export_scene_glb};

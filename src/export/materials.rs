@@ -4,12 +4,16 @@ use std::collections::HashMap;
 use std::path::Path;
 use thiserror::Error;
 
+/// Errors from material loading and lookup.
 #[derive(Error, Debug)]
 pub enum MaterialError {
+    /// An I/O error occurred reading the material file.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// The TOML content could not be parsed.
     #[error("TOML parse error: {0}")]
     Toml(#[from] toml::de::Error),
+    /// The requested material name was not found in the database.
     #[error("Material not found: {0}")]
     NotFound(String),
 }

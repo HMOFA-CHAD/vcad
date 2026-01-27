@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 //! vcad — Parametric CAD in Rust
 //!
 //! CSG modeling with multi-format export (STL, glTF, USD, DXF).
@@ -23,16 +25,25 @@ pub mod step;
 
 pub use export::{Material, Materials};
 
+/// Errors returned by CAD operations.
 #[derive(Error, Debug)]
 pub enum CadError {
+    /// An I/O error occurred during export.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// The geometry is empty (no vertices or triangles).
     #[error("Empty geometry")]
     EmptyGeometry,
 }
 
-/// A named part with geometry
+/// A named part with geometry.
+///
+/// Parts are the primary building block in vcad. Create primitives with
+/// [`Part::cube`], [`Part::cylinder`], [`Part::sphere`], etc., then combine
+/// them with CSG operations ([`Part::union`], [`Part::difference`],
+/// [`Part::intersection`]) or the operator shorthands (`+`, `-`, `&`).
 pub struct Part {
+    /// Human-readable name for this part (used in export filenames and scene graphs).
     pub name: String,
     manifold: Manifold,
 }
@@ -170,8 +181,13 @@ pub fn counterbore_hole(
     segments: u32,
 ) -> Part {
     let through = Part::cylinder("through", through_diameter / 2.0, total_depth, segments);
-    let counterbore = Part::cylinder("counterbore", counterbore_diameter / 2.0, counterbore_depth, segments)
-        .translate(0.0, 0.0, total_depth - counterbore_depth);
+    let counterbore = Part::cylinder(
+        "counterbore",
+        counterbore_diameter / 2.0,
+        counterbore_depth,
+        segments,
+    )
+    .translate(0.0, 0.0, total_depth - counterbore_depth);
     through.union(&counterbore)
 }
 
@@ -190,7 +206,8 @@ pub fn bolt_pattern(
         let angle = 2.0 * PI * (i as f64) / (num_holes as f64);
         let x = radius * angle.cos();
         let y = radius * angle.sin();
-        let hole = Part::cylinder("hole", hole_diameter / 2.0, depth, segments).translate(x, y, 0.0);
+        let hole =
+            Part::cylinder("hole", hole_diameter / 2.0, depth, segments).translate(x, y, 0.0);
         result = result.union(&hole);
     }
 
@@ -198,16 +215,229 @@ pub fn bolt_pattern(
 }
 
 // =============================================================================
+// Operator overloads for ergonomic CSG
+// =============================================================================
+
+/// Union: `&a + &b`
+impl std::ops::Add for &Part {
+    type Output = Part;
+    fn add(self, rhs: &Part) -> Part {
+        self.union(rhs)
+    }
+}
+
+/// Union: `a + b`
+impl std::ops::Add for Part {
+    type Output = Part;
+    fn add(self, rhs: Part) -> Part {
+        self.union(&rhs)
+    }
+}
+
+/// Difference: `&a - &b`
+impl std::ops::Sub for &Part {
+    type Output = Part;
+    fn sub(self, rhs: &Part) -> Part {
+        self.difference(rhs)
+    }
+}
+
+/// Difference: `a - b`
+impl std::ops::Sub for Part {
+    type Output = Part;
+    fn sub(self, rhs: Part) -> Part {
+        self.difference(&rhs)
+    }
+}
+
+/// Intersection: `&a & &b`
+impl std::ops::BitAnd for &Part {
+    type Output = Part;
+    fn bitand(self, rhs: &Part) -> Part {
+        self.intersection(rhs)
+    }
+}
+
+/// Intersection: `a & b`
+impl std::ops::BitAnd for Part {
+    type Output = Part;
+    fn bitand(self, rhs: Part) -> Part {
+        self.intersection(&rhs)
+    }
+}
+
+// =============================================================================
+// Mesh inspection
+// =============================================================================
+
+impl Part {
+    /// Signed volume of the mesh (uses the divergence theorem).
+    ///
+    /// Returns a positive value for well-formed manifold meshes.
+    pub fn volume(&self) -> f64 {
+        let mesh = self.manifold.to_mesh();
+        let verts = mesh.vertices();
+        let indices = mesh.indices();
+        let mut vol = 0.0;
+        for tri in indices.chunks(3) {
+            let (i0, i1, i2) = (
+                tri[0] as usize * 3,
+                tri[1] as usize * 3,
+                tri[2] as usize * 3,
+            );
+            let v0 = [verts[i0] as f64, verts[i0 + 1] as f64, verts[i0 + 2] as f64];
+            let v1 = [verts[i1] as f64, verts[i1 + 1] as f64, verts[i1 + 2] as f64];
+            let v2 = [verts[i2] as f64, verts[i2 + 1] as f64, verts[i2 + 2] as f64];
+            // Signed volume of tetrahedron formed with origin
+            vol += v0[0] * (v1[1] * v2[2] - v2[1] * v1[2])
+                - v1[0] * (v0[1] * v2[2] - v2[1] * v0[2])
+                + v2[0] * (v0[1] * v1[2] - v1[1] * v0[2]);
+        }
+        (vol / 6.0).abs()
+    }
+
+    /// Total surface area of the mesh.
+    pub fn surface_area(&self) -> f64 {
+        let mesh = self.manifold.to_mesh();
+        let verts = mesh.vertices();
+        let indices = mesh.indices();
+        let mut area = 0.0;
+        for tri in indices.chunks(3) {
+            let (i0, i1, i2) = (
+                tri[0] as usize * 3,
+                tri[1] as usize * 3,
+                tri[2] as usize * 3,
+            );
+            let v0 = Vector3::new(verts[i0] as f64, verts[i0 + 1] as f64, verts[i0 + 2] as f64);
+            let v1 = Vector3::new(verts[i1] as f64, verts[i1 + 1] as f64, verts[i1 + 2] as f64);
+            let v2 = Vector3::new(verts[i2] as f64, verts[i2 + 1] as f64, verts[i2 + 2] as f64);
+            area += (v1 - v0).cross(&(v2 - v0)).norm() / 2.0;
+        }
+        area
+    }
+
+    /// Axis-aligned bounding box as `(min, max)`.
+    pub fn bounding_box(&self) -> ([f64; 3], [f64; 3]) {
+        let mesh = self.manifold.to_mesh();
+        let verts = mesh.vertices();
+        let mut min = [f64::MAX; 3];
+        let mut max = [f64::MIN; 3];
+        for chunk in verts.chunks(3) {
+            for i in 0..3 {
+                let v = chunk[i] as f64;
+                if v < min[i] {
+                    min[i] = v;
+                }
+                if v > max[i] {
+                    max[i] = v;
+                }
+            }
+        }
+        (min, max)
+    }
+
+    /// Geometric centroid (volume-weighted center of mass assuming uniform density).
+    pub fn center_of_mass(&self) -> [f64; 3] {
+        let mesh = self.manifold.to_mesh();
+        let verts = mesh.vertices();
+        let indices = mesh.indices();
+        let mut cx = 0.0;
+        let mut cy = 0.0;
+        let mut cz = 0.0;
+        let mut total_vol = 0.0;
+        for tri in indices.chunks(3) {
+            let (i0, i1, i2) = (
+                tri[0] as usize * 3,
+                tri[1] as usize * 3,
+                tri[2] as usize * 3,
+            );
+            let v0 = [verts[i0] as f64, verts[i0 + 1] as f64, verts[i0 + 2] as f64];
+            let v1 = [verts[i1] as f64, verts[i1 + 1] as f64, verts[i1 + 2] as f64];
+            let v2 = [verts[i2] as f64, verts[i2 + 1] as f64, verts[i2 + 2] as f64];
+            let vol = v0[0] * (v1[1] * v2[2] - v2[1] * v1[2])
+                - v1[0] * (v0[1] * v2[2] - v2[1] * v0[2])
+                + v2[0] * (v0[1] * v1[2] - v1[1] * v0[2]);
+            total_vol += vol;
+            cx += vol * (v0[0] + v1[0] + v2[0]);
+            cy += vol * (v0[1] + v1[1] + v2[1]);
+            cz += vol * (v0[2] + v1[2] + v2[2]);
+        }
+        if total_vol.abs() < 1e-15 {
+            return [0.0; 3];
+        }
+        let s = 1.0 / (4.0 * total_vol);
+        [cx * s, cy * s, cz * s]
+    }
+
+    /// Number of triangles in the mesh.
+    pub fn num_triangles(&self) -> usize {
+        let mesh = self.manifold.to_mesh();
+        mesh.indices().len() / 3
+    }
+}
+
+// =============================================================================
+// Mirror and pattern transforms
+// =============================================================================
+
+impl Part {
+    /// Mirror across the YZ plane (negate X).
+    pub fn mirror_x(&self) -> Part {
+        self.scale(-1.0, 1.0, 1.0)
+    }
+
+    /// Mirror across the XZ plane (negate Y).
+    pub fn mirror_y(&self) -> Part {
+        self.scale(1.0, -1.0, 1.0)
+    }
+
+    /// Mirror across the XY plane (negate Z).
+    pub fn mirror_z(&self) -> Part {
+        self.scale(1.0, 1.0, -1.0)
+    }
+
+    /// Union of `count` copies spaced by `(dx, dy, dz)`.
+    ///
+    /// The first copy is at the original position; each subsequent copy
+    /// is offset by an additional `(dx, dy, dz)`.
+    pub fn linear_pattern(&self, dx: f64, dy: f64, dz: f64, count: usize) -> Part {
+        let mut result = self.translate(0.0, 0.0, 0.0); // clone
+        for i in 1..count {
+            let n = i as f64;
+            result = result.union(&self.translate(dx * n, dy * n, dz * n));
+        }
+        result
+    }
+
+    /// Union of `count` copies rotated evenly around the Z axis.
+    ///
+    /// Each copy is rotated by `360° / count` increments. An optional
+    /// `radius` translates each copy outward along X before rotating.
+    pub fn circular_pattern(&self, radius: f64, count: usize) -> Part {
+        let mut result = Part::empty("circular_pattern");
+        for i in 0..count {
+            let angle = 360.0 * (i as f64) / (count as f64);
+            let copy = self.translate(radius, 0.0, 0.0).rotate(0.0, 0.0, angle);
+            result = result.union(&copy);
+        }
+        result
+    }
+}
+
+// =============================================================================
 // Scene (multi-part assembly with materials)
 // =============================================================================
 
-/// A scene node containing a part with its material assignment
+/// A scene node containing a part with its material assignment.
 pub struct SceneNode {
+    /// The geometry for this node.
     pub part: Part,
+    /// Key into the [`Materials`] database for this node's material.
     pub material_key: String,
 }
 
 impl SceneNode {
+    /// Create a new scene node with a part and material key.
     pub fn new(part: Part, material_key: impl Into<String>) -> Self {
         Self {
             part,
@@ -221,11 +451,14 @@ impl SceneNode {
 /// Unlike Part.union() which merges geometry into a single mesh,
 /// Scene preserves individual parts for multi-material rendering.
 pub struct Scene {
+    /// Name of the scene (used as root node name in exports).
     pub name: String,
+    /// Ordered list of parts with their material assignments.
     pub nodes: Vec<SceneNode>,
 }
 
 impl Scene {
+    /// Create a new empty scene.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -276,5 +509,108 @@ mod tests {
         let hole = Part::cylinder("hole", 3.0, 15.0, 32).translate(5.0, 5.0, -1.0);
         let result = cube.difference(&hole);
         assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_operator_overloads() {
+        let a = Part::cube("a", 10.0, 10.0, 10.0);
+        let b = Part::cube("b", 10.0, 10.0, 10.0).translate(5.0, 0.0, 0.0);
+
+        // Owned operators
+        let union = Part::cube("a", 10.0, 10.0, 10.0) + Part::cube("b", 10.0, 10.0, 10.0);
+        assert!(!union.is_empty());
+
+        let diff = Part::cube("a", 10.0, 10.0, 10.0)
+            - Part::cube("b", 5.0, 5.0, 5.0).translate(2.5, 2.5, 2.5);
+        assert!(!diff.is_empty());
+
+        let isect = Part::cube("a", 10.0, 10.0, 10.0)
+            & Part::cube("b", 10.0, 10.0, 10.0).translate(5.0, 5.0, 5.0);
+        assert!(!isect.is_empty());
+
+        // Reference operators
+        let union_ref = &a + &b;
+        assert!(!union_ref.is_empty());
+
+        let diff_ref = &a - &b;
+        assert!(!diff_ref.is_empty());
+
+        let isect_ref = &a & &b;
+        assert!(!isect_ref.is_empty());
+    }
+
+    #[test]
+    fn test_volume() {
+        let cube = Part::cube("cube", 10.0, 10.0, 10.0);
+        let vol = cube.volume();
+        assert!((vol - 1000.0).abs() < 1.0, "expected ~1000, got {vol}");
+    }
+
+    #[test]
+    fn test_surface_area() {
+        let cube = Part::cube("cube", 10.0, 10.0, 10.0);
+        let area = cube.surface_area();
+        assert!((area - 600.0).abs() < 1.0, "expected ~600, got {area}");
+    }
+
+    #[test]
+    fn test_bounding_box() {
+        let cube = Part::cube("cube", 10.0, 20.0, 30.0);
+        let (min, max) = cube.bounding_box();
+        assert!((max[0] - min[0] - 10.0).abs() < 0.01);
+        assert!((max[1] - min[1] - 20.0).abs() < 0.01);
+        assert!((max[2] - min[2] - 30.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_center_of_mass() {
+        // Cube at origin should have centroid at (5,5,5) since manifold cubes are corner-aligned
+        let cube = Part::cube("cube", 10.0, 10.0, 10.0);
+        let com = cube.center_of_mass();
+        assert!((com[0] - 5.0).abs() < 0.1, "cx: {}", com[0]);
+        assert!((com[1] - 5.0).abs() < 0.1, "cy: {}", com[1]);
+        assert!((com[2] - 5.0).abs() < 0.1, "cz: {}", com[2]);
+    }
+
+    #[test]
+    fn test_num_triangles() {
+        let cube = Part::cube("cube", 10.0, 10.0, 10.0);
+        assert!(
+            cube.num_triangles() >= 12,
+            "cube should have at least 12 triangles"
+        );
+    }
+
+    #[test]
+    fn test_mirror() {
+        let cube = Part::cube("cube", 10.0, 10.0, 10.0).translate(5.0, 0.0, 0.0);
+        let mirrored = cube.mirror_x();
+        let (min, _max) = mirrored.bounding_box();
+        // Original is at x=[5,15], mirrored should be at x=[-15,-5]
+        assert!(
+            min[0] < 0.0,
+            "mirrored min x should be negative: {}",
+            min[0]
+        );
+    }
+
+    #[test]
+    fn test_linear_pattern() {
+        let cube = Part::cube("cube", 5.0, 5.0, 5.0);
+        let pattern = cube.linear_pattern(10.0, 0.0, 0.0, 3);
+        let (min, max) = pattern.bounding_box();
+        // 3 copies at x=0, x=10, x=20 each 5 wide → spans 0..25
+        assert!((max[0] - min[0] - 25.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_circular_pattern() {
+        let cube = Part::cube("cube", 2.0, 2.0, 2.0);
+        let pattern = cube.circular_pattern(10.0, 4);
+        assert!(!pattern.is_empty());
+        // Should span roughly -12..12 in both X and Y
+        let (min, max) = pattern.bounding_box();
+        assert!(max[0] > 10.0);
+        assert!(min[0] < -10.0 + 2.0); // at least close to -10
     }
 }

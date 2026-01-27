@@ -9,53 +9,105 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-/// A 2D point for DXF export
+/// A 2D point for DXF export.
 #[derive(Debug, Clone, Copy)]
 pub struct Point2D {
+    /// X coordinate.
     pub x: f64,
+    /// Y coordinate.
     pub y: f64,
 }
 
 impl Point2D {
+    /// Create a new 2D point.
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
 }
 
-/// A 2D shape for DXF export
+/// A 2D shape for DXF export.
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub enum Shape2D {
-    /// Rectangular outline
-    Rectangle { width: f64, height: f64, center: Point2D },
-    /// Circle (for holes)
-    Circle { center: Point2D, radius: f64 },
-    /// Rounded rectangle (for slots)
-    RoundedRectangle {
+    /// Rectangular outline.
+    Rectangle {
+        /// Width in drawing units.
         width: f64,
+        /// Height in drawing units.
         height: f64,
+        /// Center position.
         center: Point2D,
+    },
+    /// Circle (for holes).
+    Circle {
+        /// Center position.
+        center: Point2D,
+        /// Circle radius.
+        radius: f64,
+    },
+    /// Rounded rectangle (for slots with corner radii).
+    RoundedRectangle {
+        /// Overall width.
+        width: f64,
+        /// Overall height.
+        height: f64,
+        /// Center position.
+        center: Point2D,
+        /// Fillet radius for corners.
         corner_radius: f64,
     },
-    /// Line segment (for bend lines, etc.)
-    Line { start: Point2D, end: Point2D, layer: String },
-    /// Slot (stadium shape - rectangle with semicircular ends)
-    Slot { width: f64, height: f64, center: Point2D },
-    /// Arbitrary closed polyline (for complex profiles like knuckle tabs)
-    Polyline { points: Vec<Point2D>, closed: bool },
-    /// Arc (for rounded corners in complex profiles)
-    Arc { center: Point2D, radius: f64, start_angle: f64, end_angle: f64 },
+    /// Line segment (for bend lines, etc.).
+    Line {
+        /// Start point.
+        start: Point2D,
+        /// End point.
+        end: Point2D,
+        /// DXF layer name (e.g. `"0"` or `"BEND"`).
+        layer: String,
+    },
+    /// Slot (stadium shape — rectangle with semicircular ends).
+    Slot {
+        /// Overall width.
+        width: f64,
+        /// Overall height.
+        height: f64,
+        /// Center position.
+        center: Point2D,
+    },
+    /// Arbitrary closed polyline (for complex profiles).
+    Polyline {
+        /// Ordered list of vertices.
+        points: Vec<Point2D>,
+        /// Whether the polyline forms a closed loop.
+        closed: bool,
+    },
+    /// Circular arc.
+    Arc {
+        /// Arc center.
+        center: Point2D,
+        /// Arc radius.
+        radius: f64,
+        /// Start angle in degrees.
+        start_angle: f64,
+        /// End angle in degrees.
+        end_angle: f64,
+    },
 }
 
-/// DXF document builder
+/// DXF document builder.
+///
+/// Accumulates 2D shapes and exports them as DXF R12 for laser cutting services.
 pub struct DxfDocument {
     shapes: Vec<Shape2D>,
 }
 
 impl DxfDocument {
+    /// Create a new empty DXF document.
     pub fn new() -> Self {
         Self { shapes: Vec::new() }
     }
 
+    /// Add an arbitrary [`Shape2D`] to the document.
     pub fn add_shape(&mut self, shape: Shape2D) {
         self.shapes.push(shape);
     }
@@ -125,7 +177,10 @@ impl DxfDocument {
     /// Add an arbitrary closed polyline (for complex profiles)
     pub fn add_polyline(&mut self, points: Vec<(f64, f64)>, closed: bool) {
         self.shapes.push(Shape2D::Polyline {
-            points: points.into_iter().map(|(x, y)| Point2D::new(x, y)).collect(),
+            points: points
+                .into_iter()
+                .map(|(x, y)| Point2D::new(x, y))
+                .collect(),
             closed,
         });
     }
@@ -153,7 +208,7 @@ impl DxfDocument {
         edge_y: f64,
         edge_x_start: f64,
         edge_x_end: f64,
-        tab_width: f64,
+        _tab_width: f64,
         tab_height: f64,
         num_tabs: usize,
         offset: bool,
@@ -168,7 +223,11 @@ impl DxfDocument {
         let start_with_tab = !offset;
 
         for i in 0..total_tabs {
-            let is_tab = if start_with_tab { i % 2 == 0 } else { i % 2 == 1 };
+            let is_tab = if start_with_tab {
+                i % 2 == 0
+            } else {
+                i % 2 == 1
+            };
 
             if is_tab {
                 // Tab: go up, across, down
@@ -235,7 +294,11 @@ impl DxfDocument {
 
         for shape in &self.shapes {
             match shape {
-                Shape2D::Rectangle { width, height, center } => {
+                Shape2D::Rectangle {
+                    width,
+                    height,
+                    center,
+                } => {
                     self.write_rectangle(&mut writer, *width, *height, center)?;
                 }
                 Shape2D::Circle { center, radius } => {
@@ -258,13 +321,22 @@ impl DxfDocument {
                 Shape2D::Line { start, end, layer } => {
                     self.write_line(&mut writer, start, end, layer)?;
                 }
-                Shape2D::Slot { width, height, center } => {
+                Shape2D::Slot {
+                    width,
+                    height,
+                    center,
+                } => {
                     self.write_slot(&mut writer, *width, *height, center)?;
                 }
                 Shape2D::Polyline { points, closed } => {
                     self.write_polyline(&mut writer, points, *closed)?;
                 }
-                Shape2D::Arc { center, radius, start_angle, end_angle } => {
+                Shape2D::Arc {
+                    center,
+                    radius,
+                    start_angle,
+                    end_angle,
+                } => {
                     self.write_arc(&mut writer, center, *radius, *start_angle, *end_angle)?;
                 }
             }

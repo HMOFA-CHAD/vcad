@@ -2,8 +2,8 @@
 //!
 //! Generates binary GLB files with PBR materials for web and app rendering.
 
-use crate::{CadError, Part};
 use super::materials::Material;
+use crate::{CadError, Part};
 use std::path::Path;
 
 /// Export a part to binary GLB format with PBR material.
@@ -116,6 +116,7 @@ pub fn to_glb_bytes(part: &Part, material: &Material) -> Result<Vec<u8>, CadErro
     Ok(glb)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_gltf_json(
     name: &str,
     material: &Material,
@@ -207,8 +208,8 @@ fn build_gltf_json(
 // Multi-material Scene export
 // =============================================================================
 
-use crate::Scene;
 use super::Materials;
+use crate::Scene;
 
 /// Export a scene with multiple parts and materials to GLB
 pub fn export_scene_glb(
@@ -228,7 +229,8 @@ pub fn scene_to_glb_bytes(scene: &Scene, materials_db: &Materials) -> Result<Vec
     }
 
     // Collect all unique materials used in the scene
-    let mut material_indices: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut material_indices: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     let mut materials_list: Vec<Material> = Vec::new();
 
     for node in &scene.nodes {
@@ -286,7 +288,7 @@ pub fn scene_to_glb_bytes(scene: &Scene, materials_db: &Materials) -> Result<Vec
         }
 
         // Pad to 4-byte alignment
-        while bin_buffer.len() % 4 != 0 {
+        while !bin_buffer.len().is_multiple_of(4) {
             bin_buffer.push(0);
         }
 
@@ -299,7 +301,7 @@ pub fn scene_to_glb_bytes(scene: &Scene, materials_db: &Materials) -> Result<Vec
         }
 
         // Pad to 4-byte alignment
-        while bin_buffer.len() % 4 != 0 {
+        while !bin_buffer.len().is_multiple_of(4) {
             bin_buffer.push(0);
         }
 
@@ -336,7 +338,10 @@ pub fn scene_to_glb_bytes(scene: &Scene, materials_db: &Materials) -> Result<Vec
         accessor_idx += 1;
 
         // Get material index for this node
-        let mat_idx = material_indices.get(&node.material_key).copied().unwrap_or(0);
+        let mat_idx = material_indices
+            .get(&node.material_key)
+            .copied()
+            .unwrap_or(0);
 
         // Mesh
         meshes.push(format!(
@@ -447,10 +452,11 @@ mod tests {
         scene.add(Part::cube("cube1", 10.0, 10.0, 10.0), "aluminum_6061");
         scene.add(
             Part::cube("cube2", 5.0, 5.0, 5.0).translate(20.0, 0.0, 0.0),
-            "aluminum_powder_orange"
+            "aluminum_powder_orange",
         );
 
-        let materials = Materials::parse(r#"
+        let materials = Materials::parse(
+            r#"
             [materials.aluminum_6061]
             color = [0.85, 0.85, 0.88]
             metallic = 0.95
@@ -459,7 +465,9 @@ mod tests {
             color = [1.0, 0.4, 0.0]
             metallic = 0.3
             roughness = 0.6
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         let glb_data = scene_to_glb_bytes(&scene, &materials).unwrap();
 

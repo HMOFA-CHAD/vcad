@@ -11,7 +11,8 @@ fn main() {
 
     // Four corner mounting holes
     let m5 = centered_cylinder("m5", 2.7, 10.0, 32);
-    let corners = m5.translate(-45.0, -25.0, 0.0)
+    let corners = m5
+        .translate(-45.0, -25.0, 0.0)
         .union(&m5.translate(45.0, -25.0, 0.0))
         .union(&m5.translate(-45.0, 25.0, 0.0))
         .union(&m5.translate(45.0, 25.0, 0.0));

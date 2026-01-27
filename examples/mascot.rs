@@ -12,7 +12,8 @@ fn main() {
     // Rounded box: intersect a cube with a sphere for soft edges
     let body_cube = centered_cube("body_cube", 32.0, 24.0, 40.0);
     let body_round = Part::sphere("body_round", 24.0, seg);
-    let body = body_cube.intersection(&body_round.scale(1.0, 1.0, 1.1))
+    let body = body_cube
+        .intersection(&body_round.scale(1.0, 1.0, 1.1))
         .translate(0.0, 0.0, 20.0);
 
     // === Head ===
@@ -27,24 +28,19 @@ fn main() {
     let eye_spread = 7.0;
     let eye_fwd = 12.0;
     let eye_z = 47.0;
-    let eye_l = Part::sphere("eye_l", eye_r, seg)
-        .translate(-eye_spread, -eye_fwd, eye_z);
-    let eye_r_part = Part::sphere("eye_r", eye_r, seg)
-        .translate(eye_spread, -eye_fwd, eye_z);
+    let eye_l = Part::sphere("eye_l", eye_r, seg).translate(-eye_spread, -eye_fwd, eye_z);
+    let eye_r_part = Part::sphere("eye_r", eye_r, seg).translate(eye_spread, -eye_fwd, eye_z);
 
     // Pupils — smaller dark spheres
     let pupil_r = 2.0;
     let pupil_fwd = eye_fwd + 2.5;
-    let pupil_l = Part::sphere("pupil_l", pupil_r, seg)
-        .translate(-eye_spread, -pupil_fwd, eye_z);
-    let pupil_r_part = Part::sphere("pupil_r", pupil_r, seg)
-        .translate(eye_spread, -pupil_fwd, eye_z);
+    let pupil_l = Part::sphere("pupil_l", pupil_r, seg).translate(-eye_spread, -pupil_fwd, eye_z);
+    let pupil_r_part =
+        Part::sphere("pupil_r", pupil_r, seg).translate(eye_spread, -pupil_fwd, eye_z);
 
     // === Antenna ===
-    let antenna_stalk = centered_cylinder("stalk", 1.5, 14.0, seg)
-        .translate(0.0, 0.0, 57.0);
-    let antenna_ball = Part::sphere("ball", 3.5, seg)
-        .translate(0.0, 0.0, 65.0);
+    let antenna_stalk = centered_cylinder("stalk", 1.5, 14.0, seg).translate(0.0, 0.0, 57.0);
+    let antenna_ball = Part::sphere("ball", 3.5, seg).translate(0.0, 0.0, 65.0);
 
     // === Arms ===
     let arm_r = 3.5;
@@ -58,25 +54,27 @@ fn main() {
         .translate(24.0, 0.0, arm_z);
 
     // Hands — small spheres
-    let hand_l = Part::sphere("hand_l", 4.5, seg)
-        .translate(-34.0, 0.0, arm_z);
-    let hand_r = Part::sphere("hand_r", 4.5, seg)
-        .translate(34.0, 0.0, arm_z);
+    let hand_l = Part::sphere("hand_l", 4.5, seg).translate(-34.0, 0.0, arm_z);
+    let hand_r = Part::sphere("hand_r", 4.5, seg).translate(34.0, 0.0, arm_z);
 
     // === Legs ===
     let leg_r = 4.5;
     let leg_len = 12.0;
     let leg_spread = 8.0;
-    let leg_l = centered_cylinder("leg_l", leg_r, leg_len, seg)
-        .translate(-leg_spread, 0.0, -leg_len / 2.0 + 2.0);
-    let leg_r_part = centered_cylinder("leg_r", leg_r, leg_len, seg)
-        .translate(leg_spread, 0.0, -leg_len / 2.0 + 2.0);
+    let leg_l = centered_cylinder("leg_l", leg_r, leg_len, seg).translate(
+        -leg_spread,
+        0.0,
+        -leg_len / 2.0 + 2.0,
+    );
+    let leg_r_part = centered_cylinder("leg_r", leg_r, leg_len, seg).translate(
+        leg_spread,
+        0.0,
+        -leg_len / 2.0 + 2.0,
+    );
 
     // Feet — flat rounded cubes
-    let foot_l = centered_cube("foot_l", 12.0, 14.0, 4.0)
-        .translate(-leg_spread, -1.0, -5.0);
-    let foot_r = centered_cube("foot_r", 12.0, 14.0, 4.0)
-        .translate(leg_spread, -1.0, -5.0);
+    let foot_l = centered_cube("foot_l", 12.0, 14.0, 4.0).translate(-leg_spread, -1.0, -5.0);
+    let foot_r = centered_cube("foot_r", 12.0, 14.0, 4.0).translate(leg_spread, -1.0, -5.0);
 
     // === Belly button / chest detail ===
     let chest_circle = centered_cylinder("chest", 6.0, 2.0, seg)
@@ -106,7 +104,8 @@ fn main() {
     println!("wrote mascot.stl");
 
     // === Multi-material GLB scene ===
-    let materials = Materials::parse(r#"
+    let materials = Materials::parse(
+        r#"
 [materials.body]
 color = [0.32, 0.72, 0.95]
 metallic = 0.1
@@ -146,7 +145,9 @@ roughness = 0.4
 color = [0.95, 0.75, 0.2]
 metallic = 0.3
 roughness = 0.4
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let mut scene = Scene::new("mascot");
     scene.add(body, "body");

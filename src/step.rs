@@ -27,7 +27,10 @@ pub struct StepNotAvailable;
 
 impl std::fmt::Display for StepNotAvailable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "STEP export requires the 'step' feature. Build with: cargo build --features step")
+        write!(
+            f,
+            "STEP export requires the 'step' feature. Build with: cargo build --features step"
+        )
     }
 }
 
@@ -40,7 +43,8 @@ mod occt_impl {
 
     /// Export a shape to STEP format
     pub fn write_step(shape: &Shape, path: impl AsRef<Path>) -> Result<(), std::io::Error> {
-        shape.write_step(path.as_ref())
+        shape
+            .write_step(path.as_ref())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     }
 }

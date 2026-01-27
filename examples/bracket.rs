@@ -6,12 +6,12 @@ use vcad::{centered_cube, centered_cylinder};
 fn main() {
     // L-bracket: two plates joined at 90 degrees
     let base = centered_cube("base", 60.0, 40.0, 4.0);
-    let wall = centered_cube("wall", 60.0, 4.0, 36.0)
-        .translate(0.0, -18.0, 20.0);
+    let wall = centered_cube("wall", 60.0, 4.0, 36.0).translate(0.0, -18.0, 20.0);
 
     // Mounting holes in the base
     let hole = centered_cylinder("hole", 3.0, 10.0, 32);
-    let base_holes = hole.translate(-20.0, 0.0, 0.0)
+    let base_holes = hole
+        .translate(-20.0, 0.0, 0.0)
         .union(&hole.translate(20.0, 0.0, 0.0));
 
     // Mounting holes in the wall
@@ -20,7 +20,8 @@ fn main() {
         .translate(-20.0, -18.0, 22.0)
         .union(&hole.rotate(90.0, 0.0, 0.0).translate(20.0, -18.0, 22.0));
 
-    let bracket = base.union(&wall)
+    let bracket = base
+        .union(&wall)
         .difference(&base_holes)
         .difference(&wall_holes);
 

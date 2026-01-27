@@ -3,8 +3,8 @@
 //! Generates ASCII USD files with physics schemas for simulation.
 //! Compatible with NVIDIA Isaac Sim and Omniverse.
 
-use crate::{CadError, Part};
 use super::materials::Material;
+use crate::{CadError, Part};
 use std::path::Path;
 
 /// Export a single part to USD format with physics.
@@ -50,7 +50,14 @@ pub fn export_robot_usd(
     body_material_key: &str,
     physics: &RobotPhysics,
 ) -> Result<(), CadError> {
-    let usda = generate_robot_usda(body, wheels, materials, robot_name, body_material_key, physics)?;
+    let usda = generate_robot_usda(
+        body,
+        wheels,
+        materials,
+        robot_name,
+        body_material_key,
+        physics,
+    )?;
     std::fs::write(path, usda)?;
     Ok(())
 }
@@ -173,8 +180,12 @@ def Xform "{name}" (
 "#,
         name = sanitize_usd_name(&part.name),
         mass = mass_kg.max(0.001),
-        min0 = min[0], min1 = min[1], min2 = min[2],
-        max0 = max[0], max1 = max[1], max2 = max[2],
+        min0 = min[0],
+        min1 = min[1],
+        min2 = min[2],
+        max0 = max[0],
+        max1 = max[1],
+        max2 = max[2],
         face_counts = face_vertex_counts.join(", "),
         face_indices = face_vertex_indices.join(", "),
         points = points.join(", "),
@@ -408,7 +419,13 @@ fn generate_wheel_def(
 
 fn sanitize_usd_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
