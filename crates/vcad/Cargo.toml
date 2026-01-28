@@ -11,14 +11,17 @@ categories = ["rendering::data-formats", "science"]
 exclude = ["../../web/", "../../assets/"]
 
 [features]
-default = ["gltf"]
+default = ["gltf", "kernel-manifold"]
 step = ["opencascade"]
 gltf = ["dep:gltf", "dep:base64"]
 usd = []
+kernel-manifold = ["dep:manifold-rs"]
+kernel-brep = ["dep:vcad-kernel"]
 
 [dependencies]
 vcad-ir = { workspace = true }
-manifold-rs = { workspace = true }
+manifold-rs = { workspace = true, optional = true }
+vcad-kernel = { workspace = true, optional = true }
 nalgebra = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }

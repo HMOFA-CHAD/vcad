@@ -15,6 +15,7 @@
 //! result.write_stl("block_with_hole.stl").unwrap();
 //! ```
 
+#[cfg(feature = "kernel-manifold")]
 use manifold_rs::{Manifold, Mesh};
 use nalgebra::Vector3;
 use std::collections::HashMap;
@@ -47,6 +48,48 @@ fn alloc_node_id() -> NodeId {
     NEXT_NODE_ID.fetch_add(1, Ordering::Relaxed)
 }
 
+// =============================================================================
+// Mesh adaptor — provides a common interface for both backends
+// =============================================================================
+
+/// A triangle mesh with vertices and indices.
+///
+/// This is the common mesh type used by all export formats.
+/// With `kernel-manifold`, it wraps `manifold_rs::Mesh`.
+/// With `kernel-brep`, it wraps `vcad_kernel_tessellate::TriangleMesh`.
+pub struct PartMesh {
+    verts: Vec<f32>,
+    idxs: Vec<u32>,
+}
+
+impl PartMesh {
+    /// Flat array of vertex positions `[x0, y0, z0, x1, y1, z1, ...]`.
+    pub fn vertices(&self) -> Vec<f32> {
+        self.verts.clone()
+    }
+
+    /// Flat array of triangle indices `[i0, i1, i2, ...]`.
+    pub fn indices(&self) -> Vec<u32> {
+        self.idxs.clone()
+    }
+
+    #[cfg(feature = "kernel-manifold")]
+    fn from_manifold_mesh(mesh: Mesh) -> Self {
+        Self {
+            verts: mesh.vertices(),
+            idxs: mesh.indices(),
+        }
+    }
+
+    #[cfg(feature = "kernel-brep")]
+    fn from_kernel_mesh(mesh: vcad_kernel::vcad_kernel_tessellate::TriangleMesh) -> Self {
+        Self {
+            verts: mesh.vertices,
+            idxs: mesh.indices,
+        }
+    }
+}
+
 /// A named part with geometry.
 ///
 /// Parts are the primary building block in vcad. Create primitives with
@@ -59,13 +102,20 @@ fn alloc_node_id() -> NodeId {
 pub struct Part {
     /// Human-readable name for this part (used in export filenames and scene graphs).
     pub name: String,
+    #[cfg(feature = "kernel-manifold")]
     manifold: Manifold,
+    #[cfg(feature = "kernel-brep")]
+    solid: vcad_kernel::Solid,
     ir_node_id: NodeId,
     ir_nodes: HashMap<NodeId, Node>,
 }
 
 impl Part {
-    /// Internal constructor with explicit IR data.
+    // =========================================================================
+    // Internal constructors
+    // =========================================================================
+
+    #[cfg(feature = "kernel-manifold")]
     fn with_ir(
         name: String,
         manifold: Manifold,
@@ -75,6 +125,21 @@ impl Part {
         Self {
             name,
             manifold,
+            ir_node_id,
+            ir_nodes,
+        }
+    }
+
+    #[cfg(feature = "kernel-brep")]
+    fn with_ir_brep(
+        name: String,
+        solid: vcad_kernel::Solid,
+        ir_node_id: NodeId,
+        ir_nodes: HashMap<NodeId, Node>,
+    ) -> Self {
+        Self {
+            name,
+            solid,
             ir_node_id,
             ir_nodes,
         }
@@ -135,10 +200,14 @@ impl Part {
         (id, nodes)
     }
 
-    /// Create a new part with a name.
+    // =========================================================================
+    // Public constructors
+    // =========================================================================
+
+    /// Create a new part with a name from an external Manifold.
     ///
-    /// The manifold is opaque (no parametric info), so the IR records an
-    /// [`CsgOp::Empty`] node.
+    /// Only available with the `kernel-manifold` feature.
+    #[cfg(feature = "kernel-manifold")]
     pub fn new(name: impl Into<String>, manifold: Manifold) -> Self {
         let name = name.into();
         let (id, nodes) = Self::make_leaf(&name, CsgOp::Empty);
@@ -149,7 +218,14 @@ impl Part {
     pub fn empty(name: impl Into<String>) -> Self {
         let name = name.into();
         let (id, nodes) = Self::make_leaf(&name, CsgOp::Empty);
-        Self::with_ir(name, Manifold::empty(), id, nodes)
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(name, Manifold::empty(), id, nodes)
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(name, vcad_kernel::Solid::empty(), id, nodes)
+        }
     }
 
     /// Create a cube/box centered at origin.
@@ -161,7 +237,14 @@ impl Part {
                 size: IrVec3::new(x, y, z),
             },
         );
-        Self::with_ir(name, Manifold::cube(x, y, z), id, nodes)
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(name, Manifold::cube(x, y, z), id, nodes)
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(name, vcad_kernel::Solid::cube(x, y, z), id, nodes)
+        }
     }
 
     /// Create a cylinder along Z axis, centered at origin.
@@ -175,12 +258,24 @@ impl Part {
                 segments,
             },
         );
-        Self::with_ir(
-            name,
-            Manifold::cylinder(radius, radius, height, segments),
-            id,
-            nodes,
-        )
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(
+                name,
+                Manifold::cylinder(radius, radius, height, segments),
+                id,
+                nodes,
+            )
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(
+                name,
+                vcad_kernel::Solid::cylinder(radius, height, segments),
+                id,
+                nodes,
+            )
+        }
     }
 
     /// Create a cone/tapered cylinder.
@@ -201,20 +296,48 @@ impl Part {
                 segments,
             },
         );
-        Self::with_ir(
-            name,
-            Manifold::cylinder(radius_bottom, radius_top, height, segments),
-            id,
-            nodes,
-        )
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(
+                name,
+                Manifold::cylinder(radius_bottom, radius_top, height, segments),
+                id,
+                nodes,
+            )
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(
+                name,
+                vcad_kernel::Solid::cone(radius_bottom, radius_top, height, segments),
+                id,
+                nodes,
+            )
+        }
     }
 
     /// Create a sphere centered at origin.
     pub fn sphere(name: impl Into<String>, radius: f64, segments: u32) -> Self {
         let name = name.into();
         let (id, nodes) = Self::make_leaf(&name, CsgOp::Sphere { radius, segments });
-        Self::with_ir(name, Manifold::sphere(radius, segments), id, nodes)
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(name, Manifold::sphere(radius, segments), id, nodes)
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(
+                name,
+                vcad_kernel::Solid::sphere(radius, segments),
+                id,
+                nodes,
+            )
+        }
     }
+
+    // =========================================================================
+    // CSG operations
+    // =========================================================================
 
     /// Boolean difference (self - other).
     pub fn difference(&self, other: &Part) -> Self {
@@ -223,12 +346,19 @@ impl Part {
             left: l,
             right: r,
         });
-        Self::with_ir(
-            result_name,
-            self.manifold.difference(&other.manifold),
-            id,
-            nodes,
-        )
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(
+                result_name,
+                self.manifold.difference(&other.manifold),
+                id,
+                nodes,
+            )
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(result_name, self.solid.difference(&other.solid), id, nodes)
+        }
     }
 
     /// Boolean union (self + other).
@@ -238,7 +368,14 @@ impl Part {
             left: l,
             right: r,
         });
-        Self::with_ir(result_name, self.manifold.union(&other.manifold), id, nodes)
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(result_name, self.manifold.union(&other.manifold), id, nodes)
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(result_name, self.solid.union(&other.solid), id, nodes)
+        }
     }
 
     /// Boolean intersection.
@@ -247,13 +384,29 @@ impl Part {
         let (id, nodes) = Self::make_binary(&result_name, self, other, |l, r| {
             CsgOp::Intersection { left: l, right: r }
         });
-        Self::with_ir(
-            result_name,
-            self.manifold.intersection(&other.manifold),
-            id,
-            nodes,
-        )
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(
+                result_name,
+                self.manifold.intersection(&other.manifold),
+                id,
+                nodes,
+            )
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(
+                result_name,
+                self.solid.intersection(&other.solid),
+                id,
+                nodes,
+            )
+        }
     }
+
+    // =========================================================================
+    // Transforms
+    // =========================================================================
 
     /// Translate the part.
     pub fn translate(&self, x: f64, y: f64, z: f64) -> Self {
@@ -261,12 +414,19 @@ impl Part {
             child,
             offset: IrVec3::new(x, y, z),
         });
-        Self::with_ir(
-            self.name.clone(),
-            self.manifold.translate(x, y, z),
-            id,
-            nodes,
-        )
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(
+                self.name.clone(),
+                self.manifold.translate(x, y, z),
+                id,
+                nodes,
+            )
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(self.name.clone(), self.solid.translate(x, y, z), id, nodes)
+        }
     }
 
     /// Translate by vector.
@@ -280,12 +440,24 @@ impl Part {
             child,
             angles: IrVec3::new(x_deg, y_deg, z_deg),
         });
-        Self::with_ir(
-            self.name.clone(),
-            self.manifold.rotate(x_deg, y_deg, z_deg),
-            id,
-            nodes,
-        )
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(
+                self.name.clone(),
+                self.manifold.rotate(x_deg, y_deg, z_deg),
+                id,
+                nodes,
+            )
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(
+                self.name.clone(),
+                self.solid.rotate(x_deg, y_deg, z_deg),
+                id,
+                nodes,
+            )
+        }
     }
 
     /// Scale the part.
@@ -294,7 +466,14 @@ impl Part {
             child,
             factor: IrVec3::new(x, y, z),
         });
-        Self::with_ir(self.name.clone(), self.manifold.scale(x, y, z), id, nodes)
+        #[cfg(feature = "kernel-manifold")]
+        {
+            Self::with_ir(self.name.clone(), self.manifold.scale(x, y, z), id, nodes)
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            Self::with_ir_brep(self.name.clone(), self.solid.scale(x, y, z), id, nodes)
+        }
     }
 
     /// Uniform scale.
@@ -302,14 +481,32 @@ impl Part {
         self.scale(s, s, s)
     }
 
+    // =========================================================================
+    // Queries
+    // =========================================================================
+
     /// Check if geometry is empty.
     pub fn is_empty(&self) -> bool {
-        self.manifold.is_empty()
+        #[cfg(feature = "kernel-manifold")]
+        {
+            self.manifold.is_empty()
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            self.solid.is_empty()
+        }
     }
 
     /// Get the mesh representation.
-    pub fn to_mesh(&self) -> Mesh {
-        self.manifold.to_mesh()
+    pub fn to_mesh(&self) -> PartMesh {
+        #[cfg(feature = "kernel-manifold")]
+        {
+            PartMesh::from_manifold_mesh(self.manifold.to_mesh())
+        }
+        #[cfg(feature = "kernel-brep")]
+        {
+            PartMesh::from_kernel_mesh(self.solid.to_mesh(32))
+        }
     }
 
     /// Export to binary STL bytes (delegates to [`export::stl::to_stl_bytes`]).
@@ -450,7 +647,7 @@ impl Part {
     ///
     /// Returns a positive value for well-formed manifold meshes.
     pub fn volume(&self) -> f64 {
-        let mesh = self.manifold.to_mesh();
+        let mesh = self.to_mesh();
         let verts = mesh.vertices();
         let indices = mesh.indices();
         let mut vol = 0.0;
@@ -473,7 +670,7 @@ impl Part {
 
     /// Total surface area of the mesh.
     pub fn surface_area(&self) -> f64 {
-        let mesh = self.manifold.to_mesh();
+        let mesh = self.to_mesh();
         let verts = mesh.vertices();
         let indices = mesh.indices();
         let mut area = 0.0;
@@ -493,7 +690,7 @@ impl Part {
 
     /// Axis-aligned bounding box as `(min, max)`.
     pub fn bounding_box(&self) -> ([f64; 3], [f64; 3]) {
-        let mesh = self.manifold.to_mesh();
+        let mesh = self.to_mesh();
         let verts = mesh.vertices();
         let mut min = [f64::MAX; 3];
         let mut max = [f64::MIN; 3];
@@ -513,7 +710,7 @@ impl Part {
 
     /// Geometric centroid (volume-weighted center of mass assuming uniform density).
     pub fn center_of_mass(&self) -> [f64; 3] {
-        let mesh = self.manifold.to_mesh();
+        let mesh = self.to_mesh();
         let verts = mesh.vertices();
         let indices = mesh.indices();
         let mut cx = 0.0;
@@ -546,7 +743,7 @@ impl Part {
 
     /// Number of triangles in the mesh.
     pub fn num_triangles(&self) -> usize {
-        let mesh = self.manifold.to_mesh();
+        let mesh = self.to_mesh();
         mesh.indices().len() / 3
     }
 }
@@ -761,7 +958,7 @@ mod tests {
 
     #[test]
     fn test_center_of_mass() {
-        // Cube at origin should have centroid at (5,5,5) since manifold cubes are corner-aligned
+        // Cube at origin should have centroid at (5,5,5) since cubes are corner-aligned
         let cube = Part::cube("cube", 10.0, 10.0, 10.0);
         let com = cube.center_of_mass();
         assert!((com[0] - 5.0).abs() < 0.1, "cx: {}", com[0]);
