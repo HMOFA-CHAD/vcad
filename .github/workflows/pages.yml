@@ -3,7 +3,10 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: [web/**]
+    paths:
+      - packages/app/**
+      - packages/ir/**
+      - packages/engine/**
 
 permissions:
   contents: read
@@ -22,9 +25,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspaces
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web
+          path: packages/app/dist
       - id: deployment
         uses: actions/deploy-pages@v4

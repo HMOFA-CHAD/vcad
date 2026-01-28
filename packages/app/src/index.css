@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Berkeley Mono";
+  font-weight: 400;
+  src: url("/fonts/BerkeleyMono-Regular.otf") format("opentype");
+}
+@font-face {
+  font-family: "Berkeley Mono";
+  font-weight: 700;
+  src: url("/fonts/BerkeleyMono-Bold.otf") format("opentype");
+}
+
+@theme {
+  --font-mono: "Berkeley Mono", ui-monospace, monospace;
+  --font-sans: "Berkeley Mono", ui-monospace, monospace;
+
+  --color-bg: oklch(0.129 0.021 264);
+  --color-bg-light: oklch(0.961 0.009 248);
+  --color-surface: oklch(0.168 0.022 264);
+  --color-surface-light: oklch(0.968 0.007 247);
+  --color-card: oklch(0.208 0.024 264);
+  --color-card-light: oklch(1 0 0);
+  --color-border: oklch(0.282 0.023 264);
+  --color-border-light: oklch(0.869 0.013 253);
+  --color-text: oklch(0.966 0.007 247);
+  --color-text-light: oklch(0.208 0.024 264);
+  --color-text-muted: oklch(0.554 0.017 259);
+  --color-text-muted-light: oklch(0.554 0.017 259);
+  --color-accent: oklch(0.707 0.165 254);
+  --color-accent-hover: oklch(0.654 0.177 261);
+  --color-danger: oklch(0.637 0.237 25);
+}
+
+:root {
+  color-scheme: dark;
+}
+:root.light {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dark body,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.light body {
+  background: var(--color-bg-light);
+  color: var(--color-text-light);
+}
