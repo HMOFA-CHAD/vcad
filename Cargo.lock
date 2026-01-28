@@ -647,6 +647,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
+name = "slotmap"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdd58c3c93c3d278ca835519292445cb4b0d4dc59ccfdf7ceadaab3f8aeb4038"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -791,6 +800,7 @@ dependencies = [
  "thiserror 2.0.18",
  "toml",
  "vcad-ir",
+ "vcad-kernel",
 ]
 
 [[package]]
@@ -800,6 +810,76 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "vcad-kernel"
+version = "0.1.0"
+dependencies = [
+ "vcad-kernel-booleans",
+ "vcad-kernel-geom",
+ "vcad-kernel-math",
+ "vcad-kernel-primitives",
+ "vcad-kernel-tessellate",
+ "vcad-kernel-topo",
+]
+
+[[package]]
+name = "vcad-kernel-booleans"
+version = "0.1.0"
+dependencies = [
+ "vcad-kernel-geom",
+ "vcad-kernel-math",
+ "vcad-kernel-primitives",
+ "vcad-kernel-tessellate",
+ "vcad-kernel-topo",
+]
+
+[[package]]
+name = "vcad-kernel-geom"
+version = "0.1.0"
+dependencies = [
+ "vcad-kernel-math",
+]
+
+[[package]]
+name = "vcad-kernel-math"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+]
+
+[[package]]
+name = "vcad-kernel-primitives"
+version = "0.1.0"
+dependencies = [
+ "vcad-kernel-geom",
+ "vcad-kernel-math",
+ "vcad-kernel-topo",
+]
+
+[[package]]
+name = "vcad-kernel-tessellate"
+version = "0.1.0"
+dependencies = [
+ "vcad-kernel-geom",
+ "vcad-kernel-math",
+ "vcad-kernel-primitives",
+ "vcad-kernel-topo",
+]
+
+[[package]]
+name = "vcad-kernel-topo"
+version = "0.1.0"
+dependencies = [
+ "slotmap",
+ "vcad-kernel-math",
+]
+
+[[package]]
+name = "version_check"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "wide"

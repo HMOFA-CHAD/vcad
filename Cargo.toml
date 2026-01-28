@@ -1,6 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["crates/vcad-ir", "crates/vcad"]
+members = [
+    "crates/vcad-ir",
+    "crates/vcad",
+    "crates/vcad-kernel-math",
+    "crates/vcad-kernel-topo",
+    "crates/vcad-kernel-geom",
+    "crates/vcad-kernel-primitives",
+    "crates/vcad-kernel-tessellate",
+    "crates/vcad-kernel-booleans",
+    "crates/vcad-kernel",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,9 +24,17 @@ serde_json = "1"
 thiserror = "2"
 nalgebra = "0.33"
 manifold-rs = "0.6"
+slotmap = "1"
 anyhow = "1"
 toml = "0.8"
 gltf = { version = "1.4" }
 base64 = { version = "0.22" }
 opencascade = { version = "0.2" }
 vcad-ir = { path = "crates/vcad-ir" }
+vcad-kernel = { path = "crates/vcad-kernel" }
+vcad-kernel-math = { path = "crates/vcad-kernel-math" }
+vcad-kernel-topo = { path = "crates/vcad-kernel-topo" }
+vcad-kernel-geom = { path = "crates/vcad-kernel-geom" }
+vcad-kernel-primitives = { path = "crates/vcad-kernel-primitives" }
+vcad-kernel-tessellate = { path = "crates/vcad-kernel-tessellate" }
+vcad-kernel-booleans = { path = "crates/vcad-kernel-booleans" }

@@ -1,0 +1,13 @@
+[package]
+name = "vcad-kernel-tessellate"
+description = "B-rep to triangle mesh tessellation for the vcad kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { path = "../vcad-kernel-math" }
+vcad-kernel-topo = { path = "../vcad-kernel-topo" }
+vcad-kernel-geom = { path = "../vcad-kernel-geom" }
+vcad-kernel-primitives = { path = "../vcad-kernel-primitives" }
