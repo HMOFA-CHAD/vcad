@@ -232,6 +232,29 @@ export interface RevolveOp {
   angle_deg: number;
 }
 
+export interface LinearPatternOp {
+  type: "LinearPattern";
+  child: NodeId;
+  direction: Vec3;
+  count: number;
+  spacing: number;
+}
+
+export interface CircularPatternOp {
+  type: "CircularPattern";
+  child: NodeId;
+  axis_origin: Vec3;
+  axis_dir: Vec3;
+  count: number;
+  angle_deg: number;
+}
+
+export interface ShellOp {
+  type: "Shell";
+  child: NodeId;
+  thickness: number;
+}
+
 /** CSG operation — the core building block of the IR DAG. */
 export type CsgOp =
   | CubeOp
@@ -247,7 +270,10 @@ export type CsgOp =
   | ScaleOp
   | Sketch2DOp
   | ExtrudeOp
-  | RevolveOp;
+  | RevolveOp
+  | LinearPatternOp
+  | CircularPatternOp
+  | ShellOp;
 
 /** A node in the IR graph. */
 export interface Node {

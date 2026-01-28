@@ -858,6 +858,7 @@ dependencies = [
  "vcad-kernel-geom",
  "vcad-kernel-math",
  "vcad-kernel-primitives",
+ "vcad-kernel-shell",
  "vcad-kernel-sketch",
  "vcad-kernel-tessellate",
  "vcad-kernel-topo",
@@ -925,6 +926,17 @@ version = "0.1.0"
 dependencies = [
  "vcad-kernel-geom",
  "vcad-kernel-math",
+ "vcad-kernel-topo",
+]
+
+[[package]]
+name = "vcad-kernel-shell"
+version = "0.1.0"
+dependencies = [
+ "vcad-kernel-geom",
+ "vcad-kernel-math",
+ "vcad-kernel-primitives",
+ "vcad-kernel-tessellate",
  "vcad-kernel-topo",
 ]
 

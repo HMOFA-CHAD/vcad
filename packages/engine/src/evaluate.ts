@@ -1,6 +1,42 @@
-import type { Document, Node, NodeId, CsgOp } from "@vcad/ir";
+import type {
+  Document,
+  Node,
+  NodeId,
+  CsgOp,
+  Sketch2DOp,
+  SketchSegment2D,
+} from "@vcad/ir";
 import type { EvaluatedScene, TriangleMesh } from "./mesh.js";
 import type { Solid } from "@vcad/kernel-wasm";
+
+/** Convert IR sketch segment to WASM format */
+function convertSegment(seg: SketchSegment2D) {
+  if (seg.type === "Line") {
+    return {
+      type: "Line" as const,
+      start: [seg.start.x, seg.start.y],
+      end: [seg.end.x, seg.end.y],
+    };
+  } else {
+    return {
+      type: "Arc" as const,
+      start: [seg.start.x, seg.start.y],
+      end: [seg.end.x, seg.end.y],
+      center: [seg.center.x, seg.center.y],
+      ccw: seg.ccw,
+    };
+  }
+}
+
+/** Convert IR Sketch2D op to WASM profile format */
+function convertSketchToProfile(op: Sketch2DOp) {
+  return {
+    origin: [op.origin.x, op.origin.y, op.origin.z],
+    x_dir: [op.x_dir.x, op.x_dir.y, op.x_dir.z],
+    y_dir: [op.y_dir.x, op.y_dir.y, op.y_dir.z],
+    segments: op.segments.map(convertSegment),
+  };
+}
 
 /** Type for the kernel module */
 interface KernelModule {
@@ -134,6 +170,74 @@ function evaluateOp(
     case "Scale": {
       const child = evaluateNode(op.child, nodes, Solid, cache);
       return child.scale(op.factor.x, op.factor.y, op.factor.z);
+    }
+
+    case "Sketch2D":
+      // Sketch2D nodes don't produce geometry directly — they're referenced by Extrude/Revolve
+      // Return an empty solid as a placeholder
+      return Solid.empty();
+
+    case "Extrude": {
+      const sketchNode = nodes[String(op.sketch)];
+      if (!sketchNode || sketchNode.op.type !== "Sketch2D") {
+        throw new Error(`Extrude references invalid sketch node: ${op.sketch}`);
+      }
+      const profile = convertSketchToProfile(sketchNode.op);
+      const direction = new Float64Array([
+        op.direction.x,
+        op.direction.y,
+        op.direction.z,
+      ]);
+      return Solid.extrude(profile, direction);
+    }
+
+    case "Revolve": {
+      const sketchNode = nodes[String(op.sketch)];
+      if (!sketchNode || sketchNode.op.type !== "Sketch2D") {
+        throw new Error(`Revolve references invalid sketch node: ${op.sketch}`);
+      }
+      const profile = convertSketchToProfile(sketchNode.op);
+      const axisOrigin = new Float64Array([
+        op.axis_origin.x,
+        op.axis_origin.y,
+        op.axis_origin.z,
+      ]);
+      const axisDir = new Float64Array([
+        op.axis_dir.x,
+        op.axis_dir.y,
+        op.axis_dir.z,
+      ]);
+      return Solid.revolve(profile, axisOrigin, axisDir, op.angle_deg);
+    }
+
+    case "LinearPattern": {
+      const child = evaluateNode(op.child, nodes, Solid, cache);
+      return child.linearPattern(
+        op.direction.x,
+        op.direction.y,
+        op.direction.z,
+        op.count,
+        op.spacing,
+      );
+    }
+
+    case "CircularPattern": {
+      const child = evaluateNode(op.child, nodes, Solid, cache);
+      return child.circularPattern(
+        op.axis_origin.x,
+        op.axis_origin.y,
+        op.axis_origin.z,
+        op.axis_dir.x,
+        op.axis_dir.y,
+        op.axis_dir.z,
+        op.count,
+        op.angle_deg,
+      );
+    }
+
+    case "Shell": {
+      const child = evaluateNode(op.child, nodes, Solid, cache);
+      return child.shell(op.thickness);
     }
   }
 }

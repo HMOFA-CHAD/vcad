@@ -21,6 +21,7 @@ pub use vcad_kernel_fillet;
 pub use vcad_kernel_geom;
 pub use vcad_kernel_math;
 pub use vcad_kernel_primitives;
+pub use vcad_kernel_shell;
 pub use vcad_kernel_sketch;
 pub use vcad_kernel_tessellate;
 pub use vcad_kernel_topo;
@@ -205,6 +206,117 @@ impl Solid {
             },
             _ => self.clone(),
         }
+    }
+
+    /// Shell (hollow) the solid by offsetting all faces inward.
+    ///
+    /// Creates a hollow shell with walls of the specified thickness.
+    /// The outer surface remains, and an inner surface is created at
+    /// `thickness` offset.
+    ///
+    /// # Arguments
+    ///
+    /// * `thickness` - Wall thickness (positive = inward offset)
+    ///
+    /// # Returns
+    ///
+    /// A new solid representing the hollow shell. Returns self unchanged
+    /// for empty solids.
+    pub fn shell(&self, thickness: f64) -> Solid {
+        match &self.repr {
+            SolidRepr::Empty => Solid::empty(),
+            SolidRepr::BRep(brep) => Solid {
+                repr: SolidRepr::BRep(Box::new(vcad_kernel_shell::shell_brep(brep, thickness))),
+                segments: self.segments,
+            },
+            SolidRepr::Mesh(mesh) => Solid {
+                repr: SolidRepr::Mesh(vcad_kernel_shell::shell_mesh(mesh, thickness)),
+                segments: self.segments,
+            },
+        }
+    }
+
+    // =========================================================================
+    // Pattern operations
+    // =========================================================================
+
+    /// Create a linear pattern of the solid along a direction.
+    ///
+    /// # Arguments
+    ///
+    /// * `direction` - Direction vector (normalized internally)
+    /// * `count` - Number of copies including original (must be >= 1)
+    /// * `spacing` - Distance between copies along the direction
+    ///
+    /// # Returns
+    ///
+    /// A union of all copies. Returns self if count < 2.
+    pub fn linear_pattern(&self, direction: Vec3, count: u32, spacing: f64) -> Solid {
+        if count < 2 {
+            return self.clone();
+        }
+
+        let dir_norm = direction.norm();
+        if dir_norm < 1e-12 {
+            return self.clone();
+        }
+        let dir = direction / dir_norm;
+
+        let mut result = self.clone();
+        for i in 1..count {
+            let offset = dir * (spacing * i as f64);
+            let copy = self.translate(offset.x, offset.y, offset.z);
+            result = result.union(&copy);
+        }
+        result
+    }
+
+    /// Create a circular pattern of the solid around an axis.
+    ///
+    /// # Arguments
+    ///
+    /// * `axis_origin` - A point on the rotation axis
+    /// * `axis_dir` - Direction of the rotation axis
+    /// * `count` - Number of copies including original (must be >= 1)
+    /// * `angle_deg` - Total angle span in degrees
+    ///
+    /// # Returns
+    ///
+    /// A union of all rotated copies. Returns self if count < 2.
+    pub fn circular_pattern(
+        &self,
+        axis_origin: Point3,
+        axis_dir: Vec3,
+        count: u32,
+        angle_deg: f64,
+    ) -> Solid {
+        use vcad_kernel_math::Dir3;
+
+        if count < 2 {
+            return self.clone();
+        }
+
+        let dir_norm = axis_dir.norm();
+        if dir_norm < 1e-12 {
+            return self.clone();
+        }
+        let axis = Dir3::new_normalize(axis_dir);
+        let angle_step = angle_deg.to_radians() / count as f64;
+
+        let mut result = self.clone();
+        for i in 1..count {
+            let angle = angle_step * i as f64;
+            // Build transform: translate to origin, rotate, translate back
+            let t_to_origin =
+                Transform::translation(-axis_origin.x, -axis_origin.y, -axis_origin.z);
+            let rot = Transform::rotation_about_axis(&axis, angle);
+            let t_back = Transform::translation(axis_origin.x, axis_origin.y, axis_origin.z);
+            // Compose: first translate to origin, then rotate, then translate back
+            let composed = t_back.then(&rot).then(&t_to_origin);
+            let copy = self.apply_transform(&composed);
+            result = result.union(&copy);
+        }
+        result
     }
 
     // =========================================================================
@@ -778,5 +890,77 @@ mod tests {
             vol >= 1000.0 && vol <= 2000.0,
             "expected volume between 1000 and 2000, got {vol}"
         );
+    }
+
+    #[test]
+    fn test_linear_pattern() {
+        let cube = Solid::cube(10.0, 10.0, 10.0);
+        let pattern = cube.linear_pattern(Vec3::new(1.0, 0.0, 0.0), 3, 20.0);
+        assert!(!pattern.is_empty());
+        // 3 cubes of 1000mm³ each = 3000mm³
+        let vol = pattern.volume();
+        assert!((vol - 3000.0).abs() < 50.0, "expected ~3000, got {vol}");
+        // Bounding box should span 50mm in X (10 + 20 + 10 + 20 + 10 = 50... wait, it's 10 + 20 + 10 = 40)
+        // Actually: first cube 0-10, second 20-30, third 40-50 → span is 50
+        let (min, max) = pattern.bounding_box();
+        assert!(
+            (max[0] - min[0] - 50.0).abs() < 1.0,
+            "expected X span ~50, got {}",
+            max[0] - min[0]
+        );
+    }
+
+    #[test]
+    fn test_linear_pattern_single() {
+        let cube = Solid::cube(10.0, 10.0, 10.0);
+        let pattern = cube.linear_pattern(Vec3::new(1.0, 0.0, 0.0), 1, 20.0);
+        // Should return original cube unchanged
+        let vol = pattern.volume();
+        assert!((vol - 1000.0).abs() < 2.0, "expected ~1000, got {vol}");
+    }
+
+    #[test]
+    fn test_circular_pattern() {
+        let cube = Solid::cube(5.0, 5.0, 5.0).translate(10.0, 0.0, 0.0);
+        // Pattern 4 copies around Z axis, 360° total
+        let pattern = cube.circular_pattern(Point3::origin(), Vec3::z(), 4, 360.0);
+        assert!(!pattern.is_empty());
+        // 4 cubes of 125mm³ each = 500mm³
+        let vol = pattern.volume();
+        assert!((vol - 500.0).abs() < 20.0, "expected ~500, got {vol}");
+    }
+
+    #[test]
+    fn test_circular_pattern_90_deg() {
+        let cube = Solid::cube(5.0, 5.0, 5.0).translate(10.0, 0.0, 0.0);
+        // Pattern 2 copies around Z axis, 90° span (original at 0°, copy at 45°)
+        let pattern = cube.circular_pattern(Point3::origin(), Vec3::z(), 2, 90.0);
+        assert!(!pattern.is_empty());
+        // 2 cubes
+        let vol = pattern.volume();
+        assert!((vol - 250.0).abs() < 10.0, "expected ~250, got {vol}");
+    }
+
+    #[test]
+    fn test_shell_cube() {
+        let cube = Solid::cube(10.0, 10.0, 10.0);
+        let shell = cube.shell(2.0);
+        assert!(!shell.is_empty());
+        // Shell should have less volume than the original
+        let orig_vol = cube.volume();
+        let shell_vol = shell.volume();
+        assert!(
+            shell_vol < orig_vol,
+            "shell volume {} should be less than original {}",
+            shell_vol,
+            orig_vol
+        );
+    }
+
+    #[test]
+    fn test_shell_empty() {
+        let empty = Solid::empty();
+        let shell = empty.shell(1.0);
+        assert!(shell.is_empty());
     }
 }

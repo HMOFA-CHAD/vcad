@@ -12,6 +12,22 @@ use std::collections::HashMap;
 /// Unique identifier for a node in the IR graph.
 pub type NodeId = u64;
 
+/// 2D vector with f64 components (for sketch coordinates).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Vec2 {
+    /// X component.
+    pub x: f64,
+    /// Y component.
+    pub y: f64,
+}
+
+impl Vec2 {
+    /// Create a new Vec2.
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+}
+
 /// 3D vector with f64 components (conventionally millimeters).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vec3 {
@@ -28,6 +44,30 @@ impl Vec3 {
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
     }
+}
+
+/// A segment of a 2D sketch profile.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum SketchSegment2D {
+    /// A line segment from start to end.
+    Line {
+        /// Start point in 2D sketch coordinates.
+        start: Vec2,
+        /// End point in 2D sketch coordinates.
+        end: Vec2,
+    },
+    /// A circular arc from start to end around a center.
+    Arc {
+        /// Start point in 2D sketch coordinates.
+        start: Vec2,
+        /// End point in 2D sketch coordinates.
+        end: Vec2,
+        /// Center of the arc in 2D sketch coordinates.
+        center: Vec2,
+        /// If true, arc goes counter-clockwise from start to end.
+        ccw: bool,
+    },
 }
 
 /// CSG operation — the core building block of the IR DAG.
@@ -112,6 +152,69 @@ pub enum CsgOp {
         child: NodeId,
         /// Scale factors per axis.
         factor: Vec3,
+    },
+    /// A 2D sketch profile on a plane.
+    ///
+    /// The sketch defines a closed profile in a local 2D coordinate system.
+    /// Use with [`CsgOp::Extrude`] or [`CsgOp::Revolve`] to create 3D geometry.
+    Sketch2D {
+        /// Origin point of the sketch plane in 3D.
+        origin: Vec3,
+        /// Unit vector along the local X axis.
+        x_dir: Vec3,
+        /// Unit vector along the local Y axis.
+        y_dir: Vec3,
+        /// The segments forming the closed profile.
+        segments: Vec<SketchSegment2D>,
+    },
+    /// Extrude a sketch profile along a direction vector.
+    Extrude {
+        /// The sketch node to extrude.
+        sketch: NodeId,
+        /// Extrusion direction and distance (length of vector = extrusion depth).
+        direction: Vec3,
+    },
+    /// Revolve a sketch profile around an axis.
+    Revolve {
+        /// The sketch node to revolve.
+        sketch: NodeId,
+        /// A point on the revolution axis.
+        axis_origin: Vec3,
+        /// Direction of the revolution axis.
+        axis_dir: Vec3,
+        /// Revolution angle in degrees (360 for full revolution).
+        angle_deg: f64,
+    },
+    /// Linear pattern — repeat geometry along a direction.
+    LinearPattern {
+        /// Child node to pattern.
+        child: NodeId,
+        /// Direction vector (will be normalized).
+        direction: Vec3,
+        /// Number of copies (including original).
+        count: u32,
+        /// Spacing between copies along direction.
+        spacing: f64,
+    },
+    /// Circular pattern — repeat geometry around an axis.
+    CircularPattern {
+        /// Child node to pattern.
+        child: NodeId,
+        /// A point on the rotation axis.
+        axis_origin: Vec3,
+        /// Direction of the rotation axis.
+        axis_dir: Vec3,
+        /// Number of copies (including original).
+        count: u32,
+        /// Total angle span in degrees.
+        angle_deg: f64,
+    },
+    /// Shell — hollow out a solid by offsetting faces.
+    Shell {
+        /// Child node to shell.
+        child: NodeId,
+        /// Wall thickness (inward offset).
+        thickness: f64,
     },
 }
 
@@ -342,6 +445,92 @@ mod tests {
         let json = serde_json::to_string(&op).unwrap();
         assert!(json.contains(r#""type":"Cube""#));
 
+        let restored: CsgOp = serde_json::from_str(&json).unwrap();
+        assert_eq!(op, restored);
+    }
+
+    #[test]
+    fn sketch_operations() {
+        let mut doc = Document::new();
+
+        // Add a rectangle sketch
+        let sketch_id = 1;
+        doc.nodes.insert(
+            sketch_id,
+            Node {
+                id: sketch_id,
+                name: Some("rectangle".to_string()),
+                op: CsgOp::Sketch2D {
+                    origin: Vec3::new(0.0, 0.0, 0.0),
+                    x_dir: Vec3::new(1.0, 0.0, 0.0),
+                    y_dir: Vec3::new(0.0, 1.0, 0.0),
+                    segments: vec![
+                        SketchSegment2D::Line {
+                            start: Vec2::new(0.0, 0.0),
+                            end: Vec2::new(10.0, 0.0),
+                        },
+                        SketchSegment2D::Line {
+                            start: Vec2::new(10.0, 0.0),
+                            end: Vec2::new(10.0, 5.0),
+                        },
+                        SketchSegment2D::Line {
+                            start: Vec2::new(10.0, 5.0),
+                            end: Vec2::new(0.0, 5.0),
+                        },
+                        SketchSegment2D::Line {
+                            start: Vec2::new(0.0, 5.0),
+                            end: Vec2::new(0.0, 0.0),
+                        },
+                    ],
+                },
+            },
+        );
+
+        // Add an extrusion
+        let extrude_id = 2;
+        doc.nodes.insert(
+            extrude_id,
+            Node {
+                id: extrude_id,
+                name: Some("extruded_block".to_string()),
+                op: CsgOp::Extrude {
+                    sketch: sketch_id,
+                    direction: Vec3::new(0.0, 0.0, 20.0),
+                },
+            },
+        );
+
+        // Round-trip through JSON
+        let json = doc.to_json().expect("serialize");
+        let restored = Document::from_json(&json).expect("deserialize");
+        assert_eq!(doc, restored);
+
+        // Verify structure
+        match &restored.nodes[&sketch_id].op {
+            CsgOp::Sketch2D { segments, .. } => {
+                assert_eq!(segments.len(), 4);
+            }
+            _ => panic!("expected Sketch2D"),
+        }
+        match &restored.nodes[&extrude_id].op {
+            CsgOp::Extrude { sketch, direction } => {
+                assert_eq!(*sketch, sketch_id);
+                assert_eq!(direction.z, 20.0);
+            }
+            _ => panic!("expected Extrude"),
+        }
+    }
+
+    #[test]
+    fn revolve_operation() {
+        let op = CsgOp::Revolve {
+            sketch: 1,
+            axis_origin: Vec3::new(0.0, 0.0, 0.0),
+            axis_dir: Vec3::new(0.0, 1.0, 0.0),
+            angle_deg: 360.0,
+        };
+        let json = serde_json::to_string(&op).unwrap();
+        assert!(json.contains(r#""type":"Revolve""#));
         let restored: CsgOp = serde_json::from_str(&json).unwrap();
         assert_eq!(op, restored);
     }

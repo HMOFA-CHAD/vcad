@@ -1,6 +1,6 @@
 [package]
-name = "vcad-kernel"
-description = "High-level B-rep CAD kernel facade for vcad"
+name = "vcad-kernel-shell"
+description = "Shell (hollow) operation for the vcad kernel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,8 +12,5 @@ vcad-kernel-topo = { path = "../vcad-kernel-topo" }
 vcad-kernel-geom = { path = "../vcad-kernel-geom" }
 vcad-kernel-primitives = { path = "../vcad-kernel-primitives" }
 vcad-kernel-tessellate = { path = "../vcad-kernel-tessellate" }
-vcad-kernel-booleans = { path = "../vcad-kernel-booleans" }
-vcad-kernel-fillet = { path = "../vcad-kernel-fillet" }
-vcad-kernel-sketch = { path = "../vcad-kernel-sketch" }
-vcad-kernel-shell = { path = "../vcad-kernel-shell" }
-vcad-kernel-constraints = { path = "../vcad-kernel-constraints" }
+
+[dev-dependencies]
