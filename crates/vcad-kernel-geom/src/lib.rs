@@ -6,6 +6,7 @@
 //! with concrete implementations for the common analytic types used in
 //! B-rep CAD: planes, cylinders, cones, spheres, lines, and circles.
 
+use std::any::Any;
 use std::f64::consts::PI;
 use vcad_kernel_math::{Dir3, Point2, Point3, Vec2, Vec3};
 
@@ -48,6 +49,9 @@ pub trait Surface: Send + Sync + std::fmt::Debug {
 
     /// Clone this surface into a boxed trait object.
     fn clone_box(&self) -> Box<dyn Surface>;
+
+    /// Downcast to a concrete type via `Any`.
+    fn as_any(&self) -> &dyn Any;
 }
 
 impl Clone for Box<dyn Surface> {
@@ -164,6 +168,10 @@ impl Surface for Plane {
     fn clone_box(&self) -> Box<dyn Surface> {
         Box::new(self.clone())
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 // =============================================================================
@@ -252,6 +260,10 @@ impl Surface for CylinderSurface {
 
     fn clone_box(&self) -> Box<dyn Surface> {
         Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -369,6 +381,10 @@ impl Surface for ConeSurface {
     fn clone_box(&self) -> Box<dyn Surface> {
         Box::new(self.clone())
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 // =============================================================================
@@ -461,6 +477,10 @@ impl Surface for SphereSurface {
 
     fn clone_box(&self) -> Box<dyn Surface> {
         Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

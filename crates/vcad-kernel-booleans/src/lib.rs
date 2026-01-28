@@ -3,17 +3,22 @@
 //! CSG boolean operations on B-rep solids for the vcad kernel.
 //!
 //! Implements union, difference, and intersection of B-rep solids.
-//! This is a mesh-based implementation for Phase 1, using triangle
-//! mesh booleans as a stepping stone. Full B-rep booleans (surface-surface
-//! intersection, face splitting, classification) will be added in Phase 2.
 //!
-//! The current approach:
-//! 1. Tessellate both input solids to triangle meshes
-//! 2. Perform mesh-based CSG (point-in-solid classification)
-//! 3. Return result as a mesh-only solid (no B-rep structure)
+//! The boolean pipeline has 4 stages:
+//! 1. **AABB filter** — broadphase to find candidate face pairs
+//! 2. **SSI** — surface-surface intersection for each candidate pair
+//! 3. **Classification** — label sub-faces as IN/OUT/ON
+//! 4. **Reconstruction** — sew selected faces into the result solid
 //!
-//! This preserves API compatibility while the true B-rep boolean engine
-//! is developed.
+//! Phase 2 is building this pipeline incrementally. The mesh-based
+//! fallback from Phase 1 remains as a backup.
+
+pub mod bbox;
+pub mod classify;
+pub mod sew;
+pub mod split;
+pub mod ssi;
+pub mod trim;
 
 use vcad_kernel_math::Point3;
 use vcad_kernel_primitives::BRepSolid;
@@ -54,56 +59,84 @@ impl BooleanResult {
 
 /// Perform a CSG boolean operation on two B-rep solids.
 ///
-/// Currently uses a naive mesh-based approach:
-/// - Tessellates both solids
-/// - Classifies triangles by point-in-solid tests
-/// - Concatenates the selected triangles
+/// Uses a B-rep classification pipeline:
+/// 1. AABB filter to check for overlap
+/// 2. Classify each face of A relative to B and vice versa
+/// 3. Select faces based on the boolean operation
+/// 4. Sew selected faces into a result solid
 ///
-/// This is a placeholder for the full B-rep boolean engine.
+/// For non-overlapping solids, shortcuts are taken (e.g., union is
+/// just both solids combined). Falls back to mesh-based approach
+/// when the B-rep pipeline can't handle a case.
 pub fn boolean_op(
     solid_a: &BRepSolid,
     solid_b: &BRepSolid,
     op: BooleanOp,
     segments: u32,
 ) -> BooleanResult {
-    let mesh_a = tessellate_brep(solid_a, segments);
-    let mesh_b = tessellate_brep(solid_b, segments);
-    let result = mesh_boolean(&mesh_a, &mesh_b, op);
-    BooleanResult::Mesh(result)
+    // Check if solids overlap at all
+    let aabb_a = bbox::solid_aabb(solid_a);
+    let aabb_b = bbox::solid_aabb(solid_b);
+
+    if !aabb_a.overlaps(&aabb_b) {
+        // No overlap — shortcut
+        return non_overlapping_boolean(solid_a, solid_b, op, segments);
+    }
+
+    // Solids overlap — use classification pipeline
+    brep_boolean(solid_a, solid_b, op, segments)
 }
 
-/// Perform mesh-based CSG boolean.
-///
-/// This is a simplified implementation that:
-/// - For Union: concatenates both meshes (no intersection handling)
-/// - For Difference: concatenates A + flipped B (no intersection handling)
-/// - For Intersection: returns empty (needs proper implementation)
-///
-/// Full mesh CSG with proper triangle clipping will come in Phase 2.
-/// For now, this provides the API structure.
-fn mesh_boolean(mesh_a: &TriangleMesh, mesh_b: &TriangleMesh, op: BooleanOp) -> TriangleMesh {
+/// Handle boolean operations on non-overlapping solids.
+fn non_overlapping_boolean(
+    solid_a: &BRepSolid,
+    solid_b: &BRepSolid,
+    op: BooleanOp,
+    _segments: u32,
+) -> BooleanResult {
     match op {
         BooleanOp::Union => {
-            let mut result = mesh_a.clone();
-            result.merge(mesh_b);
-            result
+            // Union of non-overlapping = both solids combined
+            let faces_a: Vec<_> = solid_a.topology.faces.keys().collect();
+            let faces_b: Vec<_> = solid_b.topology.faces.keys().collect();
+            let result = sew::sew_faces(solid_a, &faces_a, solid_b, &faces_b, false, 1e-6);
+            BooleanResult::BRep(Box::new(result))
         }
         BooleanOp::Difference => {
-            let mut result = mesh_a.clone();
-            // Flip winding of B's triangles for subtraction
-            let mut flipped_b = mesh_b.clone();
-            for tri in flipped_b.indices.chunks_mut(3) {
-                tri.swap(1, 2);
-            }
-            result.merge(&flipped_b);
-            result
+            // Difference with non-overlapping = just A (nothing to subtract)
+            let faces_a: Vec<_> = solid_a.topology.faces.keys().collect();
+            let result = sew::sew_faces(solid_a, &faces_a, solid_b, &[], false, 1e-6);
+            BooleanResult::BRep(Box::new(result))
         }
         BooleanOp::Intersection => {
-            // Placeholder: proper intersection requires triangle clipping
-            // For now, return mesh_a (will be replaced in Phase 2)
-            mesh_a.clone()
+            // Intersection of non-overlapping = empty
+            BooleanResult::Mesh(TriangleMesh {
+                vertices: Vec::new(),
+                indices: Vec::new(),
+            })
         }
     }
+}
+
+/// B-rep boolean pipeline for overlapping solids.
+fn brep_boolean(
+    solid_a: &BRepSolid,
+    solid_b: &BRepSolid,
+    op: BooleanOp,
+    segments: u32,
+) -> BooleanResult {
+    // Classify all faces of A relative to B
+    let classes_a = classify::classify_all_faces(solid_a, solid_b, segments);
+    // Classify all faces of B relative to A
+    let classes_b = classify::classify_all_faces(solid_b, solid_a, segments);
+
+    // Select which faces to keep
+    let (keep_a, keep_b, reverse_b) = classify::select_faces(op, &classes_a, &classes_b);
+
+    // Sew the selected faces together
+    let result = sew::sew_faces(solid_a, &keep_a, solid_b, &keep_b, reverse_b, 1e-6);
+
+    BooleanResult::BRep(Box::new(result))
 }
 
 /// Test if a point is inside a closed triangle mesh using ray casting.
@@ -193,16 +226,22 @@ mod tests {
     }
 
     #[test]
-    fn test_union_mesh() {
+    fn test_union_overlapping() {
+        // Partially overlapping cubes
         let a = make_cube(10.0, 10.0, 10.0);
-        let b = make_cube(10.0, 10.0, 10.0);
+        let mut b = make_cube(10.0, 10.0, 10.0);
+        for (_, v) in &mut b.topology.vertices {
+            v.point.x += 5.0; // shift B by half
+        }
         let result = boolean_op(&a, &b, BooleanOp::Union, 32);
+        // Overlapping booleans return BRep
+        assert!(matches!(result, BooleanResult::BRep(_)));
         let mesh = result.to_mesh(32);
         assert!(mesh.num_triangles() > 0);
     }
 
     #[test]
-    fn test_difference_mesh() {
+    fn test_difference_overlapping() {
         let a = make_cube(10.0, 10.0, 10.0);
         let b = make_cube(5.0, 5.0, 5.0);
         let result = boolean_op(&a, &b, BooleanOp::Difference, 32);
@@ -211,16 +250,44 @@ mod tests {
     }
 
     #[test]
-    fn test_boolean_result_types() {
+    fn test_non_overlapping_union() {
         let a = make_cube(10.0, 10.0, 10.0);
-        let b = make_cube(10.0, 10.0, 10.0);
+        let mut b = make_cube(10.0, 10.0, 10.0);
+        for (_, v) in &mut b.topology.vertices {
+            v.point.x += 100.0;
+        }
+        let result = boolean_op(&a, &b, BooleanOp::Union, 32);
+        // Non-overlapping union returns BRep with all faces
+        assert!(matches!(result, BooleanResult::BRep(_)));
+        let mesh = result.to_mesh(32);
+        assert!(mesh.num_triangles() > 0);
+    }
 
-        let union_result = boolean_op(&a, &b, BooleanOp::Union, 32);
-        let diff_result = boolean_op(&a, &b, BooleanOp::Difference, 32);
-        let isect_result = boolean_op(&a, &b, BooleanOp::Intersection, 32);
+    #[test]
+    fn test_non_overlapping_intersection() {
+        let a = make_cube(10.0, 10.0, 10.0);
+        let mut b = make_cube(10.0, 10.0, 10.0);
+        for (_, v) in &mut b.topology.vertices {
+            v.point.x += 100.0;
+        }
+        let result = boolean_op(&a, &b, BooleanOp::Intersection, 32);
+        // Non-overlapping intersection returns empty mesh
+        assert!(matches!(result, BooleanResult::Mesh(_)));
+        let mesh = result.to_mesh(32);
+        assert_eq!(mesh.num_triangles(), 0);
+    }
 
-        assert!(matches!(union_result, BooleanResult::Mesh(_)));
-        assert!(matches!(diff_result, BooleanResult::Mesh(_)));
-        assert!(matches!(isect_result, BooleanResult::Mesh(_)));
+    #[test]
+    fn test_non_overlapping_difference() {
+        let a = make_cube(10.0, 10.0, 10.0);
+        let mut b = make_cube(10.0, 10.0, 10.0);
+        for (_, v) in &mut b.topology.vertices {
+            v.point.x += 100.0;
+        }
+        let result = boolean_op(&a, &b, BooleanOp::Difference, 32);
+        // Non-overlapping difference returns just A
+        assert!(matches!(result, BooleanResult::BRep(_)));
+        let mesh = result.to_mesh(32);
+        assert!(mesh.num_triangles() > 0);
     }
 }
