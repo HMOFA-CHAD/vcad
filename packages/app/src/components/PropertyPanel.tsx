@@ -1,56 +1,11 @@
-import { useState, useEffect } from "react";
 import { Panel, PanelHeader, PanelBody } from "@/components/ui/panel";
 import { Separator } from "@/components/ui/separator";
+import { ScrubInput } from "@/components/ui/scrub-input";
 import { useDocumentStore } from "@/stores/document-store";
 import { useUiStore } from "@/stores/ui-store";
 import type { Vec3 } from "@vcad/ir";
 import type { PartInfo, PrimitivePartInfo } from "@/types";
 import { isPrimitivePart } from "@/types";
-
-function NumericInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const [text, setText] = useState(String(round(value)));
-
-  useEffect(() => {
-    setText(String(round(value)));
-  }, [value]);
-
-  function commit() {
-    const num = parseFloat(text);
-    if (!isNaN(num)) {
-      onChange(num);
-    } else {
-      setText(String(round(value)));
-    }
-  }
-
-  return (
-    <label className="flex items-center gap-2 text-xs">
-      <span className="w-5 shrink-0 text-text-muted font-bold">{label}</span>
-      <input
-        type="text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-        }}
-        className="flex-1 rounded border border-border bg-surface px-2 py-1 text-xs text-text outline-none focus:border-accent w-0"
-      />
-    </label>
-  );
-}
-
-function round(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
 
 const MATERIAL_SWATCHES = [
   { key: "default", label: "Default", color: "#b3b3bf" },
@@ -141,21 +96,21 @@ function PositionSection({
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>Position</SectionLabel>
-      <NumericInput
+      <ScrubInput
         label="X"
         value={offset.x}
         onChange={(v) =>
           setTranslation(part.id, { ...offset, x: v })
         }
       />
-      <NumericInput
+      <ScrubInput
         label="Y"
         value={offset.y}
         onChange={(v) =>
           setTranslation(part.id, { ...offset, y: v })
         }
       />
-      <NumericInput
+      <ScrubInput
         label="Z"
         value={offset.z}
         onChange={(v) =>
@@ -178,23 +133,26 @@ function RotationSection({
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>Rotation</SectionLabel>
-      <NumericInput
+      <ScrubInput
         label="Rx"
         value={angles.x}
+        step={1}
         onChange={(v) =>
           setRotation(part.id, { ...angles, x: v })
         }
       />
-      <NumericInput
+      <ScrubInput
         label="Ry"
         value={angles.y}
+        step={1}
         onChange={(v) =>
           setRotation(part.id, { ...angles, y: v })
         }
       />
-      <NumericInput
+      <ScrubInput
         label="Rz"
         value={angles.z}
+        step={1}
         onChange={(v) =>
           setRotation(part.id, { ...angles, z: v })
         }
@@ -219,9 +177,10 @@ function CubeDimensions({
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>Dimensions</SectionLabel>
-      <NumericInput
+      <ScrubInput
         label="W"
         value={size.x}
+        min={0.1}
         onChange={(v) =>
           updatePrimitiveOp(part.id, {
             type: "Cube",
@@ -229,9 +188,10 @@ function CubeDimensions({
           })
         }
       />
-      <NumericInput
+      <ScrubInput
         label="H"
         value={size.y}
+        min={0.1}
         onChange={(v) =>
           updatePrimitiveOp(part.id, {
             type: "Cube",
@@ -239,9 +199,10 @@ function CubeDimensions({
           })
         }
       />
-      <NumericInput
+      <ScrubInput
         label="D"
         value={size.z}
+        min={0.1}
         onChange={(v) =>
           updatePrimitiveOp(part.id, {
             type: "Cube",
@@ -269,16 +230,18 @@ function CylinderDimensions({
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>Dimensions</SectionLabel>
-      <NumericInput
+      <ScrubInput
         label="R"
         value={op.radius}
+        min={0.1}
         onChange={(v) =>
           updatePrimitiveOp(part.id, { ...op, radius: v })
         }
       />
-      <NumericInput
+      <ScrubInput
         label="H"
         value={op.height}
+        min={0.1}
         onChange={(v) =>
           updatePrimitiveOp(part.id, { ...op, height: v })
         }
@@ -303,9 +266,10 @@ function SphereDimensions({
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>Dimensions</SectionLabel>
-      <NumericInput
+      <ScrubInput
         label="R"
         value={op.radius}
+        min={0.1}
         onChange={(v) =>
           updatePrimitiveOp(part.id, { ...op, radius: v })
         }

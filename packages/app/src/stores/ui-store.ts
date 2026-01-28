@@ -3,6 +3,8 @@ import type { Theme, ToolMode, TransformMode } from "@/types";
 
 interface UiState {
   selectedPartIds: Set<string>;
+  hoveredPartId: string | null;
+  commandPaletteOpen: boolean;
   toolMode: ToolMode;
   transformMode: TransformMode;
   featureTreeOpen: boolean;
@@ -17,6 +19,9 @@ interface UiState {
   toggleSelect: (partId: string) => void;
   selectMultiple: (partIds: string[]) => void;
   clearSelection: () => void;
+  setHoveredPartId: (partId: string | null) => void;
+  toggleCommandPalette: () => void;
+  setCommandPaletteOpen: (open: boolean) => void;
   setToolMode: (mode: ToolMode) => void;
   setTransformMode: (mode: TransformMode) => void;
   toggleFeatureTree: () => void;
@@ -61,6 +66,8 @@ export const useUiStore = create<UiState>((set) => {
 
   return {
     selectedPartIds: new Set(),
+    hoveredPartId: null,
+    commandPaletteOpen: false,
     toolMode: "select",
     transformMode: "translate",
     featureTreeOpen: loadFeatureTree(),
@@ -89,6 +96,13 @@ export const useUiStore = create<UiState>((set) => {
       set({ selectedPartIds: new Set(partIds) }),
 
     clearSelection: () => set({ selectedPartIds: new Set() }),
+
+    setHoveredPartId: (partId) => set({ hoveredPartId: partId }),
+
+    toggleCommandPalette: () =>
+      set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
+
+    setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
 
     setToolMode: (mode) => set({ toolMode: mode }),
 

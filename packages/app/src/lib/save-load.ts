@@ -6,6 +6,7 @@ export interface VcadFile {
   version: string;
   document: Document;
   parts: PartInfo[];
+  consumedParts?: Record<string, PartInfo>;
   nextNodeId: number;
   nextPartNum: number;
 }
@@ -13,6 +14,7 @@ export interface VcadFile {
 export function saveDocument(state: {
   document: Document;
   parts: PartInfo[];
+  consumedParts: Record<string, PartInfo>;
   nextNodeId: number;
   nextPartNum: number;
 }) {
@@ -20,6 +22,7 @@ export function saveDocument(state: {
     version: "0.1",
     document: state.document,
     parts: state.parts,
+    consumedParts: state.consumedParts,
     nextNodeId: state.nextNodeId,
     nextPartNum: state.nextPartNum,
   };

@@ -2,10 +2,8 @@ import {
   Cube,
   Cylinder,
   Globe,
-  ArrowsOutCardinal,
-  ArrowClockwise,
-  ArrowsOut,
   ArrowCounterClockwise,
+  ArrowClockwise,
   SidebarSimple,
   Sun,
   Moon,
@@ -18,7 +16,10 @@ import {
   Export,
   GridFour,
   CubeTransparent,
+  DotsThree,
+  Command,
 } from "@phosphor-icons/react";
+import * as Popover from "@radix-ui/react-popover";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
@@ -26,7 +27,7 @@ import { useDocumentStore } from "@/stores/document-store";
 import { useUiStore } from "@/stores/ui-store";
 import { useEngineStore } from "@/stores/engine-store";
 import { useTheme } from "@/hooks/useTheme";
-import type { PrimitiveKind, TransformMode, BooleanType } from "@/types";
+import type { PrimitiveKind, BooleanType } from "@/types";
 import { exportStl } from "@/lib/export-stl";
 import { exportGltf } from "@/lib/export-gltf";
 import { downloadBlob } from "@/lib/download";
@@ -38,44 +39,18 @@ const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] =
     { kind: "sphere", icon: Globe, label: "Sphere" },
   ];
 
-const TRANSFORM_MODES: {
-  mode: TransformMode;
-  icon: typeof ArrowsOutCardinal;
-  label: string;
-  shortcut: string;
-}[] = [
-  {
-    mode: "translate",
-    icon: ArrowsOutCardinal,
-    label: "Move",
-    shortcut: "W",
-  },
-  { mode: "rotate", icon: ArrowClockwise, label: "Rotate", shortcut: "E" },
-  { mode: "scale", icon: ArrowsOut, label: "Scale", shortcut: "R" },
-];
-
 const BOOLEANS: {
   type: BooleanType;
   icon: typeof Unite;
   label: string;
   shortcut: string;
 }[] = [
-  { type: "union", icon: Unite, label: "Union", shortcut: "Ctrl+Shift+U" },
-  {
-    type: "difference",
-    icon: Subtract,
-    label: "Difference",
-    shortcut: "Ctrl+Shift+D",
-  },
-  {
-    type: "intersection",
-    icon: Intersect,
-    label: "Intersection",
-    shortcut: "Ctrl+Shift+I",
-  },
+  { type: "union", icon: Unite, label: "Union", shortcut: "⌘⇧U" },
+  { type: "difference", icon: Subtract, label: "Difference", shortcut: "⌘⇧D" },
+  { type: "intersection", icon: Intersect, label: "Intersection", shortcut: "⌘⇧I" },
 ];
 
-export function Toolbar({
+function OverflowMenu({
   onAboutOpen,
   onSave,
   onOpen,
@@ -84,43 +59,21 @@ export function Toolbar({
   onSave: () => void;
   onOpen: () => void;
 }) {
-  const addPrimitive = useDocumentStore((s) => s.addPrimitive);
-  const applyBoolean = useDocumentStore((s) => s.applyBoolean);
   const undo = useDocumentStore((s) => s.undo);
   const redo = useDocumentStore((s) => s.redo);
   const undoStack = useDocumentStore((s) => s.undoStack);
   const redoStack = useDocumentStore((s) => s.redoStack);
   const parts = useDocumentStore((s) => s.parts);
 
-  const select = useUiStore((s) => s.select);
-  const selectedPartIds = useUiStore((s) => s.selectedPartIds);
-  const transformMode = useUiStore((s) => s.transformMode);
-  const setTransformMode = useUiStore((s) => s.setTransformMode);
-  const toggleFeatureTree = useUiStore((s) => s.toggleFeatureTree);
   const showWireframe = useUiStore((s) => s.showWireframe);
   const toggleWireframe = useUiStore((s) => s.toggleWireframe);
   const gridSnap = useUiStore((s) => s.gridSnap);
   const toggleGridSnap = useUiStore((s) => s.toggleGridSnap);
 
   const scene = useEngineStore((s) => s.scene);
-
   const { isDark, toggleTheme } = useTheme();
 
-  const hasTwoSelected = selectedPartIds.size === 2;
   const hasParts = parts.length > 0;
-
-  function handleAddPrimitive(kind: PrimitiveKind) {
-    const partId = addPrimitive(kind);
-    select(partId);
-    setTransformMode("translate");
-  }
-
-  function handleBoolean(type: BooleanType) {
-    if (!hasTwoSelected) return;
-    const ids = Array.from(selectedPartIds);
-    const newId = applyBoolean(type, ids[0]!, ids[1]!);
-    if (newId) select(newId);
-  }
 
   function handleExportStl() {
     if (!scene) return;
@@ -135,10 +88,163 @@ export function Toolbar({
   }
 
   return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <Button variant="ghost" size="icon-sm">
+          <DotsThree size={16} weight="bold" />
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          className="z-50 w-56 rounded-xl border border-border bg-card/95 p-2 shadow-2xl backdrop-blur-xl"
+          sideOffset={8}
+          align="end"
+        >
+          <div className="grid grid-cols-2 gap-1">
+            {/* Edit */}
+            <div className="col-span-2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+              Edit
+            </div>
+            <button
+              onClick={undo}
+              disabled={undoStack.length === 0}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ArrowCounterClockwise size={14} />
+              <span>Undo</span>
+              <span className="ml-auto text-text-muted">⌘Z</span>
+            </button>
+            <button
+              onClick={redo}
+              disabled={redoStack.length === 0}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ArrowClockwise size={14} />
+              <span>Redo</span>
+              <span className="ml-auto text-text-muted">⌘⇧Z</span>
+            </button>
+
+            {/* View */}
+            <div className="col-span-2 mt-2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+              View
+            </div>
+            <button
+              onClick={toggleWireframe}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30"
+            >
+              <CubeTransparent size={14} className={showWireframe ? "text-accent" : ""} />
+              <span>Wireframe</span>
+              <span className="ml-auto text-text-muted">X</span>
+            </button>
+            <button
+              onClick={toggleGridSnap}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30"
+            >
+              <GridFour size={14} className={gridSnap ? "text-accent" : ""} />
+              <span>Grid Snap</span>
+              <span className="ml-auto text-text-muted">G</span>
+            </button>
+
+            {/* File */}
+            <div className="col-span-2 mt-2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+              File
+            </div>
+            <button
+              onClick={onSave}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30"
+            >
+              <FloppyDisk size={14} />
+              <span>Save</span>
+              <span className="ml-auto text-text-muted">⌘S</span>
+            </button>
+            <button
+              onClick={onOpen}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30"
+            >
+              <FolderOpen size={14} />
+              <span>Open</span>
+              <span className="ml-auto text-text-muted">⌘O</span>
+            </button>
+            <button
+              onClick={handleExportStl}
+              disabled={!hasParts}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Export size={14} />
+              <span>Export STL</span>
+            </button>
+            <button
+              onClick={handleExportGlb}
+              disabled={!hasParts}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Export size={14} weight="fill" />
+              <span>Export GLB</span>
+            </button>
+
+            {/* Settings */}
+            <div className="col-span-2 mt-2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+              Settings
+            </div>
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30"
+            >
+              {isDark ? <Sun size={14} /> : <Moon size={14} />}
+              <span>{isDark ? "Light Mode" : "Dark Mode"}</span>
+            </button>
+            <button
+              onClick={onAboutOpen}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-border/30"
+            >
+              <Info size={14} />
+              <span>About</span>
+            </button>
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+export function Toolbar({
+  onAboutOpen,
+  onSave,
+  onOpen,
+}: {
+  onAboutOpen: () => void;
+  onSave: () => void;
+  onOpen: () => void;
+}) {
+  const addPrimitive = useDocumentStore((s) => s.addPrimitive);
+  const applyBoolean = useDocumentStore((s) => s.applyBoolean);
+
+  const select = useUiStore((s) => s.select);
+  const selectedPartIds = useUiStore((s) => s.selectedPartIds);
+  const setTransformMode = useUiStore((s) => s.setTransformMode);
+  const toggleFeatureTree = useUiStore((s) => s.toggleFeatureTree);
+  const toggleCommandPalette = useUiStore((s) => s.toggleCommandPalette);
+
+  const hasTwoSelected = selectedPartIds.size === 2;
+
+  function handleAddPrimitive(kind: PrimitiveKind) {
+    const partId = addPrimitive(kind);
+    select(partId);
+    setTransformMode("translate");
+  }
+
+  function handleBoolean(type: BooleanType) {
+    if (!hasTwoSelected) return;
+    const ids = Array.from(selectedPartIds);
+    const newId = applyBoolean(type, ids[0]!, ids[1]!);
+    if (newId) select(newId);
+  }
+
+  return (
     <div className="fixed left-1/2 top-3 z-30 -translate-x-1/2">
       <div className="flex items-center gap-1 rounded-xl border border-border bg-card/80 px-2 py-1.5 shadow-2xl backdrop-blur-xl">
         {/* Feature tree toggle */}
-        <Tooltip content="Feature tree">
+        <Tooltip content="Toggle sidebar">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -181,125 +287,17 @@ export function Toolbar({
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        {/* Transform modes */}
-        {TRANSFORM_MODES.map(({ mode, icon: Icon, label, shortcut }) => (
-          <Tooltip key={mode} content={`${label} (${shortcut})`}>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setTransformMode(mode)}
-              className={
-                transformMode === mode
-                  ? "bg-accent/20 text-accent"
-                  : undefined
-              }
-            >
-              <Icon size={16} />
-            </Button>
-          </Tooltip>
-        ))}
+        {/* Overflow menu */}
+        <OverflowMenu
+          onAboutOpen={onAboutOpen}
+          onSave={onSave}
+          onOpen={onOpen}
+        />
 
-        <Separator orientation="vertical" className="mx-1 h-5" />
-
-        {/* Wireframe toggle */}
-        <Tooltip content="Wireframe (X)">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggleWireframe}
-            className={showWireframe ? "bg-accent/20 text-accent" : undefined}
-          >
-            <CubeTransparent size={16} />
-          </Button>
-        </Tooltip>
-
-        {/* Grid snap toggle */}
-        <Tooltip content="Grid snap (G)">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggleGridSnap}
-            className={gridSnap ? "bg-accent/20 text-accent" : undefined}
-          >
-            <GridFour size={16} />
-          </Button>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-1 h-5" />
-
-        {/* Undo/Redo */}
-        <Tooltip content="Undo (Ctrl+Z)">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={undo}
-            disabled={undoStack.length === 0}
-          >
-            <ArrowCounterClockwise size={16} />
-          </Button>
-        </Tooltip>
-        <Tooltip content="Redo (Ctrl+Shift+Z)">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={redo}
-            disabled={redoStack.length === 0}
-          >
-            <ArrowClockwise size={16} />
-          </Button>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-1 h-5" />
-
-        {/* Save/Open */}
-        <Tooltip content="Save (Ctrl+S)">
-          <Button variant="ghost" size="icon-sm" onClick={onSave}>
-            <FloppyDisk size={16} />
-          </Button>
-        </Tooltip>
-        <Tooltip content="Open (Ctrl+O)">
-          <Button variant="ghost" size="icon-sm" onClick={onOpen}>
-            <FolderOpen size={16} />
-          </Button>
-        </Tooltip>
-
-        {/* Export */}
-        <Tooltip content="Export STL">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={!hasParts}
-            onClick={handleExportStl}
-          >
-            <Export size={16} />
-          </Button>
-        </Tooltip>
-        <Tooltip content="Export GLB">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={!hasParts}
-            onClick={handleExportGlb}
-          >
-            <Export size={16} weight="fill" />
-          </Button>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-1 h-5" />
-
-        {/* Theme toggle */}
-        <Tooltip content={isDark ? "Light mode" : "Dark mode"}>
-          <Button variant="ghost" size="icon-sm" onClick={toggleTheme}>
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </Button>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-1 h-5" />
-
-        {/* About */}
-        <Tooltip content="About vcad">
-          <Button variant="ghost" size="icon-sm" onClick={onAboutOpen}>
-            <Info size={16} />
+        {/* Command palette trigger */}
+        <Tooltip content="Command palette (⌘K)">
+          <Button variant="ghost" size="icon-sm" onClick={toggleCommandPalette}>
+            <Command size={16} />
           </Button>
         </Tooltip>
       </div>

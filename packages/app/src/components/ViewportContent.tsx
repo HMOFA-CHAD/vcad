@@ -1,13 +1,16 @@
+import { useRef } from "react";
 import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { GridPlane } from "./GridPlane";
 import { SceneMesh } from "./SceneMesh";
 import { TransformGizmo } from "./TransformGizmo";
+import { SelectionOverlay } from "./SelectionOverlay";
+import { DimensionOverlay } from "./DimensionOverlay";
+import { InlineProperties } from "./InlineProperties";
 import { useEngineStore } from "@/stores/engine-store";
 import { useDocumentStore } from "@/stores/document-store";
 import { useUiStore } from "@/stores/ui-store";
 import { useCameraControls } from "@/hooks/useCameraControls";
-import { useRef } from "react";
-import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 export function ViewportContent() {
   useCameraControls();
@@ -39,6 +42,15 @@ export function ViewportContent() {
           />
         );
       })}
+
+      {/* Selection bounding box overlay */}
+      <SelectionOverlay />
+
+      {/* Dimension annotations for primitives */}
+      <DimensionOverlay />
+
+      {/* Inline properties card near selection */}
+      <InlineProperties />
 
       {/* Transform gizmo for selected part */}
       <TransformGizmo orbitControls={orbitRef} />

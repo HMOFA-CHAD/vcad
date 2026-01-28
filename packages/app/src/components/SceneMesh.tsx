@@ -1,13 +1,12 @@
 import { useEffect, useRef, useMemo } from "react";
 import * as THREE from "three";
-import { Edges } from "@react-three/drei";
+import { Edges, Html } from "@react-three/drei";
 import type { TriangleMesh } from "@vcad/engine";
 import type { PartInfo } from "@/types";
 import { useUiStore } from "@/stores/ui-store";
 import { useDocumentStore } from "@/stores/document-store";
 
-const SELECTED_COLOR = new THREE.Color(0x60a5fa);
-const SELECTED_EMISSIVE = new THREE.Color(0x2563eb);
+const HOVER_EMISSIVE = new THREE.Color(0xfbbf24); // warm amber
 
 interface SceneMeshProps {
   partInfo: PartInfo;
@@ -17,10 +16,15 @@ interface SceneMeshProps {
 
 export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
   const geoRef = useRef<THREE.BufferGeometry>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
   const select = useUiStore((s) => s.select);
   const toggleSelect = useUiStore((s) => s.toggleSelect);
   const showWireframe = useUiStore((s) => s.showWireframe);
+  const hoveredPartId = useUiStore((s) => s.hoveredPartId);
+  const setHoveredPartId = useUiStore((s) => s.setHoveredPartId);
   const document = useDocumentStore((s) => s.document);
+
+  const isHovered = hoveredPartId === partInfo.id;
 
   // Resolve material color from document
   const materialColor = useMemo(() => {
@@ -34,6 +38,15 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
     }
     return new THREE.Color(0.7, 0.7, 0.75);
   }, [document, partInfo.translateNodeId]);
+
+  // Compute emissive state: selected > hovered > none
+  const emissiveColor = useMemo(() => {
+    if (selected) return materialColor.clone().multiplyScalar(0.3);
+    if (isHovered) return HOVER_EMISSIVE;
+    return undefined;
+  }, [selected, isHovered, materialColor]);
+
+  const emissiveIntensity = selected ? 0.2 : isHovered ? 0.08 : 0;
 
   useEffect(() => {
     const geo = geoRef.current;
@@ -51,8 +64,25 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
     };
   }, [mesh]);
 
+  // Compute center for tooltip positioning
+  const center = useMemo(() => {
+    if (!mesh.positions.length) return new THREE.Vector3();
+    const box = new THREE.Box3();
+    const pos = new THREE.Vector3();
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      pos.set(mesh.positions[i]!, mesh.positions[i + 1]!, mesh.positions[i + 2]!);
+      box.expandByPoint(pos);
+    }
+    const c = new THREE.Vector3();
+    box.getCenter(c);
+    // Offset above the center
+    c.y = box.max.y + 3;
+    return c;
+  }, [mesh.positions]);
+
   return (
     <mesh
+      ref={meshRef}
       onClick={(e) => {
         e.stopPropagation();
         if (e.nativeEvent.shiftKey) {
@@ -61,17 +91,31 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
           select(partInfo.id);
         }
       }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHoveredPartId(partInfo.id);
+      }}
+      onPointerOut={() => {
+        setHoveredPartId(null);
+      }}
     >
       <bufferGeometry ref={geoRef} />
       <meshStandardMaterial
-        color={selected ? SELECTED_COLOR : materialColor}
-        emissive={selected ? SELECTED_EMISSIVE : undefined}
-        emissiveIntensity={selected ? 0.15 : 0}
+        color={materialColor}
+        emissive={emissiveColor}
+        emissiveIntensity={emissiveIntensity}
         metalness={0.1}
         roughness={0.6}
         flatShading={false}
       />
       {showWireframe && <Edges threshold={15} color="#666" />}
+      {isHovered && !selected && (
+        <Html position={center} center style={{ pointerEvents: "none" }}>
+          <div className="rounded bg-card/90 px-2 py-1 text-xs text-text shadow-lg backdrop-blur-sm whitespace-nowrap">
+            {partInfo.name}
+          </div>
+        </Html>
+      )}
     </mesh>
   );
 }

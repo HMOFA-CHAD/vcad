@@ -6,6 +6,7 @@ import { FeatureTree } from "@/components/FeatureTree";
 import { PropertyPanel } from "@/components/PropertyPanel";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { AboutModal } from "@/components/AboutModal";
+import { CommandPalette } from "@/components/CommandPalette";
 import { useEngine } from "@/hooks/useEngine";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useEngineStore } from "@/stores/engine-store";
@@ -48,6 +49,8 @@ export function App() {
   const loading = useEngineStore((s) => s.loading);
   const error = useEngineStore((s) => s.error);
   const featureTreeOpen = useUiStore((s) => s.featureTreeOpen);
+  const commandPaletteOpen = useUiStore((s) => s.commandPaletteOpen);
+  const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const hasSelection = useUiStore((s) => s.selectedPartIds.size > 0);
   const hasParts = useDocumentStore((s) => s.parts.length > 0);
 
@@ -111,6 +114,11 @@ export function App() {
       {hasSelection && <PropertyPanel />}
       {!hasParts && <WelcomeScreen />}
       <AboutModal open={aboutOpen} onOpenChange={setAboutOpen} />
+      <CommandPalette
+        open={commandPaletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+        onAboutOpen={() => setAboutOpen(true)}
+      />
       <input
         ref={fileInputRef}
         type="file"

@@ -22,6 +22,7 @@ export function useKeyboardShortcuts() {
         toggleWireframe,
         toggleGridSnap,
         copyToClipboard,
+        toggleCommandPalette,
       } = useUiStore.getState();
       const {
         undo,
@@ -32,6 +33,13 @@ export function useKeyboardShortcuts() {
       } = useDocumentStore.getState();
 
       const mod = e.ctrlKey || e.metaKey;
+
+      // Command palette: Cmd+K
+      if (mod && e.key === "k") {
+        e.preventDefault();
+        toggleCommandPalette();
+        return;
+      }
 
       // Undo: Ctrl/Cmd+Z
       if (mod && !e.shiftKey && e.key === "z") {

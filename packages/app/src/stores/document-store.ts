@@ -15,6 +15,7 @@ const MAX_UNDO = 50;
 interface Snapshot {
   document: string; // JSON-serialized Document
   parts: PartInfo[];
+  consumedParts: Record<string, PartInfo>;
   nextNodeId: number;
   nextPartNum: number;
 }
@@ -22,6 +23,7 @@ interface Snapshot {
 export interface VcadFile {
   document: Document;
   parts: PartInfo[];
+  consumedParts?: Record<string, PartInfo>;
   nextNodeId: number;
   nextPartNum: number;
 }
@@ -29,6 +31,7 @@ export interface VcadFile {
 interface DocumentState {
   document: Document;
   parts: PartInfo[];
+  consumedParts: Record<string, PartInfo>; // Parts consumed by booleans, keyed by id
   nextNodeId: number;
   nextPartNum: number;
 
@@ -61,6 +64,7 @@ function snapshot(state: DocumentState): Snapshot {
   return {
     document: JSON.stringify(state.document),
     parts: state.parts.map((p) => ({ ...p })),
+    consumedParts: { ...state.consumedParts },
     nextNodeId: state.nextNodeId,
     nextPartNum: state.nextPartNum,
   };
@@ -88,6 +92,7 @@ const KIND_LABELS: Record<PrimitiveKind, string> = {
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   document: createDocument(),
   parts: [],
+  consumedParts: {},
   nextNodeId: 1,
   nextPartNum: 1,
   undoStack: [],
@@ -334,6 +339,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     };
 
     // Remove source parts from parts list, add boolean result
+    // But preserve them in consumedParts for tree display
+    const newConsumedParts = { ...state.consumedParts };
+    newConsumedParts[partIdA] = partA;
+    newConsumedParts[partIdB] = partB;
+
     const newParts = state.parts.filter(
       (p) => p.id !== partIdA && p.id !== partIdB,
     );
@@ -342,6 +352,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({
       document: newDoc,
       parts: newParts,
+      consumedParts: newConsumedParts,
       nextNodeId: nid,
       nextPartNum: partNum + 1,
       ...undoState,
@@ -467,6 +478,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({
       document: file.document,
       parts: file.parts,
+      consumedParts: file.consumedParts ?? {},
       nextNodeId: file.nextNodeId,
       nextPartNum: file.nextPartNum,
       undoStack: [],
@@ -517,6 +529,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({
       document: JSON.parse(prevSnap.document) as Document,
       parts: prevSnap.parts,
+      consumedParts: prevSnap.consumedParts,
       nextNodeId: prevSnap.nextNodeId,
       nextPartNum: prevSnap.nextPartNum,
       undoStack: state.undoStack.slice(0, -1),
@@ -534,6 +547,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({
       document: JSON.parse(nextSnap.document) as Document,
       parts: nextSnap.parts,
+      consumedParts: nextSnap.consumedParts,
       nextNodeId: nextSnap.nextNodeId,
       nextPartNum: nextSnap.nextPartNum,
       undoStack: [...state.undoStack, currentSnap],
