@@ -1,0 +1,17 @@
+[package]
+name = "vcad-kernel-constraints"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "2D sketch constraint solver for vcad kernel using Levenberg-Marquardt optimization"
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-sketch = { workspace = true }
+nalgebra = { workspace = true }
+slotmap = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+approx = "0.5"

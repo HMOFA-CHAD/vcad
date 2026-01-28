@@ -16,6 +16,7 @@
 //! ```
 
 pub use vcad_kernel_booleans;
+pub use vcad_kernel_constraints;
 pub use vcad_kernel_fillet;
 pub use vcad_kernel_geom;
 pub use vcad_kernel_math;

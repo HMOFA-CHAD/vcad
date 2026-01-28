@@ -853,6 +853,7 @@ name = "vcad-kernel"
 version = "0.1.0"
 dependencies = [
  "vcad-kernel-booleans",
+ "vcad-kernel-constraints",
  "vcad-kernel-fillet",
  "vcad-kernel-geom",
  "vcad-kernel-math",
@@ -871,6 +872,18 @@ dependencies = [
  "vcad-kernel-primitives",
  "vcad-kernel-tessellate",
  "vcad-kernel-topo",
+]
+
+[[package]]
+name = "vcad-kernel-constraints"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "nalgebra",
+ "slotmap",
+ "thiserror 2.0.18",
+ "vcad-kernel-math",
+ "vcad-kernel-sketch",
 ]
 
 [[package]]

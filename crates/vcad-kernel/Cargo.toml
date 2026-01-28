@@ -15,3 +15,4 @@ vcad-kernel-tessellate = { path = "../vcad-kernel-tessellate" }
 vcad-kernel-booleans = { path = "../vcad-kernel-booleans" }
 vcad-kernel-fillet = { path = "../vcad-kernel-fillet" }
 vcad-kernel-sketch = { path = "../vcad-kernel-sketch" }
+vcad-kernel-constraints = { path = "../vcad-kernel-constraints" }
