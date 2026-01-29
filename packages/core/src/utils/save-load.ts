@@ -1,0 +1,44 @@
+import type { Document } from "@vcad/ir";
+import type { PartInfo } from "../types.js";
+
+export interface VcadFile {
+  version: string;
+  document: Document;
+  parts: PartInfo[];
+  consumedParts?: Record<string, PartInfo>;
+  nextNodeId: number;
+  nextPartNum: number;
+}
+
+export function serializeDocument(state: {
+  document: Document;
+  parts: PartInfo[];
+  consumedParts: Record<string, PartInfo>;
+  nextNodeId: number;
+  nextPartNum: number;
+}): string {
+  const file: VcadFile = {
+    version: "0.1",
+    document: state.document,
+    parts: state.parts,
+    consumedParts: state.consumedParts,
+    nextNodeId: state.nextNodeId,
+    nextPartNum: state.nextPartNum,
+  };
+
+  return JSON.stringify(file, null, 2);
+}
+
+export function parseVcadFile(json: string): VcadFile {
+  const data = JSON.parse(json) as VcadFile;
+
+  // Basic validation
+  if (!data.document || !Array.isArray(data.parts)) {
+    throw new Error("Invalid .vcad file: missing document or parts");
+  }
+  if (typeof data.nextNodeId !== "number" || typeof data.nextPartNum !== "number") {
+    throw new Error("Invalid .vcad file: missing nextNodeId or nextPartNum");
+  }
+
+  return data;
+}
