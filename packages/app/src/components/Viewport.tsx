@@ -5,8 +5,9 @@ import { ViewportContent } from "./ViewportContent";
 import { useUiStore, useDocumentStore, useEngineStore } from "@vcad/core";
 import { useTheme } from "@/hooks/useTheme";
 
-const BG_DARK = "#0d0e12";
-const BG_LIGHT = "#f5f5f7";
+// Monokai Soda from tmTheme
+const BG_DARK = "#222222";
+const BG_LIGHT = "#f6f6ef";
 const MIN_DRAG_THRESHOLD = 5;
 
 function BoxSelectHandler({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
@@ -164,7 +165,7 @@ export function Viewport() {
   const { isDark } = useTheme();
 
   return (
-    <div ref={containerRef} className="fixed inset-0">
+    <div ref={containerRef} className="absolute inset-0">
       <Canvas
         camera={{ position: [50, 50, 50], fov: 50, near: 0.1, far: 10000 }}
         onPointerMissed={() => clearSelection()}

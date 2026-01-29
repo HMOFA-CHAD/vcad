@@ -49,29 +49,29 @@ export function GridPlane() {
         args={[1000, 1000]}
         cellSize={10}
         cellThickness={0.5}
-        cellColor={isDark ? "#1e293b" : "#cbd5e1"}
+        cellColor={isDark ? "#2a2a2a" : "#e8e8e0"}
         sectionSize={100}
         sectionThickness={1}
-        sectionColor={isDark ? "#334155" : "#94a3b8"}
+        sectionColor={isDark ? "#3a3a3a" : "#c4c5b5"}
         fadeDistance={500}
         fadeStrength={1.5}
         infiniteGrid
       />
-      {/* X axis - red */}
+      {/* X axis - desaturated warm */}
       <Line
         points={xAxisPoints}
-        color="#ef4444"
+        color={isDark ? "#6e5a52" : "#8a7a72"}
         lineWidth={1.5}
         transparent
-        opacity={0.6}
+        opacity={0.5}
       />
-      {/* Z axis - blue */}
+      {/* Z axis - desaturated cool */}
       <Line
         points={zAxisPoints}
-        color="#3b82f6"
+        color={isDark ? "#525a6e" : "#727a8a"}
         lineWidth={1.5}
         transparent
-        opacity={0.6}
+        opacity={0.5}
       />
     </>
   );
