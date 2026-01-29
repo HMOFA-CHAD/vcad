@@ -12,8 +12,10 @@ import { SelectionOverlay } from "./SelectionOverlay";
 import { DimensionOverlay } from "./DimensionOverlay";
 import { InlineProperties } from "./InlineProperties";
 import { useEngineStore, useDocumentStore, useUiStore } from "@vcad/core";
+import type { PartInfo } from "@vcad/core";
 import { useCameraControls } from "@/hooks/useCameraControls";
 import { useTheme } from "@/hooks/useTheme";
+import type { EvaluatedInstance } from "@vcad/engine";
 
 export function ViewportContent() {
   useCameraControls();
@@ -35,12 +37,15 @@ export function ViewportContent() {
   const distanceGoalRef = useRef<number | null>(null);
   const isAnimatingTargetRef = useRef(false);
 
+  // Camera position goal for face-aligned view
+  const cameraPositionGoalRef = useRef<Vector3 | null>(null);
+
   // Initial camera state for reset
   const INITIAL_POSITION = new Vector3(50, 50, 50);
   const INITIAL_TARGET = new Vector3(0, 0, 0);
   const INITIAL_DISTANCE = INITIAL_POSITION.distanceTo(INITIAL_TARGET);
 
-  // Calculate center and size of selected parts
+  // Calculate center and size of selected parts/instances
   const selectionInfo = useMemo(() => {
     if (selectedPartIds.size === 0 || !scene) return null;
 
@@ -48,18 +53,39 @@ export function ViewportContent() {
     const tempVec = new Vector3();
     let hasPoints = false;
 
-    parts.forEach((part, index) => {
-      if (!selectedPartIds.has(part.id)) return;
-      const evalPart = scene.parts[index];
-      if (!evalPart) return;
+    // Assembly mode: check instances
+    if (scene.instances && scene.instances.length > 0) {
+      for (const inst of scene.instances) {
+        if (!selectedPartIds.has(inst.instanceId)) continue;
 
-      const positions = evalPart.mesh.positions;
-      for (let i = 0; i < positions.length; i += 3) {
-        tempVec.set(positions[i]!, positions[i + 1]!, positions[i + 2]!);
-        box.expandByPoint(tempVec);
-        hasPoints = true;
+        const positions = inst.mesh.positions;
+        const t = inst.transform;
+        for (let i = 0; i < positions.length; i += 3) {
+          // Apply instance transform to positions for accurate bounding box
+          tempVec.set(
+            positions[i]! * t.scale.x + t.translation.x,
+            positions[i + 1]! * t.scale.y + t.translation.y,
+            positions[i + 2]! * t.scale.z + t.translation.z
+          );
+          box.expandByPoint(tempVec);
+          hasPoints = true;
+        }
       }
-    });
+    } else {
+      // Legacy mode: check parts
+      parts.forEach((part, index) => {
+        if (!selectedPartIds.has(part.id)) return;
+        const evalPart = scene.parts[index];
+        if (!evalPart) return;
+
+        const positions = evalPart.mesh.positions;
+        for (let i = 0; i < positions.length; i += 3) {
+          tempVec.set(positions[i]!, positions[i + 1]!, positions[i + 2]!);
+          box.expandByPoint(tempVec);
+          hasPoints = true;
+        }
+      });
+    }
 
     if (!hasPoints) return null;
     const center = new Vector3();
@@ -87,13 +113,19 @@ export function ViewportContent() {
     const target = orbitRef.current.target;
     const targetGoal = targetGoalRef.current;
     const distanceGoal = distanceGoalRef.current;
+    const cameraPositionGoal = cameraPositionGoalRef.current;
     const lerpFactor = 0.1;
 
     // Animate target position
     target.lerp(targetGoal, lerpFactor);
 
-    // Animate camera distance
-    if (distanceGoal !== null) {
+    // Animate camera position if we have a specific goal (face-aligned view)
+    if (cameraPositionGoal !== null) {
+      camera.position.lerp(cameraPositionGoal, lerpFactor);
+      camera.lookAt(target);
+      orbitRef.current.update();
+    } else if (distanceGoal !== null) {
+      // Animate camera distance only (keep current direction)
       const offset = offsetRef.current.subVectors(camera.position, target);
       const currentDist = offset.length();
       const newDist = currentDist + (distanceGoal - currentDist) * lerpFactor;
@@ -105,11 +137,18 @@ export function ViewportContent() {
     const targetDone = target.distanceTo(targetGoal) < 0.01;
     const distanceDone = distanceGoal === null ||
       Math.abs(offsetRef.current.subVectors(camera.position, target).length() - distanceGoal) < 0.1;
+    const positionDone = cameraPositionGoal === null ||
+      camera.position.distanceTo(cameraPositionGoal) < 0.1;
 
-    if (targetDone && distanceDone) {
+    if (targetDone && distanceDone && positionDone) {
       target.copy(targetGoal);
+      if (cameraPositionGoal) {
+        camera.position.copy(cameraPositionGoal);
+        camera.lookAt(target);
+      }
       isAnimatingTargetRef.current = false;
       distanceGoalRef.current = null;
+      cameraPositionGoalRef.current = null;
     }
   });
 
@@ -242,11 +281,37 @@ export function ViewportContent() {
       // Animate to initial position
       targetGoalRef.current.copy(INITIAL_TARGET);
       distanceGoalRef.current = INITIAL_DISTANCE;
+      cameraPositionGoalRef.current = null; // Clear any position goal
       isAnimatingTargetRef.current = true;
     };
 
     domElement.addEventListener("dblclick", handleDoubleClick);
     return () => domElement.removeEventListener("dblclick", handleDoubleClick);
+  }, []);
+
+  // Face selection: swing camera to view face flat
+  useEffect(() => {
+    const handleFaceSelected = (e: CustomEvent<{ normal: { x: number; y: number; z: number }; centroid: { x: number; y: number; z: number } }>) => {
+      const { normal, centroid } = e.detail;
+
+      // Set target to face centroid
+      targetGoalRef.current.set(centroid.x, centroid.y, centroid.z);
+
+      // Camera should be positioned along the positive normal (in front of the face, looking at it)
+      // Distance of 60mm for a good view
+      const viewDistance = 60;
+      const cameraPos = new Vector3(
+        centroid.x + normal.x * viewDistance,
+        centroid.y + normal.y * viewDistance,
+        centroid.z + normal.z * viewDistance
+      );
+      cameraPositionGoalRef.current = cameraPos;
+      distanceGoalRef.current = viewDistance;
+      isAnimatingTargetRef.current = true;
+    };
+
+    window.addEventListener("vcad:face-selected", handleFaceSelected as EventListener);
+    return () => window.removeEventListener("vcad:face-selected", handleFaceSelected as EventListener);
   }, []);
 
   return (
@@ -287,8 +352,32 @@ export function ViewportContent() {
       {/* Grid */}
       <GridPlane />
 
-      {/* Scene meshes */}
-      {scene?.parts.map((evalPart, idx) => {
+      {/* Scene meshes - Assembly mode (instances) */}
+      {scene?.instances?.map((inst: EvaluatedInstance) => {
+        // Create a minimal PartInfo-like object for instance rendering
+        const instancePartInfo: PartInfo = {
+          id: inst.instanceId,
+          name: inst.name ?? inst.partDefId,
+          kind: "cube", // Placeholder kind for instances
+          primitiveNodeId: 0,
+          scaleNodeId: 0,
+          rotateNodeId: 0,
+          translateNodeId: 0,
+        };
+        return (
+          <SceneMesh
+            key={inst.instanceId}
+            partInfo={instancePartInfo}
+            mesh={inst.mesh}
+            materialKey={inst.material}
+            selected={selectedPartIds.has(inst.instanceId)}
+            transform={inst.transform}
+          />
+        );
+      })}
+
+      {/* Scene meshes - Legacy mode (parts) */}
+      {(!scene?.instances || scene.instances.length === 0) && scene?.parts.map((evalPart, idx) => {
         const partInfo = parts[idx];
         if (!partInfo) return null;
         return (
@@ -296,6 +385,7 @@ export function ViewportContent() {
             key={partInfo.id}
             partInfo={partInfo}
             mesh={evalPart.mesh}
+            materialKey={evalPart.material}
             selected={selectedPartIds.has(partInfo.id)}
           />
         );

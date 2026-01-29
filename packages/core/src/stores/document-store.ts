@@ -7,8 +7,9 @@ import type {
   Vec3,
   SketchSegment2D,
   PathCurve,
+  Transform3D,
 } from "@vcad/ir";
-import { createDocument } from "@vcad/ir";
+import { createDocument, identityTransform } from "@vcad/ir";
 import type {
   PartInfo,
   PrimitiveKind,
@@ -94,6 +95,10 @@ export interface DocumentState {
   undo: () => void;
   redo: () => void;
   markSaved: () => void;
+  // Assembly operations
+  setInstanceTransform: (instanceId: string, transform: Transform3D, skipUndo?: boolean) => void;
+  setInstanceMaterial: (instanceId: string, materialKey: string) => void;
+  setJointState: (jointId: string, state: number, skipUndo?: boolean) => void;
 }
 
 function makeNode(id: NodeId, name: string | null, op: CsgOp): Node {
@@ -1071,5 +1076,51 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   markSaved: () => {
     set({ isDirty: false });
+  },
+
+  // Assembly operations
+  setInstanceTransform: (instanceId, transform, skipUndo) => {
+    const state = get();
+    if (!state.document.instances) return;
+
+    const idx = state.document.instances.findIndex((i) => i.id === instanceId);
+    if (idx === -1) return;
+
+    const undoState = skipUndo ? {} : pushUndo(state, "Transform Instance");
+    const newDoc = structuredClone(state.document);
+    const instance = newDoc.instances![idx]!;
+    newDoc.instances![idx] = { ...instance, transform };
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  setInstanceMaterial: (instanceId, materialKey) => {
+    const state = get();
+    if (!state.document.instances) return;
+
+    const idx = state.document.instances.findIndex((i) => i.id === instanceId);
+    if (idx === -1) return;
+
+    const undoState = pushUndo(state, "Set Instance Material");
+    const newDoc = structuredClone(state.document);
+    const instance = newDoc.instances![idx]!;
+    newDoc.instances![idx] = { ...instance, material: materialKey };
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  setJointState: (jointId, newState, skipUndo) => {
+    const state = get();
+    if (!state.document.joints) return;
+
+    const idx = state.document.joints.findIndex((j) => j.id === jointId);
+    if (idx === -1) return;
+
+    const undoState = skipUndo ? {} : pushUndo(state, "Adjust Joint");
+    const newDoc = structuredClone(state.document);
+    const joint = newDoc.joints![idx]!;
+    newDoc.joints![idx] = { ...joint, state: newState };
+
+    set({ document: newDoc, isDirty: true, ...undoState });
   },
 }));

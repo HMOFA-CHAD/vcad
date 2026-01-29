@@ -4,14 +4,19 @@ import { Edges, Html } from "@react-three/drei";
 import type { TriangleMesh, PartInfo, FaceInfo } from "@vcad/core";
 import { useUiStore, useDocumentStore, useSketchStore } from "@vcad/core";
 import type { ThreeEvent } from "@react-three/fiber";
+import type { Transform3D } from "@vcad/ir";
 
 const HOVER_EMISSIVE = new THREE.Color(0xffb800); // neon amber
 const FACE_SELECT_EMISSIVE = new THREE.Color(0x00d4ff); // cyan for face selection
 
+const DEG2RAD = Math.PI / 180;
+
 interface SceneMeshProps {
   partInfo: PartInfo;
   mesh: TriangleMesh;
+  materialKey: string;
   selected: boolean;
+  transform?: Transform3D;
 }
 
 /** Compute face info from a raycast hit */
@@ -55,7 +60,7 @@ function computeFaceInfo(
   };
 }
 
-export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
+export function SceneMesh({ partInfo, mesh, materialKey, selected, transform }: SceneMeshProps) {
   const geoRef = useRef<THREE.BufferGeometry>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const select = useUiStore((s) => s.select);
@@ -74,18 +79,14 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
   const isHovered = hoveredPartId === partInfo.id;
   const isHoveredFace = faceSelectionMode && hoveredFace?.partId === partInfo.id;
 
-  // Resolve material color from document
+  // Resolve material color from document using the materialKey passed from evaluation
   const materialColor = useMemo(() => {
-    const rootEntry = document.roots.find(
-      (r) => r.root === partInfo.translateNodeId,
-    );
-    const matKey = rootEntry?.material ?? "default";
-    const mat = document.materials[matKey];
+    const mat = document.materials[materialKey];
     if (mat) {
       return new THREE.Color(mat.color[0], mat.color[1], mat.color[2]);
     }
     return new THREE.Color(0.7, 0.7, 0.75);
-  }, [document, partInfo.translateNodeId]);
+  }, [document, materialKey]);
 
   // Compute emissive state: face selection mode > selected > hovered > none
   const emissiveColor = useMemo(() => {
@@ -118,6 +119,33 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
       geo.dispose();
     };
   }, [mesh]);
+
+  // Apply Transform3D to mesh (for assembly instances)
+  useEffect(() => {
+    const m = meshRef.current;
+    if (!m) return;
+
+    if (transform) {
+      m.position.set(
+        transform.translation.x,
+        transform.translation.y,
+        transform.translation.z
+      );
+      const euler = new THREE.Euler(
+        transform.rotation.x * DEG2RAD,
+        transform.rotation.y * DEG2RAD,
+        transform.rotation.z * DEG2RAD,
+        "XYZ"
+      );
+      m.quaternion.setFromEuler(euler);
+      m.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
+    } else {
+      // Reset to identity if no transform
+      m.position.set(0, 0, 0);
+      m.quaternion.identity();
+      m.scale.set(1, 1, 1);
+    }
+  }, [transform]);
 
   // Compute center for tooltip positioning
   const center = useMemo(() => {
