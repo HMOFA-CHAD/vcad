@@ -1,6 +1,6 @@
-import { useRef, useEffect } from "react";
-import { MOUSE, Spherical, Vector3 } from "three";
-import { useThree } from "@react-three/fiber";
+import { useRef, useEffect, useMemo } from "react";
+import { MOUSE, Spherical, Vector3, Box3 } from "three";
+import { useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, GizmoHelper, GizmoViewport, Environment, ContactShadows } from "@react-three/drei";
 import { EffectComposer, N8AO, Vignette } from "@react-three/postprocessing";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -29,6 +29,62 @@ export function ViewportContent() {
   const offsetRef = useRef(new Vector3());
   const velocityRef = useRef({ theta: 0, phi: 0 });
   const animatingRef = useRef(false);
+
+  // Target animation for orbit focus
+  const targetGoalRef = useRef(new Vector3());
+  const isAnimatingTargetRef = useRef(false);
+
+  // Calculate center of selected parts
+  const selectionCenter = useMemo(() => {
+    if (selectedPartIds.size === 0 || !scene) return null;
+
+    const box = new Box3();
+    const tempVec = new Vector3();
+    let hasPoints = false;
+
+    parts.forEach((part, index) => {
+      if (!selectedPartIds.has(part.id)) return;
+      const evalPart = scene.parts[index];
+      if (!evalPart) return;
+
+      const positions = evalPart.mesh.positions;
+      for (let i = 0; i < positions.length; i += 3) {
+        tempVec.set(positions[i]!, positions[i + 1]!, positions[i + 2]!);
+        box.expandByPoint(tempVec);
+        hasPoints = true;
+      }
+    });
+
+    if (!hasPoints) return null;
+    const center = new Vector3();
+    box.getCenter(center);
+    return center;
+  }, [selectedPartIds, scene, parts]);
+
+  // Animate orbit target to selection center
+  useEffect(() => {
+    if (selectionCenter) {
+      targetGoalRef.current.copy(selectionCenter);
+      isAnimatingTargetRef.current = true;
+    }
+  }, [selectionCenter]);
+
+  // Smooth target animation
+  useFrame(() => {
+    if (!isAnimatingTargetRef.current || !orbitRef.current) return;
+
+    const target = orbitRef.current.target;
+    const goal = targetGoalRef.current;
+    const lerpFactor = 0.1;
+
+    target.lerp(goal, lerpFactor);
+
+    // Stop animating when close enough
+    if (target.distanceTo(goal) < 0.01) {
+      target.copy(goal);
+      isAnimatingTargetRef.current = false;
+    }
+  });
 
   // Wheel-to-orbit: two-finger trackpad drag → orbit with momentum
   useEffect(() => {
