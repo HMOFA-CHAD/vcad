@@ -76,7 +76,7 @@ export function AboutModal({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
         <Dialog.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2",
@@ -96,7 +96,7 @@ export function AboutModal({
           </div>
 
           <p className="mb-5 text-xs text-text-muted leading-relaxed">
-            parametric cad for everyone. csg primitives, boolean operators, multi-format export.
+            free parametric cad for everyone. csg primitives, boolean operators, multi-format export.
             built on <a href="https://github.com/ecto/vcad/tree/main/crates/vcad-kernel" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">vcad-kernel</a>. mit licensed.
           </p>
 

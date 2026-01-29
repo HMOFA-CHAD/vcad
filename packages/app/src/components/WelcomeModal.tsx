@@ -76,7 +76,7 @@ export function WelcomeModal({ open, onOpenChange }: WelcomeModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
         <Dialog.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2",
@@ -109,7 +109,7 @@ export function WelcomeModal({ open, onOpenChange }: WelcomeModalProps) {
             <h1 className="text-4xl font-bold tracking-tighter text-text mb-1">
               vcad<span className="text-accent">.</span>
             </h1>
-            <p className="text-sm text-text-muted mb-8">parametric cad for everyone</p>
+            <p className="text-sm text-text-muted mb-8">free parametric cad for everyone</p>
 
             {/* Action buttons */}
             <div className="flex gap-3 mb-8">

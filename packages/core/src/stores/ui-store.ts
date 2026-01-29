@@ -47,7 +47,7 @@ export const useUiStore = create<UiState>((set) => ({
   toolMode: "select",
   transformMode: "translate",
   featureTreeOpen: true,
-  theme: "dark",
+  theme: "system",
   isDraggingGizmo: false,
   showWireframe: false,
   gridSnap: true,
@@ -94,7 +94,9 @@ export const useUiStore = create<UiState>((set) => ({
   setTheme: (theme) => set({ theme }),
 
   toggleTheme: () =>
-    set((s) => ({ theme: s.theme === "dark" ? "light" : "dark" })),
+    set((s) => ({
+      theme: s.theme === "system" ? "light" : s.theme === "light" ? "dark" : "system",
+    })),
 
   toggleWireframe: () =>
     set((s) => ({ showWireframe: !s.showWireframe })),

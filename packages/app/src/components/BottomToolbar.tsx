@@ -55,7 +55,7 @@ function ToolbarButton({
           "disabled:opacity-40 disabled:cursor-not-allowed",
           active
             ? "bg-accent text-white"
-            : "text-text-muted hover:bg-white/10 hover:text-text"
+            : "text-text-muted hover:bg-hover hover:text-text"
         )}
         disabled={disabled}
         onClick={onClick}

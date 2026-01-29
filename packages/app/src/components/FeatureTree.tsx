@@ -117,8 +117,8 @@ function TreeNode({
           isSelected
             ? "bg-accent/20 text-accent"
             : isHovered
-              ? "bg-white/10 text-text"
-              : "text-text-muted hover:bg-white/10 hover:text-text",
+              ? "bg-hover text-text"
+              : "text-text-muted hover:bg-hover hover:text-text",
           depth > 0 && "opacity-70",
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
@@ -141,7 +141,7 @@ function TreeNode({
               e.stopPropagation();
               toggleExpanded(part.id);
             }}
-            className="shrink-0 p-0.5 hover:bg-white/10"
+            className="shrink-0 p-0.5 hover:bg-hover"
           >
             {isExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
           </button>
@@ -248,8 +248,8 @@ function InstanceNode({ instance, joint, isGround }: InstanceNodeProps) {
         isSelected
           ? "bg-accent/20 text-accent"
           : isHovered
-            ? "bg-white/10 text-text"
-            : "text-text-muted hover:bg-white/10 hover:text-text",
+            ? "bg-hover text-text"
+            : "text-text-muted hover:bg-hover hover:text-text",
       )}
       style={{ paddingLeft: "24px" }}
       onClick={(e) => {
@@ -310,8 +310,8 @@ function JointNode({ joint, instancesById }: JointNodeProps) {
         isSelected
           ? "bg-accent/20 text-accent"
           : isHovered
-            ? "bg-white/10 text-text"
-            : "text-text-muted hover:bg-white/10 hover:text-text",
+            ? "bg-hover text-text"
+            : "text-text-muted hover:bg-hover hover:text-text",
       )}
       style={{ paddingLeft: "24px" }}
       onClick={(e) => {
@@ -442,7 +442,7 @@ export function FeatureTree() {
         </span>
         <button
           onClick={() => setFeatureTreeOpen(false)}
-          className="flex h-6 w-6 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
+          className="flex h-6 w-6 items-center justify-center text-text-muted hover:text-text hover:bg-hover"
         >
           <X size={14} />
         </button>

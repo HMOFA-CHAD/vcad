@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastContainer } from "@/components/ui/toast";
 import { AppShell } from "@/components/AppShell";
@@ -19,6 +19,25 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { saveDocument } from "@/lib/save-load";
 import { useToastStore } from "@/stores/toast-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
+
+function useThemeSync() {
+  const theme = useUiStore((s) => s.theme);
+  useLayoutEffect(() => {
+    const applyTheme = (prefersDark: boolean) => {
+      const effectiveTheme = theme === "system" ? (prefersDark ? "dark" : "light") : theme;
+      document.documentElement.classList.toggle("light", effectiveTheme === "light");
+    };
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    applyTheme(mq.matches);
+
+    if (theme === "system") {
+      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches);
+      mq.addEventListener("change", handler);
+      return () => mq.removeEventListener("change", handler);
+    }
+  }, [theme]);
+}
 
 function LoadingScreen() {
   return (
@@ -47,6 +66,7 @@ function ErrorScreen({ message }: { message: string }) {
 export function App() {
   useEngine();
   useKeyboardShortcuts();
+  useThemeSync();
 
   const [aboutOpen, setAboutOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(true);

@@ -22,6 +22,7 @@
   --color-border: var(--border);
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
+  --color-hover: var(--hover);
 
   /* Monokai Soda accent colors */
   --color-accent: #F92672;
@@ -38,6 +39,7 @@
   --border: #444444;
   --text: #F8F8F2;
   --text-muted: #75715E;
+  --hover: rgba(255, 255, 255, 0.1);
 }
 
 /* Light mode - warm cream/paper */
@@ -49,6 +51,7 @@
   --border: oklch(0.82 0.03 75);      /* warm tan border */
   --text: oklch(0.22 0.02 55);        /* warm dark brown */
   --text-muted: oklch(0.50 0.03 65);  /* warm medium brown */
+  --hover: rgba(0, 0, 0, 0.06);
 }
 
 body {

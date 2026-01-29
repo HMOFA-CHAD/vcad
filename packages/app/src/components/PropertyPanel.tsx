@@ -43,7 +43,7 @@ function SectionHeader({ children, tooltip }: { children: string; tooltip?: stri
 
 function PartTypeBadge({ kind }: { kind: string }) {
   return (
-    <span className="text-[10px] px-1.5 py-0.5 bg-white/10 border border-border/50 text-text-muted uppercase tracking-wide">
+    <span className="text-[10px] px-1.5 py-0.5 bg-hover border border-border/50 text-text-muted uppercase tracking-wide">
       {kind}
     </span>
   );
@@ -398,7 +398,7 @@ function InstancePropertiesPanel({ instance }: { instance: PartInstance }) {
         </div>
         <button
           onClick={clearSelection}
-          className="flex h-6 w-6 shrink-0 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-text-muted hover:text-text hover:bg-hover"
         >
           <X size={14} />
         </button>
@@ -532,7 +532,7 @@ function JointPropertiesPanel({ joint }: { joint: Joint }) {
         </div>
         <button
           onClick={clearSelection}
-          className="flex h-6 w-6 shrink-0 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-text-muted hover:text-text hover:bg-hover"
         >
           <X size={14} />
         </button>
@@ -627,7 +627,7 @@ export function PropertyPanel() {
           </span>
           <button
             onClick={clearSelection}
-            className="flex h-6 w-6 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
+            className="flex h-6 w-6 items-center justify-center text-text-muted hover:text-text hover:bg-hover"
           >
             <X size={14} />
           </button>
@@ -677,7 +677,7 @@ export function PropertyPanel() {
         </div>
         <button
           onClick={clearSelection}
-          className="flex h-6 w-6 shrink-0 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-text-muted hover:text-text hover:bg-hover"
         >
           <X size={14} />
         </button>

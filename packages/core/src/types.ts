@@ -120,7 +120,7 @@ export function isLoftPart(part: PartInfo): part is LoftPartInfo {
 
 export type ToolMode = "select" | "primitive";
 export type TransformMode = "translate" | "rotate" | "scale";
-export type Theme = "dark" | "light";
+export type Theme = "system" | "dark" | "light";
 
 /** Constraint tool types */
 export type ConstraintTool =
