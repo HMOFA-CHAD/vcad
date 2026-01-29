@@ -58,7 +58,7 @@ function InlineRenameInput({
         if (e.key === "Enter") commit();
         if (e.key === "Escape") onDone();
       }}
-      className="flex-1 rounded border border-accent bg-surface px-1 py-0.5 text-xs text-text outline-none w-0"
+      className="flex-1 border border-accent bg-surface px-1 py-0.5 text-xs text-text outline-none w-0"
       autoFocus
     />
   );
@@ -112,7 +112,7 @@ function TreeNode({
     <>
       <div
         className={cn(
-          "group flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-colors",
+          "group flex items-center gap-1 px-2 py-1.5 text-xs cursor-pointer",
           isSelected
             ? "bg-accent/20 text-accent"
             : isHovered
@@ -140,7 +140,7 @@ function TreeNode({
               e.stopPropagation();
               toggleExpanded(part.id);
             }}
-            className="shrink-0 p-0.5 hover:bg-white/10 rounded"
+            className="shrink-0 p-0.5 hover:bg-white/10"
           >
             {isExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
           </button>
@@ -236,7 +236,7 @@ export function FeatureTree() {
     <div
       className={cn(
         "absolute top-14 left-3 z-20 w-56",
-        "rounded-xl border border-border/50",
+        "border border-border/50",
         "bg-surface/80 backdrop-blur-md",
         "shadow-lg shadow-black/20",
         "max-h-[calc(100vh-120px)] flex flex-col"
@@ -249,7 +249,7 @@ export function FeatureTree() {
         </span>
         <button
           onClick={() => setFeatureTreeOpen(false)}
-          className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:text-text hover:bg-white/10"
+          className="flex h-6 w-6 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
         >
           <X size={14} />
         </button>

@@ -42,7 +42,7 @@ function SectionHeader({ children, tooltip }: { children: string; tooltip?: stri
 
 function PartTypeBadge({ kind }: { kind: string }) {
   return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-border/50 text-text-muted uppercase tracking-wide">
+    <span className="text-[10px] px-1.5 py-0.5 bg-white/10 border border-border/50 text-text-muted uppercase tracking-wide">
       {kind}
     </span>
   );
@@ -80,9 +80,9 @@ function MaterialPicker({ partId }: { partId: string }) {
         {MATERIAL_SWATCHES.map((swatch) => (
           <Tooltip key={swatch.key} content={swatch.label} side="bottom">
             <button
-              className={`h-5 w-5 rounded-full border-2 transition-all cursor-pointer ${
+              className={`h-5 w-5 rounded-full border-2 cursor-pointer ${
                 currentMaterial === swatch.key
-                  ? "border-accent scale-110"
+                  ? "border-accent"
                   : "border-transparent hover:border-border"
               }`}
               style={{ backgroundColor: swatch.color }}
@@ -290,7 +290,7 @@ export function PropertyPanel() {
         ref={panelRef}
         className={cn(
           "absolute top-14 right-3 z-20 w-60",
-          "rounded-xl border border-border/50",
+          "border border-border/50",
           "bg-surface/80 backdrop-blur-md",
           "shadow-lg shadow-black/20"
         )}
@@ -301,7 +301,7 @@ export function PropertyPanel() {
           </span>
           <button
             onClick={clearSelection}
-            className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:text-text hover:bg-white/10"
+            className="flex h-6 w-6 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
           >
             <X size={14} />
           </button>
@@ -335,7 +335,7 @@ export function PropertyPanel() {
       ref={panelRef}
       className={cn(
         "absolute top-14 right-3 z-20 w-60",
-        "rounded-xl border border-border/50",
+        "border border-border/50",
         "bg-surface/80 backdrop-blur-md",
         "shadow-lg shadow-black/20",
         "max-h-[calc(100vh-120px)] flex flex-col"
@@ -351,7 +351,7 @@ export function PropertyPanel() {
         </div>
         <button
           onClick={clearSelection}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted hover:text-text hover:bg-white/10"
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-text-muted hover:text-text hover:bg-white/10"
         >
           <X size={14} />
         </button>

@@ -51,7 +51,7 @@ function ToolbarButton({
     <Tooltip content={tooltip}>
       <button
         className={cn(
-          "flex h-10 w-10 items-center justify-center rounded-lg transition-colors",
+          "flex h-10 w-10 items-center justify-center",
           "disabled:opacity-40 disabled:cursor-not-allowed",
           active
             ? "bg-accent text-white"
@@ -133,7 +133,7 @@ export function BottomToolbar() {
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
       <div
         className={cn(
-          "flex items-center gap-1 px-2 py-1.5 rounded-xl",
+          "flex items-center gap-1 px-2 py-1.5",
           "bg-surface/80 backdrop-blur-md",
           "border border-border/50",
           "shadow-lg shadow-black/20"

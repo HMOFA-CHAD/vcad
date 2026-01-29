@@ -97,7 +97,7 @@ export function WelcomeModal({ open, onOpenChange }: WelcomeModalProps) {
           <div className="absolute right-3 top-3 z-10">
             <button
               onClick={handleClose}
-              className="p-1 text-text-muted hover:bg-border/50 hover:text-text transition-colors cursor-pointer"
+              className="p-1 text-text-muted hover:bg-border/50 hover:text-text cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -138,12 +138,12 @@ export function WelcomeModal({ open, onOpenChange }: WelcomeModalProps) {
 
             {/* Examples */}
             <p className="text-xs text-text-muted mb-3">Try an example:</p>
-            <div className="flex gap-2">
+            <div className="flex gap-4">
               {examples.map((example) => (
                 <button
                   key={example.id}
                   onClick={() => handleOpenExample(example)}
-                  className="px-3 py-1.5 text-xs bg-surface hover:bg-surface-hover border border-border text-text transition-colors"
+                  className="text-sm text-text-muted hover:text-text"
                 >
                   {example.name}
                 </button>

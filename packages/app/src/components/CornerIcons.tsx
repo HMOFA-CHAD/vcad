@@ -37,7 +37,7 @@ function IconButton({
     <Tooltip content={tooltip}>
       <button
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+          "flex h-8 w-8 items-center justify-center",
           "text-text-muted/70 hover:text-text hover:bg-white/10",
           active && "text-accent"
         )}
@@ -96,7 +96,7 @@ function SettingsMenu({
       <Popover.Trigger asChild>
         <button
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
+            "flex h-8 w-8 items-center justify-center",
             "text-text-muted/70 hover:text-text hover:bg-white/10"
           )}
         >
@@ -105,7 +105,7 @@ function SettingsMenu({
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          className="z-50 w-56 rounded-xl border border-border/50 bg-surface/95 backdrop-blur-md p-2 shadow-xl"
+          className="z-50 w-56 border border-border/50 bg-surface/95 backdrop-blur-md p-2 shadow-xl"
           sideOffset={8}
           align="end"
         >
@@ -117,7 +117,7 @@ function SettingsMenu({
             <button
               onClick={undo}
               disabled={undoStack.length === 0}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
               title={undoActionName ? `Undo: ${undoActionName} (⌘Z)` : "Undo (⌘Z)"}
             >
               <ArrowCounterClockwise size={14} />
@@ -127,7 +127,7 @@ function SettingsMenu({
             <button
               onClick={redo}
               disabled={redoStack.length === 0}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
               title={redoActionName ? `Redo: ${redoActionName} (⌘⇧Z)` : "Redo (⌘⇧Z)"}
             >
               <ArrowClockwise size={14} />
@@ -141,7 +141,7 @@ function SettingsMenu({
             </div>
             <button
               onClick={toggleWireframe}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10"
             >
               <CubeTransparent size={14} className={showWireframe ? "text-accent" : ""} />
               <span>Wireframe</span>
@@ -150,7 +150,7 @@ function SettingsMenu({
             <Popover.Root>
               <Popover.Trigger asChild>
                 <button
-                  className="col-span-2 flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10"
+                  className="col-span-2 flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10"
                 >
                   <GridFour size={14} className={gridSnap ? "text-accent" : ""} />
                   <span>Grid Snap</span>
@@ -159,7 +159,7 @@ function SettingsMenu({
               </Popover.Trigger>
               <Popover.Portal>
                 <Popover.Content
-                  className="z-50 rounded-lg border border-border/50 bg-surface/95 backdrop-blur-md p-1.5 shadow-xl"
+                  className="z-50 border border-border/50 bg-surface/95 backdrop-blur-md p-1.5 shadow-xl"
                   side="right"
                   sideOffset={4}
                   align="start"
@@ -167,7 +167,7 @@ function SettingsMenu({
                   <div className="flex flex-col gap-0.5">
                     <button
                       onClick={toggleGridSnap}
-                      className="flex items-center gap-2 rounded px-2 py-1 text-xs text-text hover:bg-white/10"
+                      className="flex items-center gap-2 px-2 py-1 text-xs text-text hover:bg-white/10"
                     >
                       <span className={!gridSnap ? "text-accent" : ""}>Off</span>
                     </button>
@@ -175,7 +175,7 @@ function SettingsMenu({
                       <button
                         key={v}
                         onClick={() => setSnapIncrement(v)}
-                        className="flex items-center gap-2 rounded px-2 py-1 text-xs text-text hover:bg-white/10"
+                        className="flex items-center gap-2 px-2 py-1 text-xs text-text hover:bg-white/10"
                       >
                         <span className={gridSnap && snapIncrement === v ? "text-accent" : ""}>{v}mm</span>
                       </button>
@@ -191,7 +191,7 @@ function SettingsMenu({
             </div>
             <button
               onClick={onSave}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10"
             >
               <FloppyDisk size={14} />
               <span>Save</span>
@@ -199,7 +199,7 @@ function SettingsMenu({
             </button>
             <button
               onClick={onOpen}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10"
             >
               <FolderOpen size={14} />
               <span>Open</span>
@@ -208,7 +208,7 @@ function SettingsMenu({
             <button
               onClick={handleExportStl}
               disabled={!hasParts}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Export size={14} />
               <span>Export STL</span>
@@ -216,7 +216,7 @@ function SettingsMenu({
             <button
               onClick={handleExportGlb}
               disabled={!hasParts}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Export size={14} weight="fill" />
               <span>Export GLB</span>
@@ -228,7 +228,7 @@ function SettingsMenu({
             </div>
             <button
               onClick={onAboutOpen}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-white/10"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-white/10"
             >
               <Info size={14} />
               <span>About</span>
