@@ -50,12 +50,18 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
     const geo = geoRef.current;
     if (!geo) return;
 
+    // Clone arrays to avoid issues with transferred/shared buffers
+    const positions = new Float32Array(mesh.positions);
+    const indices = new Uint32Array(mesh.indices);
+
     geo.setAttribute(
       "position",
-      new THREE.BufferAttribute(mesh.positions, 3),
+      new THREE.BufferAttribute(positions, 3),
     );
-    geo.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+    geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    geo.computeBoundingBox();
 
     return () => {
       geo.dispose();
@@ -81,6 +87,8 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
   return (
     <mesh
       ref={meshRef}
+      castShadow
+      receiveShadow
       onClick={(e) => {
         e.stopPropagation();
         if (e.nativeEvent.shiftKey) {
@@ -102,8 +110,9 @@ export function SceneMesh({ partInfo, mesh, selected }: SceneMeshProps) {
         color={materialColor}
         emissive={emissiveColor}
         emissiveIntensity={emissiveIntensity}
-        metalness={0.1}
-        roughness={0.6}
+        metalness={0.15}
+        roughness={0.5}
+        envMapIntensity={0.8}
         flatShading={false}
         side={THREE.DoubleSide}
       />

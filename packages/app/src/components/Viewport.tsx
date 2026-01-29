@@ -169,7 +169,8 @@ export function Viewport() {
       <Canvas
         camera={{ position: [50, 50, 50], fov: 50, near: 0.1, far: 10000 }}
         onPointerMissed={() => clearSelection()}
-        gl={{ antialias: true }}
+        shadows
+        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2 }}
         style={{ background: isDark ? BG_DARK : BG_LIGHT }}
       >
         <ViewportContent />

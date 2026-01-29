@@ -1,7 +1,8 @@
 import { useRef, useEffect } from "react";
 import { MOUSE, Spherical, Vector3 } from "three";
 import { useThree } from "@react-three/fiber";
-import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
+import { OrbitControls, GizmoHelper, GizmoViewport, Environment, ContactShadows } from "@react-three/drei";
+import { EffectComposer, N8AO, Vignette } from "@react-three/postprocessing";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { GridPlane } from "./GridPlane";
 import { SceneMesh } from "./SceneMesh";
@@ -12,6 +13,7 @@ import { DimensionOverlay } from "./DimensionOverlay";
 import { InlineProperties } from "./InlineProperties";
 import { useEngineStore, useDocumentStore, useUiStore } from "@vcad/core";
 import { useCameraControls } from "@/hooks/useCameraControls";
+import { useTheme } from "@/hooks/useTheme";
 
 export function ViewportContent() {
   useCameraControls();
@@ -20,6 +22,7 @@ export function ViewportContent() {
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const orbitRef = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
+  const { isDark } = useTheme();
 
   // Reusable objects to avoid GC pressure (wheel fires at 60+ Hz)
   const sphericalRef = useRef(new Spherical());
@@ -120,10 +123,38 @@ export function ViewportContent() {
 
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[50, 80, 40]} intensity={0.8} />
-      <directionalLight position={[-30, 40, -20]} intensity={0.3} />
+      {/* Environment lighting - subtle studio setup */}
+      <Environment preset="studio" environmentIntensity={0.4} />
+
+      {/* Key light with shadows */}
+      <directionalLight
+        position={[50, 80, 40]}
+        intensity={1.2}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-far={200}
+        shadow-camera-left={-100}
+        shadow-camera-right={100}
+        shadow-camera-top={100}
+        shadow-camera-bottom={-100}
+        shadow-bias={-0.0001}
+      />
+      {/* Fill light */}
+      <directionalLight position={[-30, 40, -20]} intensity={0.4} />
+      {/* Rim light for edge definition */}
+      <directionalLight position={[-50, 20, 50]} intensity={0.2} />
+
+      {/* Contact shadows - soft shadow beneath objects */}
+      <ContactShadows
+        position={[0, -0.01, 0]}
+        opacity={isDark ? 0.4 : 0.3}
+        scale={200}
+        blur={2}
+        far={100}
+        resolution={512}
+        color={isDark ? "#000000" : "#1a1a1a"}
+      />
 
       {/* Grid */}
       <GridPlane />
@@ -165,6 +196,7 @@ export function ViewportContent() {
         makeDefault
         enableDamping
         dampingFactor={0.1}
+        enableZoom={false}
         mouseButtons={{
           LEFT: undefined,      // LMB reserved for selection
           MIDDLE: MOUSE.PAN,    // MMB = pan
@@ -172,13 +204,30 @@ export function ViewportContent() {
         }}
       />
 
-      {/* Orientation gizmo */}
+      {/* Orientation gizmo - RGB convention */}
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
         <GizmoViewport
-          axisColors={["#7a6a65", "#657a6a", "#656a7a"]}
-          labelColor="#75715E"
+          axisColors={["#e06c75", "#98c379", "#61afef"]}
+          labelColor="#abb2bf"
         />
       </GizmoHelper>
+
+      {/* Post-processing effects */}
+      <EffectComposer>
+        {/* N8AO - high quality ambient occlusion */}
+        <N8AO
+          aoRadius={0.5}
+          intensity={isDark ? 2 : 1.5}
+          aoSamples={6}
+          denoiseSamples={4}
+        />
+        {/* Subtle vignette for focus */}
+        <Vignette
+          offset={0.3}
+          darkness={isDark ? 0.5 : 0.3}
+          eskil={false}
+        />
+      </EffectComposer>
     </>
   );
 }
