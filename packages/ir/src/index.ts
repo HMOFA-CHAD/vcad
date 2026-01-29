@@ -255,6 +255,44 @@ export interface ShellOp {
   thickness: number;
 }
 
+// --- Path curves for sweep operations ---
+
+/** A straight line path from start to end. */
+export interface LinePath {
+  type: "Line";
+  start: Vec3;
+  end: Vec3;
+}
+
+/** A helical path for sweep operations. */
+export interface HelixPath {
+  type: "Helix";
+  radius: number;
+  pitch: number;
+  height: number;
+  turns: number;
+}
+
+/** Path curve types for sweep operations. */
+export type PathCurve = LinePath | HelixPath;
+
+/** Sweep operation — extrude a profile along a path curve. */
+export interface SweepOp {
+  type: "Sweep";
+  sketch: NodeId;              // Reference to Sketch2D node
+  path: PathCurve;             // The path to sweep along
+  twist_angle?: number;        // Total twist in radians (default 0)
+  scale_start?: number;        // Scale at start (default 1.0)
+  scale_end?: number;          // Scale at end (default 1.0)
+}
+
+/** Loft operation — interpolate between multiple profiles. */
+export interface LoftOp {
+  type: "Loft";
+  sketches: NodeId[];          // Array of Sketch2D node references (≥2)
+  closed?: boolean;            // Connect last to first (creates tube)
+}
+
 /** CSG operation — the core building block of the IR DAG. */
 export type CsgOp =
   | CubeOp
@@ -273,7 +311,9 @@ export type CsgOp =
   | RevolveOp
   | LinearPatternOp
   | CircularPatternOp
-  | ShellOp;
+  | ShellOp
+  | SweepOp
+  | LoftOp;
 
 /** A node in the IR graph. */
 export interface Node {

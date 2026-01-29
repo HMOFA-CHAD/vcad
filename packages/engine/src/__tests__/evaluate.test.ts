@@ -274,3 +274,248 @@ describe("Errors", () => {
     expect(() => engine.evaluate(doc)).toThrow("Missing node: 99");
   });
 });
+
+describe("Sketch operations", () => {
+  it("evaluates extrude from rectangle sketch", () => {
+    const doc = singlePartDoc(
+      [
+        {
+          id: 1,
+          name: "rectangle",
+          op: {
+            type: "Sketch2D",
+            origin: { x: 0, y: 0, z: 0 },
+            x_dir: { x: 1, y: 0, z: 0 },
+            y_dir: { x: 0, y: 1, z: 0 },
+            segments: [
+              { type: "Line", start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+              { type: "Line", start: { x: 10, y: 0 }, end: { x: 10, y: 5 } },
+              { type: "Line", start: { x: 10, y: 5 }, end: { x: 0, y: 5 } },
+              { type: "Line", start: { x: 0, y: 5 }, end: { x: 0, y: 0 } },
+            ],
+          },
+        },
+        {
+          id: 2,
+          name: "extruded_block",
+          op: {
+            type: "Extrude",
+            sketch: 1,
+            direction: { x: 0, y: 0, z: 20 },
+          },
+        },
+      ],
+      2,
+    );
+    const scene = engine.evaluate(doc);
+    expect(scene.parts).toHaveLength(1);
+    expect(scene.parts[0].mesh.positions.length).toBeGreaterThan(0);
+    expect(scene.parts[0].mesh.indices.length).toBeGreaterThan(0);
+    // Extruded rectangle has 6 faces, 12 triangles minimum
+    expect(scene.parts[0].mesh.indices.length).toBeGreaterThanOrEqual(36);
+  });
+
+  it("evaluates revolve from rectangle sketch", () => {
+    const doc = singlePartDoc(
+      [
+        {
+          id: 1,
+          name: "profile",
+          op: {
+            type: "Sketch2D",
+            origin: { x: 5, y: 0, z: 0 },
+            x_dir: { x: 1, y: 0, z: 0 },
+            y_dir: { x: 0, y: 0, z: 1 },
+            segments: [
+              { type: "Line", start: { x: 0, y: 0 }, end: { x: 3, y: 0 } },
+              { type: "Line", start: { x: 3, y: 0 }, end: { x: 3, y: 10 } },
+              { type: "Line", start: { x: 3, y: 10 }, end: { x: 0, y: 10 } },
+              { type: "Line", start: { x: 0, y: 10 }, end: { x: 0, y: 0 } },
+            ],
+          },
+        },
+        {
+          id: 2,
+          name: "revolved",
+          op: {
+            type: "Revolve",
+            sketch: 1,
+            axis_origin: { x: 0, y: 0, z: 0 },
+            axis_dir: { x: 0, y: 0, z: 1 },
+            angle_deg: 90,
+          },
+        },
+      ],
+      2,
+    );
+    const scene = engine.evaluate(doc);
+    expect(scene.parts).toHaveLength(1);
+    expect(scene.parts[0].mesh.positions.length).toBeGreaterThan(0);
+    expect(scene.parts[0].mesh.indices.length).toBeGreaterThan(0);
+  });
+
+  it("sketch node alone evaluates to empty", () => {
+    const doc = singlePartDoc(
+      [
+        {
+          id: 1,
+          name: "just_sketch",
+          op: {
+            type: "Sketch2D",
+            origin: { x: 0, y: 0, z: 0 },
+            x_dir: { x: 1, y: 0, z: 0 },
+            y_dir: { x: 0, y: 1, z: 0 },
+            segments: [
+              { type: "Line", start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+              { type: "Line", start: { x: 10, y: 0 }, end: { x: 10, y: 10 } },
+              { type: "Line", start: { x: 10, y: 10 }, end: { x: 0, y: 10 } },
+              { type: "Line", start: { x: 0, y: 10 }, end: { x: 0, y: 0 } },
+            ],
+          },
+        },
+      ],
+      1,
+    );
+    const scene = engine.evaluate(doc);
+    expect(scene.parts).toHaveLength(1);
+    // Sketch alone should produce empty geometry
+    expect(scene.parts[0].mesh.positions.length).toBe(0);
+  });
+
+  it("evaluates sweep with line path", () => {
+    const doc = singlePartDoc(
+      [
+        {
+          id: 1,
+          name: "circle_profile",
+          op: {
+            type: "Sketch2D",
+            origin: { x: 0, y: 0, z: 0 },
+            x_dir: { x: 1, y: 0, z: 0 },
+            y_dir: { x: 0, y: 1, z: 0 },
+            // Approximate circle with square for simpler test
+            segments: [
+              { type: "Line", start: { x: -2, y: -2 }, end: { x: 2, y: -2 } },
+              { type: "Line", start: { x: 2, y: -2 }, end: { x: 2, y: 2 } },
+              { type: "Line", start: { x: 2, y: 2 }, end: { x: -2, y: 2 } },
+              { type: "Line", start: { x: -2, y: 2 }, end: { x: -2, y: -2 } },
+            ],
+          },
+        },
+        {
+          id: 2,
+          name: "swept",
+          op: {
+            type: "Sweep",
+            sketch: 1,
+            path: {
+              type: "Line",
+              start: { x: 0, y: 0, z: 0 },
+              end: { x: 0, y: 0, z: 20 },
+            },
+          },
+        },
+      ],
+      2,
+    );
+    const scene = engine.evaluate(doc);
+    expect(scene.parts).toHaveLength(1);
+    expect(scene.parts[0].mesh.positions.length).toBeGreaterThan(0);
+    expect(scene.parts[0].mesh.indices.length).toBeGreaterThan(0);
+  });
+
+  it("evaluates sweep with helix path", () => {
+    const doc = singlePartDoc(
+      [
+        {
+          id: 1,
+          name: "small_square",
+          op: {
+            type: "Sketch2D",
+            origin: { x: 0, y: 0, z: 0 },
+            x_dir: { x: 1, y: 0, z: 0 },
+            y_dir: { x: 0, y: 1, z: 0 },
+            segments: [
+              { type: "Line", start: { x: -1, y: -1 }, end: { x: 1, y: -1 } },
+              { type: "Line", start: { x: 1, y: -1 }, end: { x: 1, y: 1 } },
+              { type: "Line", start: { x: 1, y: 1 }, end: { x: -1, y: 1 } },
+              { type: "Line", start: { x: -1, y: 1 }, end: { x: -1, y: -1 } },
+            ],
+          },
+        },
+        {
+          id: 2,
+          name: "spring",
+          op: {
+            type: "Sweep",
+            sketch: 1,
+            path: {
+              type: "Helix",
+              radius: 10,
+              pitch: 5,
+              height: 20,
+              turns: 2,
+            },
+          },
+        },
+      ],
+      2,
+    );
+    const scene = engine.evaluate(doc);
+    expect(scene.parts).toHaveLength(1);
+    expect(scene.parts[0].mesh.positions.length).toBeGreaterThan(0);
+    expect(scene.parts[0].mesh.indices.length).toBeGreaterThan(0);
+  });
+
+  it("evaluates loft between two profiles", () => {
+    const doc = singlePartDoc(
+      [
+        {
+          id: 1,
+          name: "profile_bottom",
+          op: {
+            type: "Sketch2D",
+            origin: { x: 0, y: 0, z: 0 },
+            x_dir: { x: 1, y: 0, z: 0 },
+            y_dir: { x: 0, y: 1, z: 0 },
+            segments: [
+              { type: "Line", start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+              { type: "Line", start: { x: 10, y: 0 }, end: { x: 10, y: 10 } },
+              { type: "Line", start: { x: 10, y: 10 }, end: { x: 0, y: 10 } },
+              { type: "Line", start: { x: 0, y: 10 }, end: { x: 0, y: 0 } },
+            ],
+          },
+        },
+        {
+          id: 2,
+          name: "profile_top",
+          op: {
+            type: "Sketch2D",
+            origin: { x: 2, y: 2, z: 20 },
+            x_dir: { x: 1, y: 0, z: 0 },
+            y_dir: { x: 0, y: 1, z: 0 },
+            segments: [
+              { type: "Line", start: { x: 0, y: 0 }, end: { x: 6, y: 0 } },
+              { type: "Line", start: { x: 6, y: 0 }, end: { x: 6, y: 6 } },
+              { type: "Line", start: { x: 6, y: 6 }, end: { x: 0, y: 6 } },
+              { type: "Line", start: { x: 0, y: 6 }, end: { x: 0, y: 0 } },
+            ],
+          },
+        },
+        {
+          id: 3,
+          name: "lofted",
+          op: {
+            type: "Loft",
+            sketches: [1, 2],
+          },
+        },
+      ],
+      3,
+    );
+    const scene = engine.evaluate(doc);
+    expect(scene.parts).toHaveLength(1);
+    expect(scene.parts[0].mesh.positions.length).toBeGreaterThan(0);
+    expect(scene.parts[0].mesh.indices.length).toBeGreaterThan(0);
+  });
+});

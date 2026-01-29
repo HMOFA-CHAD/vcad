@@ -5,6 +5,8 @@ import type {
   CsgOp,
   Sketch2DOp,
   SketchSegment2D,
+  SweepOp,
+  LoftOp,
 } from "@vcad/ir";
 import type { EvaluatedScene, TriangleMesh } from "./mesh.js";
 import type { Solid } from "@vcad/kernel-wasm";
@@ -238,6 +240,58 @@ function evaluateOp(
     case "Shell": {
       const child = evaluateNode(op.child, nodes, Solid, cache);
       return child.shell(op.thickness);
+    }
+
+    case "Sweep": {
+      const sketchNode = nodes[String(op.sketch)];
+      if (!sketchNode || sketchNode.op.type !== "Sketch2D") {
+        throw new Error(`Sweep references invalid sketch node: ${op.sketch}`);
+      }
+      const profile = convertSketchToProfile(sketchNode.op);
+
+      if (op.path.type === "Line") {
+        const start = new Float64Array([
+          op.path.start.x,
+          op.path.start.y,
+          op.path.start.z,
+        ]);
+        const end = new Float64Array([
+          op.path.end.x,
+          op.path.end.y,
+          op.path.end.z,
+        ]);
+        return Solid.sweepLine(
+          profile,
+          start,
+          end,
+          op.twist_angle,
+          op.scale_start,
+          op.scale_end,
+        );
+      } else {
+        // Helix path
+        return Solid.sweepHelix(
+          profile,
+          op.path.radius,
+          op.path.pitch,
+          op.path.height,
+          op.path.turns,
+          op.twist_angle,
+          op.scale_start,
+          op.scale_end,
+        );
+      }
+    }
+
+    case "Loft": {
+      const profiles = op.sketches.map((sketchId) => {
+        const sketchNode = nodes[String(sketchId)];
+        if (!sketchNode || sketchNode.op.type !== "Sketch2D") {
+          throw new Error(`Loft references invalid sketch node: ${sketchId}`);
+        }
+        return convertSketchToProfile(sketchNode.op);
+      });
+      return Solid.loft(profiles, op.closed);
     }
   }
 }
