@@ -32,10 +32,11 @@ export function ViewportContent() {
 
   // Target animation for orbit focus
   const targetGoalRef = useRef(new Vector3());
+  const distanceGoalRef = useRef<number | null>(null);
   const isAnimatingTargetRef = useRef(false);
 
-  // Calculate center of selected parts
-  const selectionCenter = useMemo(() => {
+  // Calculate center and size of selected parts
+  const selectionInfo = useMemo(() => {
     if (selectedPartIds.size === 0 || !scene) return null;
 
     const box = new Box3();
@@ -58,31 +59,52 @@ export function ViewportContent() {
     if (!hasPoints) return null;
     const center = new Vector3();
     box.getCenter(center);
-    return center;
+    const size = new Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    return { center, maxDim };
   }, [selectedPartIds, scene, parts]);
 
-  // Animate orbit target to selection center
+  // Animate orbit target to selection center and zoom to fit
   useEffect(() => {
-    if (selectionCenter) {
-      targetGoalRef.current.copy(selectionCenter);
+    if (selectionInfo) {
+      targetGoalRef.current.copy(selectionInfo.center);
+      // Distance = 2.5x the max dimension, clamped to reasonable range
+      distanceGoalRef.current = Math.max(30, Math.min(300, selectionInfo.maxDim * 2.5));
       isAnimatingTargetRef.current = true;
     }
-  }, [selectionCenter]);
+  }, [selectionInfo]);
 
-  // Smooth target animation
+  // Smooth target and distance animation
   useFrame(() => {
     if (!isAnimatingTargetRef.current || !orbitRef.current) return;
 
     const target = orbitRef.current.target;
-    const goal = targetGoalRef.current;
+    const targetGoal = targetGoalRef.current;
+    const distanceGoal = distanceGoalRef.current;
     const lerpFactor = 0.1;
 
-    target.lerp(goal, lerpFactor);
+    // Animate target position
+    target.lerp(targetGoal, lerpFactor);
+
+    // Animate camera distance
+    if (distanceGoal !== null) {
+      const offset = offsetRef.current.subVectors(camera.position, target);
+      const currentDist = offset.length();
+      const newDist = currentDist + (distanceGoal - currentDist) * lerpFactor;
+      offset.normalize().multiplyScalar(newDist);
+      camera.position.copy(target).add(offset);
+    }
 
     // Stop animating when close enough
-    if (target.distanceTo(goal) < 0.01) {
-      target.copy(goal);
+    const targetDone = target.distanceTo(targetGoal) < 0.01;
+    const distanceDone = distanceGoal === null ||
+      Math.abs(offsetRef.current.subVectors(camera.position, target).length() - distanceGoal) < 0.1;
+
+    if (targetDone && distanceDone) {
+      target.copy(targetGoal);
       isAnimatingTargetRef.current = false;
+      distanceGoalRef.current = null;
     }
   });
 
