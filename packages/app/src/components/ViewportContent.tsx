@@ -1,4 +1,6 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
+import { MOUSE, Spherical, Vector3 } from "three";
+import { useThree } from "@react-three/fiber";
 import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { GridPlane } from "./GridPlane";
@@ -19,6 +21,90 @@ export function ViewportContent() {
   const parts = useDocumentStore((s) => s.parts);
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const orbitRef = useRef<OrbitControlsImpl>(null);
+  const { camera } = useThree();
+
+  // Reusable objects to avoid GC pressure (wheel fires at 60+ Hz)
+  const sphericalRef = useRef(new Spherical());
+  const offsetRef = useRef(new Vector3());
+  const velocityRef = useRef({ theta: 0, phi: 0 });
+  const animatingRef = useRef(false);
+
+  // Wheel-to-orbit: two-finger trackpad drag → orbit with momentum
+  useEffect(() => {
+    const controls = orbitRef.current;
+    const domElement = controls?.domElement;
+    if (!domElement) return;
+
+    const dampingFactor = 0.15; // fraction of velocity applied per frame
+    const friction = 0.92; // velocity decay per frame
+
+    const animate = () => {
+      const vel = velocityRef.current;
+      // Stop animating when velocity is negligible
+      if (Math.abs(vel.theta) < 0.0001 && Math.abs(vel.phi) < 0.0001) {
+        animatingRef.current = false;
+        vel.theta = 0;
+        vel.phi = 0;
+        return;
+      }
+
+      const target = controls.target;
+      const offset = offsetRef.current.subVectors(camera.position, target);
+      const spherical = sphericalRef.current.setFromVector3(offset);
+
+      // Apply fraction of velocity
+      spherical.theta += vel.theta * dampingFactor;
+      spherical.phi += vel.phi * dampingFactor;
+
+      // Clamp polar angle to avoid flipping
+      spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+
+      // Decay velocity
+      vel.theta *= friction;
+      vel.phi *= friction;
+
+      // Update camera position
+      offset.setFromSpherical(spherical);
+      camera.position.copy(target).add(offset);
+      camera.lookAt(target);
+      controls.update();
+
+      requestAnimationFrame(animate);
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Normalize deltaMode: 0=pixels, 1=lines, 2=pages
+      let dx = e.deltaX;
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) {
+        dx *= 16;
+        dy *= 16;
+      } // lines → pixels
+      if (e.deltaMode === 2) {
+        dx *= 100;
+        dy *= 100;
+      } // pages → pixels
+
+      // OrbitControls formula: viewport height = 2π radians
+      const rotateSpeed = (2 * Math.PI) / domElement.clientHeight;
+
+      // Accumulate velocity: deltaX → azimuthal (theta), deltaY → polar (phi)
+      velocityRef.current.theta -= dx * rotateSpeed;
+      velocityRef.current.phi += dy * rotateSpeed;
+
+      // Start animation loop if not already running
+      if (!animatingRef.current) {
+        animatingRef.current = true;
+        requestAnimationFrame(animate);
+      }
+    };
+
+    domElement.addEventListener("wheel", handleWheel, { passive: false });
+    return () => domElement.removeEventListener("wheel", handleWheel);
+  }, [camera]);
 
   return (
     <>
@@ -67,6 +153,11 @@ export function ViewportContent() {
         makeDefault
         enableDamping
         dampingFactor={0.1}
+        mouseButtons={{
+          LEFT: undefined,      // LMB reserved for selection
+          MIDDLE: MOUSE.PAN,    // MMB = pan
+          RIGHT: MOUSE.PAN,     // RMB = pan (fallback for mouse users)
+        }}
       />
 
       {/* Orientation gizmo */}
