@@ -331,11 +331,50 @@ pub fn split_planar_face_by_circle(
     let inner_face = brep.topology.add_face(inner_loop, surface_index, orientation);
 
     // Create outer face (polygon with hole)
-    // The outer loop stays the same; we add the circle as an inner loop (reversed)
-    // For the outer face, we need to reverse the circle direction for the inner loop
-    let outer_inner_verts: Vec<_> = circle_verts
+    // The outer loop stays the same; we add the circle as an inner loop
+    // The inner loop must have OPPOSITE winding to the outer loop in the face's 2D projection
+
+    // Compute the face's 2D coordinate system from the outer loop
+    let e1 = loop_verts[1] - loop_verts[0];
+    let e2 = loop_verts[2] - loop_verts[0];
+    let face_normal = e1.cross(&e2);
+    let u_axis = e1.normalize();
+    let v_axis = face_normal.cross(&e1).normalize();
+    let origin = loop_verts[0];
+
+    // Project to 2D
+    let project = |p: &Point3| -> (f64, f64) {
+        let d = *p - origin;
+        (d.dot(&u_axis), d.dot(&v_axis))
+    };
+
+    // Compute signed area to determine winding direction
+    // Positive = CCW, Negative = CW in our 2D projection
+    let signed_area = |pts: &[Point3]| -> f64 {
+        let pts_2d: Vec<_> = pts.iter().map(&project).collect();
+        let mut area = 0.0;
+        for i in 0..pts_2d.len() {
+            let j = (i + 1) % pts_2d.len();
+            area += pts_2d[i].0 * pts_2d[j].1 - pts_2d[j].0 * pts_2d[i].1;
+        }
+        area / 2.0
+    };
+
+    let outer_area = signed_area(&loop_verts);
+    let circle_area = signed_area(&circle_verts);
+
+    // Inner loop should have opposite sign to outer loop
+    // If they have the same sign, we need to reverse the circle vertices
+    let need_reverse = (outer_area > 0.0) == (circle_area > 0.0);
+
+    let inner_loop_verts: Vec<Point3> = if need_reverse {
+        circle_verts.iter().rev().cloned().collect()
+    } else {
+        circle_verts.clone()
+    };
+
+    let outer_inner_verts: Vec<_> = inner_loop_verts
         .iter()
-        .rev() // Reverse for inner loop (opposite winding)
         .map(|p| find_or_create_vertex(brep, p, tolerance))
         .collect();
 
@@ -361,6 +400,30 @@ pub fn split_planar_face_by_circle(
 
     let hole_loop = brep.topology.add_loop(&hole_hes);
     brep.topology.faces[outer_face].inner_loops.push(hole_loop);
+
+    // Copy existing inner loops from the original face to preserve previous holes
+    let existing_inner_loops = brep.topology.faces[face_id].inner_loops.clone();
+    for existing_loop in existing_inner_loops {
+        // Re-create the inner loop with new half-edges for the new face
+        let loop_verts_existing: Vec<Point3> = brep
+            .topology
+            .loop_half_edges(existing_loop)
+            .map(|he| brep.topology.vertices[brep.topology.half_edges[he].origin].point)
+            .collect();
+
+        let new_verts: Vec<_> = loop_verts_existing
+            .iter()
+            .map(|p| find_or_create_vertex(brep, p, tolerance))
+            .collect();
+
+        let new_hes: Vec<_> = new_verts
+            .iter()
+            .map(|&v| brep.topology.add_half_edge(v))
+            .collect();
+
+        let new_loop = brep.topology.add_loop(&new_hes);
+        brep.topology.faces[outer_face].inner_loops.push(new_loop);
+    }
 
     // Add twin edges between inner face circle and outer face hole
     // (they share the same physical edges but with opposite orientation)

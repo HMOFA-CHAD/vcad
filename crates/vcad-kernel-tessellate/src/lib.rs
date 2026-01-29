@@ -261,33 +261,50 @@ fn triangulate_polygon_with_holes(
     // Build a merged polygon by bridging outer to each inner loop
     let mut poly_indices: Vec<usize> = (0..outer_2d.len()).collect();
 
+    // Track which vertices have been used as bridge endpoints
+    let mut used_bridge_vertices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
     for (hole_idx, inner_start) in inner_starts.iter().enumerate() {
         let inner_len = inner_2d[hole_idx].len();
 
-        // Find the rightmost vertex of the hole
-        let mut rightmost_inner = 0;
-        let mut max_x = f64::NEG_INFINITY;
+        // Find the pair of (outer vertex, inner vertex) with minimum distance
+        // Avoid vertices already used as bridge endpoints
+        let mut candidates: Vec<(f64, usize, usize)> = Vec::new(); // (dist, inner_idx, outer_poly_idx)
+
         for i in 0..inner_len {
-            let (x, _) = all_verts_2d[inner_start + i];
-            if x > max_x {
-                max_x = x;
-                rightmost_inner = i;
+            let inner_pt = all_verts_2d[inner_start + i];
+            for (j, &outer_idx) in poly_indices.iter().enumerate() {
+                let outer_pt = all_verts_2d[outer_idx];
+                let dist = (outer_pt.0 - inner_pt.0).powi(2) + (outer_pt.1 - inner_pt.1).powi(2);
+                candidates.push((dist, i, j));
             }
         }
 
-        // Find the closest visible vertex on the outer polygon
-        let inner_pt = all_verts_2d[inner_start + rightmost_inner];
+        // Sort by distance
+        candidates.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Find the best candidate that doesn't reuse a bridge vertex
+        let mut best_inner = 0;
         let mut best_outer_idx = 0;
-        let mut best_dist = f64::MAX;
 
-        for (i, &outer_idx) in poly_indices.iter().enumerate() {
-            let outer_pt = all_verts_2d[outer_idx];
-            let dist = (outer_pt.0 - inner_pt.0).powi(2) + (outer_pt.1 - inner_pt.1).powi(2);
-            if dist < best_dist {
-                best_dist = dist;
-                best_outer_idx = i;
+        for (_, inner_idx, outer_poly_idx) in &candidates {
+            let outer_vertex_idx = poly_indices[*outer_poly_idx];
+            // For the first hole, allow any vertex. For subsequent holes,
+            // prefer vertices that haven't been used, but fall back if needed.
+            if !used_bridge_vertices.contains(&outer_vertex_idx) || hole_idx == 0 {
+                best_inner = *inner_idx;
+                best_outer_idx = *outer_poly_idx;
+                used_bridge_vertices.insert(outer_vertex_idx);
+                break;
             }
         }
+
+        // If all vertices are used (shouldn't happen with reasonable input), use closest anyway
+        if candidates.is_empty() {
+            continue;
+        }
+
+        let rightmost_inner = best_inner;
 
         // Insert bridge: outer -> hole -> back to outer
         let inner_global_start = *inner_start;
@@ -310,6 +327,7 @@ fn triangulate_polygon_with_holes(
 
         poly_indices = new_poly;
     }
+
 
     // Now triangulate the merged polygon using ear clipping
     ear_clip_triangulate(&all_verts_2d, &poly_indices, &mut mesh.indices, reversed);
@@ -1172,5 +1190,64 @@ mod tests {
             area += (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt() / 2.0;
         }
         area
+    }
+
+    #[test]
+    fn test_triangulate_square_with_circular_hole() {
+        // Test the triangulation of a square with a circular hole in the center
+        // This is what happens when a cylinder cuts through a planar face
+        use vcad_kernel_math::Point3;
+
+        // Square: 10x10 in XY plane at Z=0 (CCW winding)
+        let outer_2d: Vec<(f64, f64)> = vec![
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 10.0),
+            (0.0, 10.0),
+        ];
+        let outer_3d: Vec<Point3> = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+            Point3::new(10.0, 10.0, 0.0),
+            Point3::new(0.0, 10.0, 0.0),
+        ];
+
+        // Circular hole: radius 2, center at (5, 5), 8 segments
+        // CW winding (opposite to outer) - this is how B-rep stores inner loops
+        let n_seg = 8usize;
+        let hole_2d: Vec<(f64, f64)> = (0..n_seg)
+            .rev() // CW winding: reverse the order
+            .map(|i| {
+                let theta = 2.0 * std::f64::consts::PI * (i as f64) / (n_seg as f64);
+                (5.0 + 2.0 * theta.cos(), 5.0 + 2.0 * theta.sin())
+            })
+            .collect();
+        let hole_3d: Vec<Point3> = hole_2d
+            .iter()
+            .map(|&(x, y)| Point3::new(x, y, 0.0))
+            .collect();
+
+        let inner_2d = vec![hole_2d];
+        let inner_3d = vec![hole_3d];
+
+        let mesh = triangulate_polygon_with_holes(&outer_2d, &inner_2d, &outer_3d, &inner_3d, false);
+
+        println!("Square with hole: {} triangles, {} vertices", mesh.num_triangles(), mesh.num_vertices());
+
+        // Should have triangles
+        assert!(mesh.num_triangles() > 0, "Should produce triangles");
+
+        // Compute mesh area - should be square area minus circle area
+        let area = compute_mesh_surface_area(&mesh);
+        let expected_area = 100.0 - std::f64::consts::PI * 4.0; // 100 - 4π ≈ 87.4
+        println!("Mesh area: {:.2}, expected: {:.2}", area, expected_area);
+
+        // Allow some tolerance due to polygon approximation of circle
+        assert!(
+            (area - expected_area).abs() < 5.0,
+            "Area should be ~{:.1}, got {:.1}",
+            expected_area,
+            area
+        );
     }
 }

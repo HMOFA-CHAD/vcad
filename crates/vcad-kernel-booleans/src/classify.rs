@@ -112,28 +112,34 @@ pub fn classify_face(
     let face = &brep.topology.faces[face_id];
     let surface = &brep.geometry.surfaces[face.surface_index];
 
-    // Get approximate UV for normal computation
-    let outer_verts: Vec<Point3> = brep
-        .topology
-        .loop_half_edges(face.outer_loop)
-        .map(|he_id| brep.topology.vertices[brep.topology.half_edges[he_id].origin].point)
-        .collect();
+    // For planar faces, use the surface normal directly (more reliable than
+    // computing from boundary vertices, especially for circular boundaries)
+    let normal_estimate = if surface.surface_type() == SurfaceKind::Plane {
+        let sn = surface.normal(vcad_kernel_math::Point2::origin());
+        *sn.as_ref()
+    } else {
+        // For curved faces, estimate normal from boundary vertices
+        let outer_verts: Vec<Point3> = brep
+            .topology
+            .loop_half_edges(face.outer_loop)
+            .map(|he_id| brep.topology.vertices[brep.topology.half_edges[he_id].origin].point)
+            .collect();
 
-    // Use a small offset along the estimated normal to avoid boundary
-    let normal_estimate = if outer_verts.len() >= 3 {
-        let e1 = outer_verts[1] - outer_verts[0];
-        let e2 = outer_verts[2] - outer_verts[0];
-        let n = e1.cross(&e2);
-        if n.norm() > 1e-15 {
-            n.normalize()
+        if outer_verts.len() >= 3 {
+            let e1 = outer_verts[1] - outer_verts[0];
+            let e2 = outer_verts[2] - outer_verts[0];
+            let n = e1.cross(&e2);
+            if n.norm() > 1e-15 {
+                n.normalize()
+            } else {
+                // Degenerate — fall back to surface normal
+                let sn = surface.normal(vcad_kernel_math::Point2::origin());
+                *sn.as_ref()
+            }
         } else {
-            // Degenerate — try surface normal at origin UV
             let sn = surface.normal(vcad_kernel_math::Point2::origin());
             *sn.as_ref()
         }
-    } else {
-        let sn = surface.normal(vcad_kernel_math::Point2::origin());
-        *sn.as_ref()
     };
 
     // Apply face orientation
@@ -146,7 +152,9 @@ pub fn classify_face(
     let eps = 1e-4;
     let inward_point = sample - eps * oriented_normal;
 
-    if point_in_mesh(&inward_point, other_mesh) {
+    let is_inside = point_in_mesh(&inward_point, other_mesh);
+
+    if is_inside {
         FaceClassification::Inside
     } else {
         FaceClassification::Outside
