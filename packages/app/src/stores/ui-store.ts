@@ -14,6 +14,7 @@ interface UiState {
   gridSnap: boolean;
   snapIncrement: number;
   clipboard: string[];
+  deleteConfirmParts: string[] | null;
 
   select: (partId: string | null) => void;
   toggleSelect: (partId: string) => void;
@@ -28,8 +29,11 @@ interface UiState {
   toggleTheme: () => void;
   toggleWireframe: () => void;
   toggleGridSnap: () => void;
+  setSnapIncrement: (value: number) => void;
   setDraggingGizmo: (dragging: boolean) => void;
   copyToClipboard: (partIds: string[]) => void;
+  showDeleteConfirm: (partIds: string[]) => void;
+  hideDeleteConfirm: () => void;
 }
 
 function getSystemTheme(): Theme {
@@ -82,6 +86,7 @@ export const useUiStore = create<UiState>((set) => {
     gridSnap: false,
     snapIncrement: 5,
     clipboard: [],
+    deleteConfirmParts: null,
 
     select: (partId) =>
       set({ selectedPartIds: partId ? new Set([partId]) : new Set() }),
@@ -130,8 +135,15 @@ export const useUiStore = create<UiState>((set) => {
     toggleGridSnap: () =>
       set((s) => ({ gridSnap: !s.gridSnap })),
 
+    setSnapIncrement: (value) =>
+      set({ snapIncrement: value, gridSnap: true }),
+
     setDraggingGizmo: (dragging) => set({ isDraggingGizmo: dragging }),
 
     copyToClipboard: (partIds) => set({ clipboard: partIds }),
+
+    showDeleteConfirm: (partIds) => set({ deleteConfirmParts: partIds }),
+
+    hideDeleteConfirm: () => set({ deleteConfirmParts: null }),
   };
 });
