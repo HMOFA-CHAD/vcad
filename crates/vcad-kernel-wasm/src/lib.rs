@@ -196,6 +196,113 @@ impl Solid {
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// Create a solid by sweeping a profile along a line path.
+    ///
+    /// Takes a sketch profile and path endpoints.
+    #[wasm_bindgen(js_name = sweepLine)]
+    pub fn sweep_line(
+        profile_js: JsValue,
+        start: Vec<f64>,
+        end: Vec<f64>,
+        twist_angle: Option<f64>,
+        scale_start: Option<f64>,
+        scale_end: Option<f64>,
+    ) -> Result<Solid, JsError> {
+        use vcad_kernel::vcad_kernel_geom::Line3d;
+        use vcad_kernel::vcad_kernel_sweep::SweepOptions;
+
+        let profile: WasmSketchProfile = serde_wasm_bindgen::from_value(profile_js)
+            .map_err(|e| JsError::new(&format!("Invalid profile: {}", e)))?;
+
+        if start.len() != 3 || end.len() != 3 {
+            return Err(JsError::new("Start and end must have 3 components"));
+        }
+
+        let kernel_profile = profile.to_kernel_profile().map_err(|e| JsError::new(&e))?;
+
+        let path = Line3d::from_points(
+            Point3::new(start[0], start[1], start[2]),
+            Point3::new(end[0], end[1], end[2]),
+        );
+
+        let options = SweepOptions {
+            twist_angle: twist_angle.unwrap_or(0.0),
+            scale_start: scale_start.unwrap_or(1.0),
+            scale_end: scale_end.unwrap_or(1.0),
+            ..Default::default()
+        };
+
+        vcad_kernel::Solid::sweep(kernel_profile, &path, options)
+            .map(|inner| Solid { inner })
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Create a solid by sweeping a profile along a helix path.
+    ///
+    /// Takes a sketch profile and helix parameters.
+    #[wasm_bindgen(js_name = sweepHelix)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn sweep_helix(
+        profile_js: JsValue,
+        radius: f64,
+        pitch: f64,
+        height: f64,
+        turns: f64,
+        twist_angle: Option<f64>,
+        scale_start: Option<f64>,
+        scale_end: Option<f64>,
+    ) -> Result<Solid, JsError> {
+        use vcad_kernel::vcad_kernel_sweep::{Helix, SweepOptions};
+
+        let profile: WasmSketchProfile = serde_wasm_bindgen::from_value(profile_js)
+            .map_err(|e| JsError::new(&format!("Invalid profile: {}", e)))?;
+
+        let kernel_profile = profile.to_kernel_profile().map_err(|e| JsError::new(&e))?;
+
+        let path = Helix::new(radius, pitch, height, turns);
+
+        let options = SweepOptions {
+            twist_angle: twist_angle.unwrap_or(0.0),
+            scale_start: scale_start.unwrap_or(1.0),
+            scale_end: scale_end.unwrap_or(1.0),
+            ..Default::default()
+        };
+
+        vcad_kernel::Solid::sweep(kernel_profile, &path, options)
+            .map(|inner| Solid { inner })
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Create a solid by lofting between multiple profiles.
+    ///
+    /// Takes an array of sketch profiles (minimum 2).
+    #[wasm_bindgen(js_name = loft)]
+    pub fn loft(profiles_js: JsValue, closed: Option<bool>) -> Result<Solid, JsError> {
+        use vcad_kernel::vcad_kernel_sweep::{LoftMode, LoftOptions};
+
+        let profiles: Vec<WasmSketchProfile> = serde_wasm_bindgen::from_value(profiles_js)
+            .map_err(|e| JsError::new(&format!("Invalid profiles: {}", e)))?;
+
+        if profiles.len() < 2 {
+            return Err(JsError::new("Loft requires at least 2 profiles"));
+        }
+
+        let kernel_profiles: Result<Vec<_>, _> = profiles
+            .iter()
+            .map(|p| p.to_kernel_profile())
+            .collect();
+        let kernel_profiles = kernel_profiles.map_err(|e| JsError::new(&e))?;
+
+        let options = LoftOptions {
+            mode: LoftMode::Ruled,
+            closed: closed.unwrap_or(false),
+        };
+
+        vcad_kernel::Solid::loft(&kernel_profiles, options)
+            .map(|inner| Solid { inner })
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     // =========================================================================
     // Boolean operations
     // =========================================================================

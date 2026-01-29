@@ -24,6 +24,7 @@ pub use vcad_kernel_primitives;
 pub use vcad_kernel_shell;
 pub use vcad_kernel_sketch;
 pub use vcad_kernel_step;
+pub use vcad_kernel_sweep;
 pub use vcad_kernel_tessellate;
 pub use vcad_kernel_topo;
 
@@ -375,6 +376,50 @@ impl Solid {
         })
     }
 
+    /// Create a solid by sweeping a profile along a path curve.
+    ///
+    /// # Arguments
+    ///
+    /// * `profile` - The closed 2D profile to sweep
+    /// * `path` - The 3D path curve to sweep along
+    /// * `options` - Sweep options (twist, scaling, segments)
+    ///
+    /// # Returns
+    ///
+    /// A B-rep solid, or an error if the path or profile is invalid.
+    pub fn sweep<P: vcad_kernel_geom::Curve3d>(
+        profile: vcad_kernel_sketch::SketchProfile,
+        path: &P,
+        options: vcad_kernel_sweep::SweepOptions,
+    ) -> Result<Self, vcad_kernel_sweep::SweepError> {
+        let brep = vcad_kernel_sweep::sweep(&profile, path, options)?;
+        Ok(Solid {
+            repr: SolidRepr::BRep(Box::new(brep)),
+            segments: 32,
+        })
+    }
+
+    /// Create a solid by lofting between multiple profiles.
+    ///
+    /// # Arguments
+    ///
+    /// * `profiles` - At least 2 profiles to interpolate between
+    /// * `options` - Loft options (mode, closed)
+    ///
+    /// # Returns
+    ///
+    /// A B-rep solid, or an error if profiles are invalid.
+    pub fn loft(
+        profiles: &[vcad_kernel_sketch::SketchProfile],
+        options: vcad_kernel_sweep::LoftOptions,
+    ) -> Result<Self, vcad_kernel_sweep::LoftError> {
+        let brep = vcad_kernel_sweep::loft(profiles, options)?;
+        Ok(Solid {
+            repr: SolidRepr::BRep(Box::new(brep)),
+            segments: 32,
+        })
+    }
+
     // =========================================================================
     // Transforms
     // =========================================================================
@@ -709,6 +754,44 @@ mod tests {
         let b = Solid::cube(10.0, 10.0, 10.0);
         let result = a.intersection(&b);
         assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_plate_with_hole_via_solid_api() {
+        // This mirrors the exact code path used by the WASM/app
+        // Plate: 80x6x60 at origin
+        let plate = Solid::cube(80.0, 6.0, 60.0);
+
+        // Hole: 12x20x12, translated to (34, -7, 24)
+        let hole = Solid::cube(12.0, 20.0, 12.0).translate(34.0, -7.0, 24.0);
+
+        // Boolean difference
+        let result = plate.difference(&hole);
+
+        // Check volume and bbox
+        let volume = result.volume();
+        let (min, max) = result.bounding_box();
+
+        println!("Solid API test - volume: {}", volume);
+        println!(
+            "Solid API test - bbox: [{:.1},{:.1},{:.1}] to [{:.1},{:.1},{:.1}]",
+            min[0], min[1], min[2], max[0], max[1], max[2]
+        );
+
+        // Volume should be ~27936 (plate - intersection)
+        assert!(
+            volume > 25000.0 && volume < 29000.0,
+            "Expected volume ~27936, got {}",
+            volume
+        );
+
+        // Bbox Y should be [0, 6] (not -7 to 13!)
+        assert!(
+            min[1] >= -0.1 && max[1] <= 6.1,
+            "Y bounds should be [0,6], got [{}, {}]",
+            min[1],
+            max[1]
+        );
     }
 
     #[test]
