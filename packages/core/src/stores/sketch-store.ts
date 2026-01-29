@@ -172,6 +172,15 @@ export const useSketchStore = create<SketchStore>((set, get) => ({
       profiles: [],
       pendingExit: false,
     });
+
+    // Dispatch event to trigger camera swing to face the plane
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("vcad:face-selected", {
+          detail: { normal: face.normal, centroid: face.centroid },
+        })
+      );
+    }
   },
 
   cancelFaceSelection: () => {
