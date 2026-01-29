@@ -18,6 +18,7 @@ import {
   Warning,
   Crosshair,
   GridFour,
+  ArrowsClockwise,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -57,6 +58,42 @@ function DiscardConfirmDialog({
           </Button>
           <Button variant="ghost" size="sm" className="flex-1" onClick={onKeepEditing}>
             Keep Editing
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Confirmation dialog for changing sketch plane */
+function ChangePlaneConfirmDialog({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 border border-border bg-card p-4 shadow-2xl min-w-[240px]">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 text-amber-500">
+          <Warning size={18} weight="fill" />
+          <span className="text-sm font-medium">Change sketch plane?</span>
+        </div>
+        <p className="text-xs text-text-muted">
+          This will clear your current sketch geometry.
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            className="flex-1"
+            onClick={onConfirm}
+          >
+            Change Plane
+          </Button>
+          <Button variant="ghost" size="sm" className="flex-1" onClick={onCancel}>
+            Cancel
           </Button>
         </div>
       </div>
@@ -341,6 +378,7 @@ export function SketchToolbar() {
   const [showLengthDialog, setShowLengthDialog] = useState(false);
   const [showSweepDialog, setShowSweepDialog] = useState(false);
   const [showLoftHeightDialog, setShowLoftHeightDialog] = useState(false);
+  const [showChangePlaneDialog, setShowChangePlaneDialog] = useState(false);
 
   const active = useSketchStore((s) => s.active);
   const plane = useSketchStore((s) => s.plane);
@@ -371,6 +409,7 @@ export function SketchToolbar() {
   const saveProfile = useSketchStore((s) => s.saveProfile);
   const clearForNextProfile = useSketchStore((s) => s.clearForNextProfile);
   const exitLoftMode = useSketchStore((s) => s.exitLoftMode);
+  const enterFaceSelectionMode = useSketchStore((s) => s.enterFaceSelectionMode);
 
   const addExtrude = useDocumentStore((s) => s.addExtrude);
   const addSweep = useDocumentStore((s) => s.addSweep);
@@ -548,19 +587,47 @@ export function SketchToolbar() {
     cancelExit();
   }
 
+  function handleChangePlane() {
+    if (hasSegments) {
+      // Show confirmation dialog
+      setShowChangePlaneDialog(true);
+    } else {
+      // No segments, just switch directly
+      exitSketchMode();
+      enterFaceSelectionMode();
+    }
+  }
+
+  function handleConfirmChangePlane() {
+    setShowChangePlaneDialog(false);
+    exitSketchMode();
+    enterFaceSelectionMode();
+    addToast("Select a new face", "info");
+  }
+
   return (
     <>
       {/* Top-left status indicator */}
-      <div className="fixed left-4 top-4 z-30 bg-surface border border-border px-3 py-2 text-xs text-text shadow-lg">
+      <div className="fixed left-4 top-4 z-30 bg-surface border border-border px-3 py-2 text-xs text-text shadow-lg flex items-center gap-2">
         <span className="font-medium">Sketch Mode</span>
-        <span className="ml-2 text-text-muted">Plane: {getSketchPlaneName(plane)}</span>
+        <span className="text-text-muted">Plane: {getSketchPlaneName(plane)}</span>
+        <Tooltip content="Change sketch plane">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleChangePlane}
+            className="h-5 w-5"
+          >
+            <ArrowsClockwise size={14} />
+          </Button>
+        </Tooltip>
         {isConstraintMode && (
-          <span className="ml-2 text-amber-400">
+          <span className="text-amber-400">
             Constraint: {constraintTool} ({selectedSegments.length} selected)
           </span>
         )}
         {!solved && (
-          <span className="ml-2 text-red-400">Unsolved</span>
+          <span className="text-red-400">Unsolved</span>
         )}
       </div>
 
@@ -824,6 +891,14 @@ export function SketchToolbar() {
           <DiscardConfirmDialog
             onDiscard={handleDiscardSketch}
             onKeepEditing={handleKeepEditing}
+          />
+        )}
+
+        {/* Change plane confirmation dialog */}
+        {showChangePlaneDialog && (
+          <ChangePlaneConfirmDialog
+            onConfirm={handleConfirmChangePlane}
+            onCancel={() => setShowChangePlaneDialog(false)}
           />
         )}
       </div>
