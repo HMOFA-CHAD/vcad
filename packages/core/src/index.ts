@@ -32,6 +32,8 @@ export {
   isAxisAlignedPlane,
   computePlaneFromFace,
   getSketchPlaneName,
+  formatDirection,
+  negateDirection,
 } from "./types.js";
 
 // Stores

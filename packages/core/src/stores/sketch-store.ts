@@ -22,6 +22,11 @@ export interface SketchStore extends SketchState {
   hoveredFace: FaceInfo | null;
   selectedFace: FaceInfo | null;
 
+  // 3D cursor state for integrated sketch rendering
+  cursorWorldPos: Vec3 | null;
+  cursorSketchPos: Vec2 | null;
+  snapTarget: Vec2 | null;
+
   // Actions
   enterFaceSelectionMode: () => void;
   setHoveredFace: (face: FaceInfo | null) => void;
@@ -60,6 +65,8 @@ export interface SketchStore extends SketchState {
   saveProfile: () => void;
   clearForNextProfile: (newOrigin: Vec3) => void;
   exitLoftMode: () => ProfileSnapshot[] | null;
+  // 3D cursor actions
+  setCursorPos: (world: Vec3 | null, sketch: Vec2 | null, snap: Vec2 | null) => void;
 }
 
 function makeRectangleSegments(p1: Vec2, p2: Vec2): SketchSegment2D[] {
@@ -137,6 +144,9 @@ export const useSketchStore = create<SketchStore>((set, get) => ({
   faceSelectionMode: false,
   hoveredFace: null,
   selectedFace: null,
+  cursorWorldPos: null,
+  cursorSketchPos: null,
+  snapTarget: null,
 
   enterFaceSelectionMode: () => {
     set({
@@ -610,5 +620,9 @@ export const useSketchStore = create<SketchStore>((set, get) => ({
 
     // Return profiles only if we have at least 2
     return allProfiles.length >= 2 ? allProfiles : null;
+  },
+
+  setCursorPos: (world, sketch, snap) => {
+    set({ cursorWorldPos: world, cursorSketchPos: sketch, snapTarget: snap });
   },
 }));

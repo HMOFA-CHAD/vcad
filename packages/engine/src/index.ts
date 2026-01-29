@@ -1,9 +1,20 @@
-import type { Document } from "@vcad/ir";
+import type { Document, Vec3, SketchSegment2D } from "@vcad/ir";
 import { evaluateDocument } from "./evaluate.js";
-import type { EvaluatedScene } from "./mesh.js";
+import type { EvaluatedScene, TriangleMesh } from "./mesh.js";
 import type { Solid } from "@vcad/kernel-wasm";
 
-export type { TriangleMesh, EvaluatedPart, EvaluatedScene } from "./mesh.js";
+export type {
+  TriangleMesh,
+  EvaluatedPart,
+  EvaluatedPartDef,
+  EvaluatedInstance,
+  EvaluatedScene,
+} from "./mesh.js";
+
+export {
+  solveForwardKinematics,
+  applyForwardKinematics,
+} from "./kinematics.js";
 
 /** Re-export Solid class for direct use */
 export type { Solid } from "@vcad/kernel-wasm";
@@ -65,5 +76,52 @@ export class Engine {
   /** Get the Solid class for direct use */
   get Solid(): typeof Solid {
     return this.kernel.Solid;
+  }
+
+  /** Evaluate a preview extrusion without adding to document */
+  evaluateExtrudePreview(
+    origin: Vec3,
+    xDir: Vec3,
+    yDir: Vec3,
+    segments: SketchSegment2D[],
+    direction: Vec3,
+  ): TriangleMesh | null {
+    if (segments.length === 0) return null;
+
+    try {
+      const profile = {
+        origin: [origin.x, origin.y, origin.z],
+        x_dir: [xDir.x, xDir.y, xDir.z],
+        y_dir: [yDir.x, yDir.y, yDir.z],
+        segments: segments.map((seg) => {
+          if (seg.type === "Line") {
+            return {
+              type: "Line" as const,
+              start: [seg.start.x, seg.start.y],
+              end: [seg.end.x, seg.end.y],
+            };
+          } else {
+            return {
+              type: "Arc" as const,
+              start: [seg.start.x, seg.start.y],
+              end: [seg.end.x, seg.end.y],
+              center: [seg.center.x, seg.center.y],
+              ccw: seg.ccw,
+            };
+          }
+        }),
+      };
+
+      const dirArray = new Float64Array([direction.x, direction.y, direction.z]);
+      const solid = this.kernel.Solid.extrude(profile, dirArray);
+      const meshData = solid.getMesh();
+
+      return {
+        positions: new Float32Array(meshData.positions),
+        indices: new Uint32Array(meshData.indices),
+      };
+    } catch {
+      return null;
+    }
   }
 }

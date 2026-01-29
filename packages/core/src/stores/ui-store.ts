@@ -12,6 +12,7 @@ export interface UiState {
   isDraggingGizmo: boolean;
   showWireframe: boolean;
   gridSnap: boolean;
+  pointSnap: boolean;
   snapIncrement: number;
   clipboard: string[];
   deleteConfirmParts: string[] | null;
@@ -31,6 +32,7 @@ export interface UiState {
   toggleTheme: () => void;
   toggleWireframe: () => void;
   toggleGridSnap: () => void;
+  togglePointSnap: () => void;
   setSnapIncrement: (value: number) => void;
   setDraggingGizmo: (dragging: boolean) => void;
   copyToClipboard: (partIds: string[]) => void;
@@ -48,7 +50,8 @@ export const useUiStore = create<UiState>((set) => ({
   theme: "dark",
   isDraggingGizmo: false,
   showWireframe: false,
-  gridSnap: false,
+  gridSnap: true,
+  pointSnap: true,
   snapIncrement: 5,
   clipboard: [],
   deleteConfirmParts: null,
@@ -98,6 +101,9 @@ export const useUiStore = create<UiState>((set) => ({
 
   toggleGridSnap: () =>
     set((s) => ({ gridSnap: !s.gridSnap })),
+
+  togglePointSnap: () =>
+    set((s) => ({ pointSnap: !s.pointSnap })),
 
   setSnapIncrement: (value) =>
     set({ snapIncrement: value, gridSnap: true }),

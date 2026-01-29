@@ -7,11 +7,13 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { GridPlane } from "./GridPlane";
 import { SceneMesh } from "./SceneMesh";
 import { ClashMesh } from "./ClashMesh";
+import { PreviewMesh } from "./PreviewMesh";
+import { SketchPlane3D } from "./SketchPlane3D";
 import { TransformGizmo } from "./TransformGizmo";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { DimensionOverlay } from "./DimensionOverlay";
 import { InlineProperties } from "./InlineProperties";
-import { useEngineStore, useDocumentStore, useUiStore } from "@vcad/core";
+import { useEngineStore, useDocumentStore, useUiStore, useSketchStore } from "@vcad/core";
 import type { PartInfo } from "@vcad/core";
 import { useCameraControls } from "@/hooks/useCameraControls";
 import { useTheme } from "@/hooks/useTheme";
@@ -20,8 +22,10 @@ import type { EvaluatedInstance } from "@vcad/engine";
 export function ViewportContent() {
   useCameraControls();
   const scene = useEngineStore((s) => s.scene);
+  const previewMesh = useEngineStore((s) => s.previewMesh);
   const parts = useDocumentStore((s) => s.parts);
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
+  const sketchActive = useSketchStore((s) => s.active);
   const orbitRef = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
   const { isDark } = useTheme();
@@ -395,6 +399,12 @@ export function ViewportContent() {
       {scene?.clashes.map((clashMesh, idx) => (
         <ClashMesh key={`clash-${idx}`} mesh={clashMesh} />
       ))}
+
+      {/* Extrusion preview (semi-transparent) */}
+      {previewMesh && <PreviewMesh mesh={previewMesh} />}
+
+      {/* 3D Sketch plane (when sketch mode is active) */}
+      {sketchActive && <SketchPlane3D />}
 
       {/* Selection bounding box overlay */}
       <SelectionOverlay />

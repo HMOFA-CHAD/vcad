@@ -4,6 +4,7 @@ import { Engine, useDocumentStore, useEngineStore } from "@vcad/core";
 export function useEngine() {
   const engineRef = useRef<Engine | null>(null);
   const rafRef = useRef<number>(0);
+  const setEngine = useEngineStore((s) => s.setEngine);
   const setScene = useEngineStore((s) => s.setScene);
   const setEngineReady = useEngineStore((s) => s.setEngineReady);
   const setLoading = useEngineStore((s) => s.setLoading);
@@ -18,6 +19,7 @@ export function useEngine() {
       .then((engine) => {
         if (cancelled) return;
         engineRef.current = engine;
+        setEngine(engine);
         setEngineReady(true);
         setLoading(false);
 
@@ -38,7 +40,7 @@ export function useEngine() {
     return () => {
       cancelled = true;
     };
-  }, [setScene, setEngineReady, setLoading, setError]);
+  }, [setEngine, setScene, setEngineReady, setLoading, setError]);
 
   // Subscribe to document changes and re-evaluate
   useEffect(() => {

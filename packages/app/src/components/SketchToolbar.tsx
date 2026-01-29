@@ -16,14 +16,17 @@ import {
   Spiral,
   Stack,
   Warning,
+  Crosshair,
+  GridFour,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { useSketchStore, useDocumentStore, useUiStore, getSketchPlaneDirections } from "@vcad/core";
+import { useSketchStore, useDocumentStore, useUiStore, useEngineStore, getSketchPlaneDirections, formatDirection, negateDirection, getSketchPlaneName } from "@vcad/core";
 import { useToastStore } from "@/stores/toast-store";
-import type { SketchState, ConstraintTool } from "@vcad/core";
+import type { SketchState, ConstraintTool, SketchPlane } from "@vcad/core";
+import type { Vec3, SketchSegment2D } from "@vcad/ir";
 
 /** Confirmation dialog for discarding sketch with segments */
 function DiscardConfirmDialog({
@@ -34,7 +37,7 @@ function DiscardConfirmDialog({
   onKeepEditing: () => void;
 }) {
   return (
-    <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2 border border-border bg-card p-4 shadow-2xl min-w-[240px]">
+    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 border border-border bg-card p-4 shadow-2xl min-w-[240px]">
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2 text-amber-500">
           <Warning size={18} weight="fill" />
@@ -96,7 +99,7 @@ function NumberInputDialog({
   const [value, setValue] = useState(defaultValue);
 
   return (
-    <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2  border border-border bg-card p-4 shadow-2xl">
+    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2  border border-border bg-card p-4 shadow-2xl">
       <div className="flex flex-col gap-3">
         <div className="text-xs font-medium text-text">{label}</div>
         <div className="flex items-center gap-2">
@@ -134,18 +137,98 @@ function NumberInputDialog({
 function ExtrudeDialog({
   onExtrude,
   onClose,
+  normalDir,
+  plane,
+  origin,
+  segments,
 }: {
   onExtrude: (depth: number) => void;
   onClose: () => void;
+  normalDir: string;
+  plane: SketchPlane;
+  origin: Vec3;
+  segments: SketchSegment2D[];
 }) {
+  const [depth, setDepth] = useState(20);
+  const [flip, setFlip] = useState(false);
+  const engine = useEngineStore((s) => s.engine);
+  const setPreviewMesh = useEngineStore((s) => s.setPreviewMesh);
+
+  const displayDir = flip ? negateDirection(normalDir) : normalDir;
+
+  // Compute preview on mount and when depth/flip changes
+  useEffect(() => {
+    if (!engine || segments.length === 0) return;
+
+    const { x_dir, y_dir, normal } = getSketchPlaneDirections(plane);
+    const effectiveDepth = flip ? -depth : depth;
+    const direction = {
+      x: normal.x * effectiveDepth,
+      y: normal.y * effectiveDepth,
+      z: normal.z * effectiveDepth,
+    };
+
+    const mesh = engine.evaluateExtrudePreview(origin, x_dir, y_dir, segments, direction);
+    setPreviewMesh(mesh);
+
+    return () => {
+      setPreviewMesh(null);
+    };
+  }, [engine, plane, origin, segments, depth, flip, setPreviewMesh]);
+
+  // Clear preview on unmount
+  useEffect(() => {
+    return () => {
+      setPreviewMesh(null);
+    };
+  }, [setPreviewMesh]);
+
   return (
-    <NumberInputDialog
-      label="Extrude Depth"
-      unit="mm"
-      defaultValue={20}
-      onSubmit={onExtrude}
-      onClose={onClose}
-    />
+    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 border border-border bg-card p-4 shadow-2xl">
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-medium text-text">Extrude Depth</div>
+        <div className="flex items-center gap-2 text-xs text-text-muted">
+          <span>Direction:</span>
+          <span className="font-mono text-accent">{displayDir}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={depth}
+            onChange={(e) => setDepth(Number(e.target.value))}
+            className="w-24 border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-accent"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onExtrude(flip ? -depth : depth);
+              if (e.key === "Escape") onClose();
+            }}
+          />
+          <span className="text-xs text-text-muted">mm</span>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={flip}
+            onChange={(e) => setFlip(e.target.checked)}
+            className="accent-accent"
+          />
+          <span className="text-xs text-text-muted">Flip direction</span>
+        </label>
+        <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            className="flex-1"
+            onClick={() => onExtrude(flip ? -depth : depth)}
+          >
+            Extrude
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -162,7 +245,7 @@ function SweepDialog({
   const [turns, setTurns] = useState(2);
 
   return (
-    <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2  border border-border bg-card p-4 shadow-2xl">
+    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2  border border-border bg-card p-4 shadow-2xl">
       <div className="flex flex-col gap-3">
         <div className="text-xs font-medium text-text">Sweep Path</div>
         <div className="flex gap-2">
@@ -293,6 +376,10 @@ export function SketchToolbar() {
   const addSweep = useDocumentStore((s) => s.addSweep);
   const addLoft = useDocumentStore((s) => s.addLoft);
   const select = useUiStore((s) => s.select);
+  const gridSnap = useUiStore((s) => s.gridSnap);
+  const pointSnap = useUiStore((s) => s.pointSnap);
+  const toggleGridSnap = useUiStore((s) => s.toggleGridSnap);
+  const togglePointSnap = useUiStore((s) => s.togglePointSnap);
   const addToast = useToastStore((s) => s.addToast);
 
   // Listen for quick extrude keyboard shortcut
@@ -305,6 +392,8 @@ export function SketchToolbar() {
     window.addEventListener("vcad:sketch-extrude", handleQuickExtrude);
     return () => window.removeEventListener("vcad:sketch-extrude", handleQuickExtrude);
   }, [active, segments.length, loftMode]);
+
+  const solved = useSketchStore((s) => s.solved);
 
   if (!active) return null;
 
@@ -460,8 +549,24 @@ export function SketchToolbar() {
   }
 
   return (
-    <div className="fixed left-1/2 bottom-6 z-30 -translate-x-1/2">
-      <div className="relative flex items-center gap-1  border border-border bg-card px-2 py-1.5 shadow-2xl">
+    <>
+      {/* Top-left status indicator */}
+      <div className="fixed left-4 top-4 z-30 bg-surface border border-border px-3 py-2 text-xs text-text shadow-lg">
+        <span className="font-medium">Sketch Mode</span>
+        <span className="ml-2 text-text-muted">Plane: {getSketchPlaneName(plane)}</span>
+        {isConstraintMode && (
+          <span className="ml-2 text-amber-400">
+            Constraint: {constraintTool} ({selectedSegments.length} selected)
+          </span>
+        )}
+        {!solved && (
+          <span className="ml-2 text-red-400">Unsolved</span>
+        )}
+      </div>
+
+      {/* Bottom toolbar */}
+      <div className="fixed left-1/2 bottom-6 z-30 -translate-x-1/2">
+        <div className="relative flex items-center gap-1  border border-border bg-card px-2 py-1.5 shadow-2xl">
         {/* Drawing tools */}
         {TOOLS.map(({ tool: t, icon: Icon, label }) => (
           <Tooltip key={t} content={label}>
@@ -477,6 +582,28 @@ export function SketchToolbar() {
             </Button>
           </Tooltip>
         ))}
+
+        <Separator orientation="vertical" className="mx-1 h-5" />
+
+        {/* Snap controls */}
+        <Tooltip content="Toggle point snap (P)">
+          <Button
+            variant={pointSnap ? "default" : "ghost"}
+            size="icon-sm"
+            onClick={togglePointSnap}
+          >
+            <Crosshair size={16} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Toggle grid snap (G)">
+          <Button
+            variant={gridSnap ? "default" : "ghost"}
+            size="icon-sm"
+            onClick={toggleGridSnap}
+          >
+            <GridFour size={16} />
+          </Button>
+        </Tooltip>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
@@ -654,6 +781,10 @@ export function SketchToolbar() {
           <ExtrudeDialog
             onExtrude={handleExtrude}
             onClose={() => setShowExtrudeDialog(false)}
+            normalDir={formatDirection(getSketchPlaneDirections(plane).normal)}
+            plane={plane}
+            origin={origin}
+            segments={segments}
           />
         )}
 
@@ -697,5 +828,6 @@ export function SketchToolbar() {
         )}
       </div>
     </div>
+    </>
   );
 }

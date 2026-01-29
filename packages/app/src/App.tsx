@@ -10,7 +10,6 @@ import { PropertyPanel } from "@/components/PropertyPanel";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { AboutModal } from "@/components/AboutModal";
 import { CommandPalette } from "@/components/CommandPalette";
-import { SketchCanvas } from "@/components/SketchCanvas";
 import { SketchToolbar } from "@/components/SketchToolbar";
 import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
@@ -164,7 +163,6 @@ export function App() {
       <AppShell>
         {/* Full-bleed viewport */}
         <Viewport />
-        <SketchCanvas />
         <SketchToolbar />
         <FaceSelectionOverlay />
 

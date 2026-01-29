@@ -171,7 +171,7 @@ export function getSketchPlaneDirections(plane: SketchPlane): { x_dir: Vec3; y_d
       case "XY":
         return { x_dir: { x: 1, y: 0, z: 0 }, y_dir: { x: 0, y: 1, z: 0 }, normal: { x: 0, y: 0, z: 1 } };
       case "XZ":
-        return { x_dir: { x: 1, y: 0, z: 0 }, y_dir: { x: 0, y: 0, z: 1 }, normal: { x: 0, y: 1, z: 0 } };
+        return { x_dir: { x: 1, y: 0, z: 0 }, y_dir: { x: 0, y: 0, z: -1 }, normal: { x: 0, y: 1, z: 0 } };
       case "YZ":
         return { x_dir: { x: 0, y: 1, z: 0 }, y_dir: { x: 0, y: 0, z: 1 }, normal: { x: 1, y: 0, z: 0 } };
     }
@@ -217,4 +217,19 @@ export function computePlaneFromFace(face: FaceInfo): ArbitraryPlane {
 export function getSketchPlaneName(plane: SketchPlane): string {
   if (typeof plane === "string") return plane;
   return "Face";
+}
+
+/** Format a normal vector as a human-readable direction string */
+export function formatDirection(normal: Vec3): string {
+  if (Math.abs(normal.x) > 0.9) return normal.x > 0 ? "+X" : "-X";
+  if (Math.abs(normal.y) > 0.9) return normal.y > 0 ? "+Y" : "-Y";
+  if (Math.abs(normal.z) > 0.9) return normal.z > 0 ? "+Z" : "-Z";
+  return "custom";
+}
+
+/** Negate a direction string (e.g., "+X" → "-X") */
+export function negateDirection(dir: string): string {
+  if (dir.startsWith("+")) return "-" + dir.slice(1);
+  if (dir.startsWith("-")) return "+" + dir.slice(1);
+  return dir;
 }
