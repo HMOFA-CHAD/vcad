@@ -35,6 +35,11 @@ export function ViewportContent() {
   const distanceGoalRef = useRef<number | null>(null);
   const isAnimatingTargetRef = useRef(false);
 
+  // Initial camera state for reset
+  const INITIAL_POSITION = new Vector3(50, 50, 50);
+  const INITIAL_TARGET = new Vector3(0, 0, 0);
+  const INITIAL_DISTANCE = INITIAL_POSITION.distanceTo(INITIAL_TARGET);
+
   // Calculate center and size of selected parts
   const selectionInfo = useMemo(() => {
     if (selectedPartIds.size === 0 || !scene) return null;
@@ -181,6 +186,31 @@ export function ViewportContent() {
         return;
       }
 
+      // Cmd + scroll = pan (push camera and target in screen space)
+      if (e.metaKey) {
+        const target = controls.target;
+        const offset = offsetRef.current.subVectors(camera.position, target);
+        const distance = offset.length();
+
+        // Scale pan speed by distance so it feels consistent at any zoom
+        const panSpeed = distance * 0.002;
+
+        // Get camera's right and up vectors in world space
+        const right = new Vector3();
+        const up = new Vector3();
+        camera.matrix.extractBasis(right, up, new Vector3());
+
+        // Calculate pan offset: drag to pull the view
+        const panOffset = right.multiplyScalar(dx * panSpeed)
+          .add(up.multiplyScalar(-dy * panSpeed));
+
+        // Move both camera and target by the same amount
+        camera.position.add(panOffset);
+        target.add(panOffset);
+        controls.update();
+        return;
+      }
+
       // OrbitControls formula: viewport height = 2π radians
       const rotateSpeed = (2 * Math.PI) / domElement.clientHeight;
 
@@ -198,6 +228,26 @@ export function ViewportContent() {
     domElement.addEventListener("wheel", handleWheel, { passive: false });
     return () => domElement.removeEventListener("wheel", handleWheel);
   }, [camera]);
+
+  // Double-click on empty canvas resets camera to initial position
+  useEffect(() => {
+    const controls = orbitRef.current;
+    const domElement = controls?.domElement;
+    if (!domElement) return;
+
+    const handleDoubleClick = () => {
+      // Only reset when nothing is selected
+      if (useUiStore.getState().selectedPartIds.size > 0) return;
+
+      // Animate to initial position
+      targetGoalRef.current.copy(INITIAL_TARGET);
+      distanceGoalRef.current = INITIAL_DISTANCE;
+      isAnimatingTargetRef.current = true;
+    };
+
+    domElement.addEventListener("dblclick", handleDoubleClick);
+    return () => domElement.removeEventListener("dblclick", handleDoubleClick);
+  }, []);
 
   return (
     <>
