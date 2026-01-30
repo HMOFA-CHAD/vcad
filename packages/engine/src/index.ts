@@ -1,7 +1,7 @@
 import type { Document, Vec3, SketchSegment2D } from "@vcad/ir";
 import { evaluateDocument } from "./evaluate.js";
 import type { EvaluatedScene, TriangleMesh } from "./mesh.js";
-import type { Solid } from "@vcad/kernel-wasm";
+import type { Solid, WasmAnnotationLayer } from "@vcad/kernel-wasm";
 
 export type {
   TriangleMesh,
@@ -17,11 +17,68 @@ export {
 } from "./kinematics.js";
 
 /** Re-export Solid class for direct use */
-export type { Solid } from "@vcad/kernel-wasm";
+export type { Solid, WasmAnnotationLayer } from "@vcad/kernel-wasm";
 
 /** Type for the initialized kernel module */
 export interface KernelModule {
   Solid: typeof Solid;
+  WasmAnnotationLayer: typeof WasmAnnotationLayer;
+  projectMesh: (mesh: { positions: Float32Array; indices: Uint32Array }, viewDirection: string) => ProjectedView | null;
+}
+
+/** 2D projected edge with visibility info */
+export interface ProjectedEdge {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  visibility: "Visible" | "Hidden";
+  edge_type: "Sharp" | "Silhouette" | "Boundary";
+  depth: number;
+}
+
+/** 2D bounding box */
+export interface BoundingBox2D {
+  min_x: number;
+  min_y: number;
+  max_x: number;
+  max_y: number;
+}
+
+/** Result of projecting a 3D mesh to a 2D view */
+export interface ProjectedView {
+  edges: ProjectedEdge[];
+  bounds: BoundingBox2D;
+  view_direction: string;
+}
+
+/** Rendered dimension types from the annotation layer */
+export interface RenderedText {
+  position: { x: number; y: number };
+  text: string;
+  height: number;
+  rotation: number;
+  alignment: string;
+}
+
+export interface RenderedArrow {
+  tip: { x: number; y: number };
+  direction: number;
+  arrow_type: string;
+  size: number;
+}
+
+export interface RenderedArc {
+  center: { x: number; y: number };
+  radius: number;
+  start_angle: number;
+  end_angle: number;
+}
+
+export interface RenderedDimension {
+  lines: Array<[{ x: number; y: number }, { x: number; y: number }]>;
+  arcs: RenderedArc[];
+  arrows: RenderedArrow[];
+  texts: RenderedText[];
+  is_basic: boolean;
 }
 
 /** CSG evaluation engine backed by vcad-kernel (WASM). */
@@ -65,7 +122,11 @@ export class Engine {
       await wasmModule.default();
     }
 
-    return new Engine({ Solid: wasmModule.Solid });
+    return new Engine({
+      Solid: wasmModule.Solid,
+      WasmAnnotationLayer: wasmModule.WasmAnnotationLayer,
+      projectMesh: wasmModule.projectMesh,
+    });
   }
 
   /** Evaluate an IR document into triangle meshes. */
@@ -76,6 +137,19 @@ export class Engine {
   /** Get the Solid class for direct use */
   get Solid(): typeof Solid {
     return this.kernel.Solid;
+  }
+
+  /** Get the WasmAnnotationLayer class for creating dimensions */
+  get WasmAnnotationLayer(): typeof WasmAnnotationLayer {
+    return this.kernel.WasmAnnotationLayer;
+  }
+
+  /** Project a mesh to a 2D view */
+  projectMesh(mesh: TriangleMesh, viewDirection: string): ProjectedView | null {
+    return this.kernel.projectMesh(
+      { positions: mesh.positions, indices: mesh.indices },
+      viewDirection,
+    );
   }
 
   /** Evaluate a preview extrusion without adding to document */

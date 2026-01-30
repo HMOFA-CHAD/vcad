@@ -2,12 +2,14 @@ import { useRef, useEffect } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { ViewportContent } from "./ViewportContent";
+import { DrawingView } from "./DrawingView";
 import {
   useUiStore,
   useDocumentStore,
   useEngineStore,
 } from "@vcad/core";
 import { useTheme } from "@/hooks/useTheme";
+import { useDrawingStore } from "@/stores/drawing-store";
 
 // Monokai Soda from tmTheme
 const BG_DARK = "#222222";
@@ -181,7 +183,21 @@ export function Viewport() {
   const containerRef = useRef<HTMLDivElement>(null);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const { isDark } = useTheme();
+  const viewMode = useDrawingStore((s) => s.viewMode);
 
+  // Render 2D Drawing View
+  if (viewMode === "2d") {
+    return (
+      <div
+        className="absolute inset-0 overflow-hidden"
+        style={{ backgroundColor: isDark ? "#0a0a0a" : "#ffffff" }}
+      >
+        <DrawingView />
+      </div>
+    );
+  }
+
+  // Render 3D Canvas
   return (
     <div ref={containerRef} className="absolute inset-0">
       <Canvas

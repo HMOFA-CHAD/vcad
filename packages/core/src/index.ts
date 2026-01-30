@@ -41,7 +41,7 @@ export { useDocumentStore, getUndoActionName, getRedoActionName } from "./stores
 export type { VcadFile, DocumentState } from "./stores/document-store.js";
 
 export { useUiStore } from "./stores/ui-store.js";
-export type { UiState } from "./stores/ui-store.js";
+export type { UiState, MaterialPreview } from "./stores/ui-store.js";
 
 export { useSketchStore } from "./stores/sketch-store.js";
 export type { SketchStore, ProfileSnapshot, SketchExitStatus } from "./stores/sketch-store.js";
@@ -58,7 +58,19 @@ export { exportStlBuffer, exportStlBlob } from "./utils/export-stl.js";
 export { exportGltfBuffer, exportGltfBlob } from "./utils/export-gltf.js";
 export { serializeDocument, parseVcadFile } from "./utils/save-load.js";
 export type { VcadFile as VcadFileFormat } from "./utils/save-load.js";
+export { computeVolume, computeMass, formatMass, formatVolume } from "./utils/geometry.js";
 
 // Re-export engine initialization
 export { Engine } from "@vcad/engine";
-export type { EvaluatedScene, EvaluatedPart, TriangleMesh } from "@vcad/engine";
+export type {
+  EvaluatedScene,
+  EvaluatedPart,
+  TriangleMesh,
+  ProjectedView,
+  ProjectedEdge,
+  BoundingBox2D,
+  RenderedDimension,
+  RenderedText,
+  RenderedArrow,
+  RenderedArc,
+} from "@vcad/engine";

@@ -166,6 +166,20 @@ export class Solid {
         return ret;
     }
     /**
+     * Generate a horizontal section view at a given Z height.
+     *
+     * Convenience method that creates a horizontal section plane.
+     * @param {number} z
+     * @param {number | null} [hatch_spacing]
+     * @param {number | null} [hatch_angle]
+     * @param {number | null} [segments]
+     * @returns {any}
+     */
+    horizontalSection(z, hatch_spacing, hatch_angle, segments) {
+        const ret = wasm.solid_horizontalSection(this.__wbg_ptr, z, !isLikeNone(hatch_spacing), isLikeNone(hatch_spacing) ? 0 : hatch_spacing, !isLikeNone(hatch_angle), isLikeNone(hatch_angle) ? 0 : hatch_angle, isLikeNone(segments) ? 0x100000001 : (segments) >>> 0);
+        return ret;
+    }
+    /**
      * Boolean intersection (self ∩ other).
      * @param {Solid} other
      * @returns {Solid}
@@ -226,6 +240,25 @@ export class Solid {
         return ret >>> 0;
     }
     /**
+     * Project the solid to a 2D view for technical drawing.
+     *
+     * # Arguments
+     * * `view_direction` - View direction: "front", "back", "top", "bottom", "left", "right", or "isometric"
+     * * `segments` - Number of segments for tessellation (optional, default 32)
+     *
+     * # Returns
+     * A JS object containing the projected view with edges and bounds.
+     * @param {string} view_direction
+     * @param {number | null} [segments]
+     * @returns {any}
+     */
+    projectView(view_direction, segments) {
+        const ptr0 = passStringToWasm0(view_direction, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.solid_projectView(this.__wbg_ptr, ptr0, len0, isLikeNone(segments) ? 0x100000001 : (segments) >>> 0);
+        return ret;
+    }
+    /**
      * Create a solid by revolving a 2D sketch profile around an axis.
      *
      * Takes a sketch profile, axis origin, axis direction, and angle in degrees.
@@ -267,6 +300,29 @@ export class Solid {
     scale(x, y, z) {
         const ret = wasm.solid_scale(this.__wbg_ptr, x, y, z);
         return Solid.__wrap(ret);
+    }
+    /**
+     * Generate a section view by cutting the solid with a plane.
+     *
+     * # Arguments
+     * * `plane_json` - JSON string with plane definition: `{"origin": [x,y,z], "normal": [x,y,z], "up": [x,y,z]}`
+     * * `hatch_json` - Optional JSON string with hatch pattern: `{"spacing": f64, "angle": f64}`
+     * * `segments` - Number of segments for tessellation (optional, default 32)
+     *
+     * # Returns
+     * A JS object containing the section view with curves, hatch lines, and bounds.
+     * @param {string} plane_json
+     * @param {string | null} [hatch_json]
+     * @param {number | null} [segments]
+     * @returns {any}
+     */
+    sectionView(plane_json, hatch_json, segments) {
+        const ptr0 = passStringToWasm0(plane_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        var ptr1 = isLikeNone(hatch_json) ? 0 : passStringToWasm0(hatch_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len1 = WASM_VECTOR_LEN;
+        const ret = wasm.solid_sectionView(this.__wbg_ptr, ptr0, len0, ptr1, len1, isLikeNone(segments) ? 0x100000001 : (segments) >>> 0);
+        return ret;
     }
     /**
      * Shell (hollow) the solid by offsetting all faces inward.
@@ -374,10 +430,226 @@ export class Solid {
 if (Symbol.dispose) Solid.prototype[Symbol.dispose] = Solid.prototype.free;
 
 /**
+ * Annotation layer for dimension annotations.
+ *
+ * This class provides methods for creating and rendering dimension annotations
+ * on 2D projected views.
+ */
+export class WasmAnnotationLayer {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WasmAnnotationLayerFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_wasmannotationlayer_free(ptr, 0);
+    }
+    /**
+     * Add an aligned dimension between two points.
+     *
+     * The dimension line is parallel to the line connecting the two points.
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point coordinates
+     * * `x2`, `y2` - Second point coordinates
+     * * `offset` - Distance from points to dimension line
+     * @param {number} x1
+     * @param {number} y1
+     * @param {number} x2
+     * @param {number} y2
+     * @param {number} offset
+     */
+    addAlignedDimension(x1, y1, x2, y2, offset) {
+        wasm.wasmannotationlayer_addAlignedDimension(this.__wbg_ptr, x1, y1, x2, y2, offset);
+    }
+    /**
+     * Add an angular dimension between three points.
+     *
+     * The angle is measured at the vertex (middle point).
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point on one leg
+     * * `vx`, `vy` - Vertex point (angle measured here)
+     * * `x2`, `y2` - Second point on other leg
+     * * `arc_radius` - Radius of the arc showing the angle
+     * @param {number} x1
+     * @param {number} y1
+     * @param {number} vx
+     * @param {number} vy
+     * @param {number} x2
+     * @param {number} y2
+     * @param {number} arc_radius
+     */
+    addAngleDimension(x1, y1, vx, vy, x2, y2, arc_radius) {
+        wasm.wasmannotationlayer_addAngleDimension(this.__wbg_ptr, x1, y1, vx, vy, x2, y2, arc_radius);
+    }
+    /**
+     * Add a diameter dimension for a circle.
+     *
+     * # Arguments
+     * * `cx`, `cy` - Center of the circle
+     * * `radius` - Radius of the circle
+     * * `leader_angle` - Angle in radians for the leader line direction
+     * @param {number} cx
+     * @param {number} cy
+     * @param {number} radius
+     * @param {number} leader_angle
+     */
+    addDiameterDimension(cx, cy, radius, leader_angle) {
+        wasm.wasmannotationlayer_addDiameterDimension(this.__wbg_ptr, cx, cy, radius, leader_angle);
+    }
+    /**
+     * Add a horizontal dimension between two points.
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point coordinates
+     * * `x2`, `y2` - Second point coordinates
+     * * `offset` - Distance from points to dimension line (positive = above)
+     * @param {number} x1
+     * @param {number} y1
+     * @param {number} x2
+     * @param {number} y2
+     * @param {number} offset
+     */
+    addHorizontalDimension(x1, y1, x2, y2, offset) {
+        wasm.wasmannotationlayer_addHorizontalDimension(this.__wbg_ptr, x1, y1, x2, y2, offset);
+    }
+    /**
+     * Add a radius dimension for a circle.
+     *
+     * # Arguments
+     * * `cx`, `cy` - Center of the circle
+     * * `radius` - Radius of the circle
+     * * `leader_angle` - Angle in radians for the leader line direction
+     * @param {number} cx
+     * @param {number} cy
+     * @param {number} radius
+     * @param {number} leader_angle
+     */
+    addRadiusDimension(cx, cy, radius, leader_angle) {
+        wasm.wasmannotationlayer_addRadiusDimension(this.__wbg_ptr, cx, cy, radius, leader_angle);
+    }
+    /**
+     * Add a vertical dimension between two points.
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point coordinates
+     * * `x2`, `y2` - Second point coordinates
+     * * `offset` - Distance from points to dimension line (positive = right)
+     * @param {number} x1
+     * @param {number} y1
+     * @param {number} x2
+     * @param {number} y2
+     * @param {number} offset
+     */
+    addVerticalDimension(x1, y1, x2, y2, offset) {
+        wasm.wasmannotationlayer_addVerticalDimension(this.__wbg_ptr, x1, y1, x2, y2, offset);
+    }
+    /**
+     * Get the number of annotations in the layer.
+     * @returns {number}
+     */
+    annotationCount() {
+        const ret = wasm.wasmannotationlayer_annotationCount(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Clear all annotations from the layer.
+     */
+    clear() {
+        wasm.wasmannotationlayer_clear(this.__wbg_ptr);
+    }
+    /**
+     * Check if the layer has any annotations.
+     * @returns {boolean}
+     */
+    isEmpty() {
+        const ret = wasm.wasmannotationlayer_isEmpty(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Create a new empty annotation layer.
+     */
+    constructor() {
+        const ret = wasm.wasmannotationlayer_new();
+        this.__wbg_ptr = ret >>> 0;
+        WasmAnnotationLayerFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Render all dimensions and return as JSON.
+     *
+     * Returns an array of rendered dimensions, each containing:
+     * - `lines`: Array of line segments [[x1, y1], [x2, y2]]
+     * - `arcs`: Array of arc definitions
+     * - `arrows`: Array of arrow definitions
+     * - `texts`: Array of text labels
+     *
+     * # Arguments
+     * * `view_json` - Optional JSON string of a ProjectedView for geometry resolution
+     * @param {string | null} [view_json]
+     * @returns {any}
+     */
+    renderAll(view_json) {
+        var ptr0 = isLikeNone(view_json) ? 0 : passStringToWasm0(view_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmannotationlayer_renderAll(this.__wbg_ptr, ptr0, len0);
+        return ret;
+    }
+}
+if (Symbol.dispose) WasmAnnotationLayer.prototype[Symbol.dispose] = WasmAnnotationLayer.prototype.free;
+
+/**
  * Initialize the WASM module (sets up panic hook for better error messages).
  */
 export function init() {
     wasm.init();
+}
+
+/**
+ * Project a triangle mesh to a 2D view.
+ *
+ * # Arguments
+ * * `mesh_js` - Mesh data as JS object with `positions` (Float32Array) and `indices` (Uint32Array)
+ * * `view_direction` - View direction: "front", "back", "top", "bottom", "left", "right", or "isometric"
+ *
+ * # Returns
+ * A JS object containing the projected view with edges and bounds.
+ * @param {any} mesh_js
+ * @param {string} view_direction
+ * @returns {any}
+ */
+export function projectMesh(mesh_js, view_direction) {
+    const ptr0 = passStringToWasm0(view_direction, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.projectMesh(mesh_js, ptr0, len0);
+    return ret;
+}
+
+/**
+ * Generate a section view from a triangle mesh.
+ *
+ * # Arguments
+ * * `mesh_js` - Mesh data as JS object with `positions` (Float32Array) and `indices` (Uint32Array)
+ * * `plane_json` - JSON string with plane definition: `{"origin": [x,y,z], "normal": [x,y,z], "up": [x,y,z]}`
+ * * `hatch_json` - Optional JSON string with hatch pattern: `{"spacing": f64, "angle": f64}`
+ *
+ * # Returns
+ * A JS object containing the section view with curves, hatch lines, and bounds.
+ * @param {any} mesh_js
+ * @param {string} plane_json
+ * @param {string | null} [hatch_json]
+ * @returns {any}
+ */
+export function sectionMesh(mesh_js, plane_json, hatch_json) {
+    const ptr0 = passStringToWasm0(plane_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(hatch_json) ? 0 : passStringToWasm0(hatch_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.sectionMesh(mesh_js, ptr0, len0, ptr1, len1);
+    return ret;
 }
 
 function __wbg_get_imports() {
@@ -385,6 +657,10 @@ function __wbg_get_imports() {
         __proto__: null,
         __wbg_Error_8c4e43fe74559d73: function(arg0, arg1) {
             const ret = Error(getStringFromWasm0(arg0, arg1));
+            return ret;
+        },
+        __wbg_Number_04624de7d0e8332d: function(arg0) {
+            const ret = Number(arg0);
             return ret;
         },
         __wbg_String_8f0eb39a4a4c2f66: function(arg0, arg1) {
@@ -626,6 +902,9 @@ function __wbg_get_imports() {
 const SolidFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_solid_free(ptr >>> 0, 1));
+const WasmAnnotationLayerFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmannotationlayer_free(ptr >>> 0, 1));
 
 function addToExternrefTable0(obj) {
     const idx = wasm.__externref_table_alloc();

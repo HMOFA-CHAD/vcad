@@ -71,6 +71,12 @@ export class Solid {
      */
     getMesh(segments?: number | null): any;
     /**
+     * Generate a horizontal section view at a given Z height.
+     *
+     * Convenience method that creates a horizontal section plane.
+     */
+    horizontalSection(z: number, hatch_spacing?: number | null, hatch_angle?: number | null, segments?: number | null): any;
+    /**
      * Boolean intersection (self ∩ other).
      */
     intersection(other: Solid): Solid;
@@ -99,6 +105,17 @@ export class Solid {
      */
     numTriangles(): number;
     /**
+     * Project the solid to a 2D view for technical drawing.
+     *
+     * # Arguments
+     * * `view_direction` - View direction: "front", "back", "top", "bottom", "left", "right", or "isometric"
+     * * `segments` - Number of segments for tessellation (optional, default 32)
+     *
+     * # Returns
+     * A JS object containing the projected view with edges and bounds.
+     */
+    projectView(view_direction: string, segments?: number | null): any;
+    /**
      * Create a solid by revolving a 2D sketch profile around an axis.
      *
      * Takes a sketch profile, axis origin, axis direction, and angle in degrees.
@@ -112,6 +129,18 @@ export class Solid {
      * Scale the solid by (x, y, z).
      */
     scale(x: number, y: number, z: number): Solid;
+    /**
+     * Generate a section view by cutting the solid with a plane.
+     *
+     * # Arguments
+     * * `plane_json` - JSON string with plane definition: `{"origin": [x,y,z], "normal": [x,y,z], "up": [x,y,z]}`
+     * * `hatch_json` - Optional JSON string with hatch pattern: `{"spacing": f64, "angle": f64}`
+     * * `segments` - Number of segments for tessellation (optional, default 32)
+     *
+     * # Returns
+     * A JS object containing the section view with curves, hatch lines, and bounds.
+     */
+    sectionView(plane_json: string, hatch_json?: string | null, segments?: number | null): any;
     /**
      * Shell (hollow) the solid by offsetting all faces inward.
      */
@@ -151,15 +180,142 @@ export class Solid {
 }
 
 /**
+ * Annotation layer for dimension annotations.
+ *
+ * This class provides methods for creating and rendering dimension annotations
+ * on 2D projected views.
+ */
+export class WasmAnnotationLayer {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Add an aligned dimension between two points.
+     *
+     * The dimension line is parallel to the line connecting the two points.
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point coordinates
+     * * `x2`, `y2` - Second point coordinates
+     * * `offset` - Distance from points to dimension line
+     */
+    addAlignedDimension(x1: number, y1: number, x2: number, y2: number, offset: number): void;
+    /**
+     * Add an angular dimension between three points.
+     *
+     * The angle is measured at the vertex (middle point).
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point on one leg
+     * * `vx`, `vy` - Vertex point (angle measured here)
+     * * `x2`, `y2` - Second point on other leg
+     * * `arc_radius` - Radius of the arc showing the angle
+     */
+    addAngleDimension(x1: number, y1: number, vx: number, vy: number, x2: number, y2: number, arc_radius: number): void;
+    /**
+     * Add a diameter dimension for a circle.
+     *
+     * # Arguments
+     * * `cx`, `cy` - Center of the circle
+     * * `radius` - Radius of the circle
+     * * `leader_angle` - Angle in radians for the leader line direction
+     */
+    addDiameterDimension(cx: number, cy: number, radius: number, leader_angle: number): void;
+    /**
+     * Add a horizontal dimension between two points.
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point coordinates
+     * * `x2`, `y2` - Second point coordinates
+     * * `offset` - Distance from points to dimension line (positive = above)
+     */
+    addHorizontalDimension(x1: number, y1: number, x2: number, y2: number, offset: number): void;
+    /**
+     * Add a radius dimension for a circle.
+     *
+     * # Arguments
+     * * `cx`, `cy` - Center of the circle
+     * * `radius` - Radius of the circle
+     * * `leader_angle` - Angle in radians for the leader line direction
+     */
+    addRadiusDimension(cx: number, cy: number, radius: number, leader_angle: number): void;
+    /**
+     * Add a vertical dimension between two points.
+     *
+     * # Arguments
+     * * `x1`, `y1` - First point coordinates
+     * * `x2`, `y2` - Second point coordinates
+     * * `offset` - Distance from points to dimension line (positive = right)
+     */
+    addVerticalDimension(x1: number, y1: number, x2: number, y2: number, offset: number): void;
+    /**
+     * Get the number of annotations in the layer.
+     */
+    annotationCount(): number;
+    /**
+     * Clear all annotations from the layer.
+     */
+    clear(): void;
+    /**
+     * Check if the layer has any annotations.
+     */
+    isEmpty(): boolean;
+    /**
+     * Create a new empty annotation layer.
+     */
+    constructor();
+    /**
+     * Render all dimensions and return as JSON.
+     *
+     * Returns an array of rendered dimensions, each containing:
+     * - `lines`: Array of line segments [[x1, y1], [x2, y2]]
+     * - `arcs`: Array of arc definitions
+     * - `arrows`: Array of arrow definitions
+     * - `texts`: Array of text labels
+     *
+     * # Arguments
+     * * `view_json` - Optional JSON string of a ProjectedView for geometry resolution
+     */
+    renderAll(view_json?: string | null): any;
+}
+
+/**
  * Initialize the WASM module (sets up panic hook for better error messages).
  */
 export function init(): void;
+
+/**
+ * Project a triangle mesh to a 2D view.
+ *
+ * # Arguments
+ * * `mesh_js` - Mesh data as JS object with `positions` (Float32Array) and `indices` (Uint32Array)
+ * * `view_direction` - View direction: "front", "back", "top", "bottom", "left", "right", or "isometric"
+ *
+ * # Returns
+ * A JS object containing the projected view with edges and bounds.
+ */
+export function projectMesh(mesh_js: any, view_direction: string): any;
+
+/**
+ * Generate a section view from a triangle mesh.
+ *
+ * # Arguments
+ * * `mesh_js` - Mesh data as JS object with `positions` (Float32Array) and `indices` (Uint32Array)
+ * * `plane_json` - JSON string with plane definition: `{"origin": [x,y,z], "normal": [x,y,z], "up": [x,y,z]}`
+ * * `hatch_json` - Optional JSON string with hatch pattern: `{"spacing": f64, "angle": f64}`
+ *
+ * # Returns
+ * A JS object containing the section view with curves, hatch lines, and bounds.
+ */
+export function sectionMesh(mesh_js: any, plane_json: string, hatch_json?: string | null): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_solid_free: (a: number, b: number) => void;
+    readonly __wbg_wasmannotationlayer_free: (a: number, b: number) => void;
+    readonly projectMesh: (a: any, b: number, c: number) => any;
+    readonly sectionMesh: (a: any, b: number, c: number, d: number, e: number) => any;
     readonly solid_boundingBox: (a: number) => [number, number];
     readonly solid_centerOfMass: (a: number) => [number, number];
     readonly solid_chamfer: (a: number, b: number) => number;
@@ -172,14 +328,17 @@ export interface InitOutput {
     readonly solid_extrude: (a: any, b: number, c: number) => [number, number, number];
     readonly solid_fillet: (a: number, b: number) => number;
     readonly solid_getMesh: (a: number, b: number) => any;
+    readonly solid_horizontalSection: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => any;
     readonly solid_intersection: (a: number, b: number) => number;
     readonly solid_isEmpty: (a: number) => number;
     readonly solid_linearPattern: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly solid_loft: (a: any, b: number) => [number, number, number];
     readonly solid_numTriangles: (a: number) => number;
+    readonly solid_projectView: (a: number, b: number, c: number, d: number) => any;
     readonly solid_revolve: (a: any, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly solid_rotate: (a: number, b: number, c: number, d: number) => number;
     readonly solid_scale: (a: number, b: number, c: number, d: number) => number;
+    readonly solid_sectionView: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly solid_shell: (a: number, b: number) => number;
     readonly solid_sphere: (a: number, b: number) => number;
     readonly solid_surfaceArea: (a: number) => number;
@@ -188,6 +347,17 @@ export interface InitOutput {
     readonly solid_translate: (a: number, b: number, c: number, d: number) => number;
     readonly solid_union: (a: number, b: number) => number;
     readonly solid_volume: (a: number) => number;
+    readonly wasmannotationlayer_addAlignedDimension: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly wasmannotationlayer_addAngleDimension: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly wasmannotationlayer_addDiameterDimension: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly wasmannotationlayer_addHorizontalDimension: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly wasmannotationlayer_addRadiusDimension: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly wasmannotationlayer_addVerticalDimension: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly wasmannotationlayer_annotationCount: (a: number) => number;
+    readonly wasmannotationlayer_clear: (a: number) => void;
+    readonly wasmannotationlayer_isEmpty: (a: number) => number;
+    readonly wasmannotationlayer_new: () => number;
+    readonly wasmannotationlayer_renderAll: (a: number, b: number, c: number) => any;
     readonly init: () => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

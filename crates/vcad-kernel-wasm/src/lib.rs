@@ -682,3 +682,187 @@ pub fn project_mesh_wasm(mesh_js: JsValue, view_direction: &str) -> JsValue {
     let view = project_mesh(&mesh, view_dir);
     serde_wasm_bindgen::to_value(&view).unwrap_or(JsValue::NULL)
 }
+
+// =========================================================================
+// Dimension annotation bindings
+// =========================================================================
+
+/// Annotation layer for dimension annotations.
+///
+/// This class provides methods for creating and rendering dimension annotations
+/// on 2D projected views.
+#[wasm_bindgen]
+pub struct WasmAnnotationLayer {
+    inner: vcad_kernel_drafting::AnnotationLayer,
+}
+
+#[wasm_bindgen]
+impl WasmAnnotationLayer {
+    /// Create a new empty annotation layer.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            inner: vcad_kernel_drafting::AnnotationLayer::new(),
+        }
+    }
+
+    /// Add a horizontal dimension between two points.
+    ///
+    /// # Arguments
+    /// * `x1`, `y1` - First point coordinates
+    /// * `x2`, `y2` - Second point coordinates
+    /// * `offset` - Distance from points to dimension line (positive = above)
+    #[wasm_bindgen(js_name = addHorizontalDimension)]
+    pub fn add_horizontal_dimension(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, offset: f64) {
+        use vcad_kernel_drafting::Point2D;
+        self.inner.add_horizontal_dimension(
+            Point2D::new(x1, y1),
+            Point2D::new(x2, y2),
+            offset,
+        );
+    }
+
+    /// Add a vertical dimension between two points.
+    ///
+    /// # Arguments
+    /// * `x1`, `y1` - First point coordinates
+    /// * `x2`, `y2` - Second point coordinates
+    /// * `offset` - Distance from points to dimension line (positive = right)
+    #[wasm_bindgen(js_name = addVerticalDimension)]
+    pub fn add_vertical_dimension(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, offset: f64) {
+        use vcad_kernel_drafting::Point2D;
+        self.inner.add_vertical_dimension(
+            Point2D::new(x1, y1),
+            Point2D::new(x2, y2),
+            offset,
+        );
+    }
+
+    /// Add an aligned dimension between two points.
+    ///
+    /// The dimension line is parallel to the line connecting the two points.
+    ///
+    /// # Arguments
+    /// * `x1`, `y1` - First point coordinates
+    /// * `x2`, `y2` - Second point coordinates
+    /// * `offset` - Distance from points to dimension line
+    #[wasm_bindgen(js_name = addAlignedDimension)]
+    pub fn add_aligned_dimension(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, offset: f64) {
+        use vcad_kernel_drafting::Point2D;
+        self.inner.add_aligned_dimension(
+            Point2D::new(x1, y1),
+            Point2D::new(x2, y2),
+            offset,
+        );
+    }
+
+    /// Add a diameter dimension for a circle.
+    ///
+    /// # Arguments
+    /// * `cx`, `cy` - Center of the circle
+    /// * `radius` - Radius of the circle
+    /// * `leader_angle` - Angle in radians for the leader line direction
+    #[wasm_bindgen(js_name = addDiameterDimension)]
+    pub fn add_diameter_dimension(&mut self, cx: f64, cy: f64, radius: f64, leader_angle: f64) {
+        use vcad_kernel_drafting::GeometryRef;
+        self.inner.add_diameter_dimension(
+            GeometryRef::Circle {
+                center: vcad_kernel_drafting::Point2D::new(cx, cy),
+                radius,
+            },
+            leader_angle,
+        );
+    }
+
+    /// Add a radius dimension for a circle.
+    ///
+    /// # Arguments
+    /// * `cx`, `cy` - Center of the circle
+    /// * `radius` - Radius of the circle
+    /// * `leader_angle` - Angle in radians for the leader line direction
+    #[wasm_bindgen(js_name = addRadiusDimension)]
+    pub fn add_radius_dimension(&mut self, cx: f64, cy: f64, radius: f64, leader_angle: f64) {
+        use vcad_kernel_drafting::GeometryRef;
+        self.inner.add_radius_dimension(
+            GeometryRef::Circle {
+                center: vcad_kernel_drafting::Point2D::new(cx, cy),
+                radius,
+            },
+            leader_angle,
+        );
+    }
+
+    /// Add an angular dimension between three points.
+    ///
+    /// The angle is measured at the vertex (middle point).
+    ///
+    /// # Arguments
+    /// * `x1`, `y1` - First point on one leg
+    /// * `vx`, `vy` - Vertex point (angle measured here)
+    /// * `x2`, `y2` - Second point on other leg
+    /// * `arc_radius` - Radius of the arc showing the angle
+    #[wasm_bindgen(js_name = addAngleDimension)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_angle_dimension(
+        &mut self,
+        x1: f64,
+        y1: f64,
+        vx: f64,
+        vy: f64,
+        x2: f64,
+        y2: f64,
+        arc_radius: f64,
+    ) {
+        use vcad_kernel_drafting::Point2D;
+        self.inner.add_angle_dimension(
+            Point2D::new(x1, y1),
+            Point2D::new(vx, vy),
+            Point2D::new(x2, y2),
+            arc_radius,
+        );
+    }
+
+    /// Get the number of annotations in the layer.
+    #[wasm_bindgen(js_name = annotationCount)]
+    pub fn annotation_count(&self) -> usize {
+        self.inner.annotation_count()
+    }
+
+    /// Check if the layer has any annotations.
+    #[wasm_bindgen(js_name = isEmpty)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Clear all annotations from the layer.
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    /// Render all dimensions and return as JSON.
+    ///
+    /// Returns an array of rendered dimensions, each containing:
+    /// - `lines`: Array of line segments [[x1, y1], [x2, y2]]
+    /// - `arcs`: Array of arc definitions
+    /// - `arrows`: Array of arrow definitions
+    /// - `texts`: Array of text labels
+    ///
+    /// # Arguments
+    /// * `view_json` - Optional JSON string of a ProjectedView for geometry resolution
+    #[wasm_bindgen(js_name = renderAll)]
+    pub fn render_all(&self, view_json: Option<String>) -> JsValue {
+        use vcad_kernel_drafting::ProjectedView;
+
+        // Parse optional view for geometry resolution
+        let view: Option<ProjectedView> = view_json.and_then(|v| serde_json::from_str(&v).ok());
+
+        let rendered = self.inner.render_all(view.as_ref());
+        serde_wasm_bindgen::to_value(&rendered).unwrap_or(JsValue::NULL)
+    }
+}
+
+impl Default for WasmAnnotationLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
