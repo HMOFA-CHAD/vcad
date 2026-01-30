@@ -1,0 +1,36 @@
+[package]
+name = "vcad-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Terminal-based CAD editor with TUI and Sixel graphics"
+
+[[bin]]
+name = "vcad"
+path = "src/main.rs"
+
+[dependencies]
+vcad = { path = "../vcad" }
+vcad-ir = { path = "../vcad-ir" }
+vcad-kernel = { path = "../vcad-kernel" }
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Image/graphics
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
