@@ -23,7 +23,7 @@ pub struct BRepSolid {
 /// Build a B-rep box (cuboid) with corner at origin and dimensions `(sx, sy, sz)`.
 ///
 /// The box has 6 planar faces, 12 edges, and 8 vertices.
-/// Vertex layout (corner-aligned, like manifold-rs):
+/// Vertex layout (corner-aligned at origin):
 /// ```text
 ///     v4----v5
 ///    /|    /|

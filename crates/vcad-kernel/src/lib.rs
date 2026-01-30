@@ -478,7 +478,7 @@ impl Solid {
         let rx = Transform::rotation_x(x_deg.to_radians());
         let ry = Transform::rotation_y(y_deg.to_radians());
         let rz = Transform::rotation_z(z_deg.to_radians());
-        // Apply Z, then Y, then X (matching manifold-rs convention)
+        // Apply Z, then Y, then X (Euler XYZ intrinsic rotation)
         let t = rx.then(&ry).then(&rz);
         self.apply_transform(&t)
     }

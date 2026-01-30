@@ -489,7 +489,7 @@ impl Part {
     }
 }
 
-/// Helper to create a centered cube (manifold cubes are corner-aligned by default)
+/// Helper to create a centered cube (cubes are corner-aligned at origin by default)
 pub fn centered_cube(name: impl Into<String>, x: f64, y: f64, z: f64) -> Part {
     Part::cube(name, x, y, z).translate(-x / 2.0, -y / 2.0, -z / 2.0)
 }
@@ -600,7 +600,7 @@ impl std::ops::BitAnd for Part {
 impl Part {
     /// Signed volume of the mesh (uses the divergence theorem).
     ///
-    /// Returns a positive value for well-formed manifold meshes.
+    /// Returns a positive value for well-formed closed meshes.
     pub fn volume(&self) -> f64 {
         let mesh = self.to_mesh();
         let verts = mesh.vertices();

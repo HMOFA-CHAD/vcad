@@ -14,7 +14,7 @@ use vcad_kernel_math::{Point2, Point3};
 use vcad_kernel_primitives::BRepSolid;
 use vcad_kernel_topo::{FaceId, Orientation, Topology};
 
-/// Output triangle mesh matching manifold-rs `Mesh` interface.
+/// Output triangle mesh for rendering and export.
 #[derive(Debug, Clone)]
 pub struct TriangleMesh {
     /// Flat array of vertex positions: `[x0, y0, z0, x1, y1, z1, ...]` (f32).
@@ -1668,7 +1668,8 @@ pub fn tessellate_disk(
 /// Full tessellation of a B-rep solid, using `segments` as a quality hint.
 ///
 /// This is the main entry point for converting a B-rep to a triangle mesh.
-/// The output format matches manifold-rs `Mesh` exactly:
+///
+/// Output format:
 /// - `vertices`: flat `Vec<f32>` of `[x, y, z, x, y, z, ...]`
 /// - `indices`: flat `Vec<u32>` of triangle vertex indices
 pub fn tessellate(brep: &BRepSolid, segments: u32) -> TriangleMesh {
