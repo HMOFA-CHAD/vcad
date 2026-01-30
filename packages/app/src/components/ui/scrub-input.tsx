@@ -13,6 +13,7 @@ interface ScrubInputProps {
   step?: number;
   min?: number;
   max?: number;
+  unit?: string;
   className?: string;
 }
 
@@ -23,6 +24,7 @@ export function ScrubInput({
   step = 1,
   min = -Infinity,
   max = Infinity,
+  unit,
   className,
 }: ScrubInputProps) {
   const [text, setText] = useState(String(round(value)));
@@ -133,6 +135,7 @@ export function ScrubInput({
           isScrubbing && "cursor-ew-resize",
         )}
       />
+      {unit && <span className="text-[10px] text-text-muted shrink-0">{unit}</span>}
     </label>
   );
 }

@@ -2,8 +2,8 @@ import { useEffect, useRef, useMemo } from "react";
 import { X } from "@phosphor-icons/react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ScrubInput } from "@/components/ui/scrub-input";
-import { useDocumentStore, useUiStore, isPrimitivePart } from "@vcad/core";
-import type { PartInfo, PrimitivePartInfo } from "@vcad/core";
+import { useDocumentStore, useUiStore, isPrimitivePart, isSweepPart } from "@vcad/core";
+import type { PartInfo, PrimitivePartInfo, SweepPartInfo } from "@vcad/core";
 import type { Vec3, PartInstance, Joint, JointKind } from "@vcad/ir";
 import { identityTransform } from "@vcad/ir";
 import { cn } from "@/lib/utils";
@@ -113,16 +113,19 @@ function PositionSection({
           label="X"
           value={offset.x}
           onChange={(v) => setTranslation(part.id, { ...offset, x: v })}
+          unit="mm"
         />
         <ScrubInput
           label="Y"
           value={offset.y}
           onChange={(v) => setTranslation(part.id, { ...offset, y: v })}
+          unit="mm"
         />
         <ScrubInput
           label="Z"
           value={offset.z}
           onChange={(v) => setTranslation(part.id, { ...offset, z: v })}
+          unit="mm"
         />
       </div>
     </div>
@@ -147,18 +150,21 @@ function RotationSection({
           value={angles.x}
           step={1}
           onChange={(v) => setRotation(part.id, { ...angles, x: v })}
+          unit="°"
         />
         <ScrubInput
           label="Y"
           value={angles.y}
           step={1}
           onChange={(v) => setRotation(part.id, { ...angles, y: v })}
+          unit="°"
         />
         <ScrubInput
           label="Z"
           value={angles.z}
           step={1}
           onChange={(v) => setRotation(part.id, { ...angles, z: v })}
+          unit="°"
         />
       </div>
     </div>
@@ -185,6 +191,7 @@ function CubeDimensions({ part }: { part: PrimitivePartInfo }) {
           onChange={(v) =>
             updatePrimitiveOp(part.id, { type: "Cube", size: { ...size, x: v } })
           }
+          unit="mm"
         />
         <ScrubInput
           label="H"
@@ -193,6 +200,7 @@ function CubeDimensions({ part }: { part: PrimitivePartInfo }) {
           onChange={(v) =>
             updatePrimitiveOp(part.id, { type: "Cube", size: { ...size, y: v } })
           }
+          unit="mm"
         />
         <ScrubInput
           label="D"
@@ -201,6 +209,7 @@ function CubeDimensions({ part }: { part: PrimitivePartInfo }) {
           onChange={(v) =>
             updatePrimitiveOp(part.id, { type: "Cube", size: { ...size, z: v } })
           }
+          unit="mm"
         />
       </div>
     </div>
@@ -225,12 +234,14 @@ function CylinderDimensions({ part }: { part: PrimitivePartInfo }) {
           value={op.radius}
           min={0.1}
           onChange={(v) => updatePrimitiveOp(part.id, { ...op, radius: v })}
+          unit="mm"
         />
         <ScrubInput
           label="H"
           value={op.height}
           min={0.1}
           onChange={(v) => updatePrimitiveOp(part.id, { ...op, height: v })}
+          unit="mm"
         />
       </div>
     </div>
@@ -255,7 +266,130 @@ function SphereDimensions({ part }: { part: PrimitivePartInfo }) {
           value={op.radius}
           min={0.1}
           onChange={(v) => updatePrimitiveOp(part.id, { ...op, radius: v })}
+          unit="mm"
         />
+      </div>
+    </div>
+  );
+}
+
+function SweepProperties({ part }: { part: SweepPartInfo }) {
+  const document = useDocumentStore((s) => s.document);
+  const updateSweepOp = useDocumentStore((s) => s.updateSweepOp);
+
+  const node = document.nodes[String(part.sweepNodeId)];
+  if (!node || node.op.type !== "Sweep") return null;
+
+  const op = node.op;
+  const helixPath = op.path.type === "Helix" ? op.path : null;
+
+  return (
+    <div className="space-y-3">
+      {/* Helix path parameters */}
+      {helixPath && (
+        <div>
+          <SectionHeader tooltip="Helix path parameters">Helix Path</SectionHeader>
+          <div className="space-y-0.5">
+            <ScrubInput
+              label="Radius"
+              value={helixPath.radius}
+              min={0.1}
+              step={0.5}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, radius: v } })
+              }
+              unit="mm"
+            />
+            <ScrubInput
+              label="Pitch"
+              value={helixPath.pitch}
+              min={0.1}
+              step={0.5}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, pitch: v } })
+              }
+              unit="mm"
+            />
+            <ScrubInput
+              label="Height"
+              value={helixPath.height}
+              min={0.1}
+              step={1}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, height: v } })
+              }
+              unit="mm"
+            />
+            <ScrubInput
+              label="Turns"
+              value={helixPath.turns}
+              min={0.25}
+              step={0.25}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, turns: v } })
+              }
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Sweep options */}
+      <div>
+        <SectionHeader tooltip="Twist angle along the sweep path">Twist</SectionHeader>
+        <ScrubInput
+          label="Angle"
+          value={(op.twist_angle ?? 0) * (180 / Math.PI)}
+          step={5}
+          onChange={(v) =>
+            updateSweepOp(part.id, { twist_angle: v * (Math.PI / 180) })
+          }
+          unit="°"
+        />
+      </div>
+
+      {/* Scale variation */}
+      <div>
+        <SectionHeader tooltip="Scale factor at start and end of sweep">Scale</SectionHeader>
+        <div className="space-y-0.5">
+          <ScrubInput
+            label="Start"
+            value={op.scale_start ?? 1}
+            min={0.1}
+            step={0.1}
+            onChange={(v) => updateSweepOp(part.id, { scale_start: v })}
+          />
+          <ScrubInput
+            label="End"
+            value={op.scale_end ?? 1}
+            min={0.1}
+            step={0.1}
+            onChange={(v) => updateSweepOp(part.id, { scale_end: v })}
+          />
+        </div>
+      </div>
+
+      {/* Quality settings */}
+      <div>
+        <SectionHeader tooltip="Higher values = smoother but more polygons">Quality</SectionHeader>
+        <div className="space-y-0.5">
+          <ScrubInput
+            label="Path Segments"
+            value={op.path_segments ?? 0}
+            min={0}
+            max={500}
+            step={10}
+            onChange={(v) => updateSweepOp(part.id, { path_segments: v })}
+          />
+          <div className="text-[10px] text-text-muted pl-1 pb-1">0 = auto</div>
+          <ScrubInput
+            label="Arc Segments"
+            value={op.arc_segments ?? 8}
+            min={1}
+            max={32}
+            step={1}
+            onChange={(v) => updateSweepOp(part.id, { arc_segments: v })}
+          />
+        </div>
       </div>
     </div>
   );
@@ -324,16 +458,19 @@ function InstancePositionSection({ instance }: { instance: PartInstance }) {
           label="X"
           value={t.translation.x}
           onChange={(v) => setInstanceTransform(instance.id, { ...t, translation: { ...t.translation, x: v } })}
+          unit="mm"
         />
         <ScrubInput
           label="Y"
           value={t.translation.y}
           onChange={(v) => setInstanceTransform(instance.id, { ...t, translation: { ...t.translation, y: v } })}
+          unit="mm"
         />
         <ScrubInput
           label="Z"
           value={t.translation.z}
           onChange={(v) => setInstanceTransform(instance.id, { ...t, translation: { ...t.translation, z: v } })}
+          unit="mm"
         />
       </div>
     </div>
@@ -353,18 +490,21 @@ function InstanceRotationSection({ instance }: { instance: PartInstance }) {
           value={t.rotation.x}
           step={1}
           onChange={(v) => setInstanceTransform(instance.id, { ...t, rotation: { ...t.rotation, x: v } })}
+          unit="°"
         />
         <ScrubInput
           label="Y"
           value={t.rotation.y}
           step={1}
           onChange={(v) => setInstanceTransform(instance.id, { ...t, rotation: { ...t.rotation, y: v } })}
+          unit="°"
         />
         <ScrubInput
           label="Z"
           value={t.rotation.z}
           step={1}
           onChange={(v) => setInstanceTransform(instance.id, { ...t, rotation: { ...t.rotation, z: v } })}
+          unit="°"
         />
       </div>
     </div>
@@ -712,6 +852,14 @@ export function PropertyPanel() {
               <SectionHeader>Operation</SectionHeader>
               <div className="text-xs text-text capitalize">{part.booleanType}</div>
             </div>
+            <Divider />
+          </>
+        )}
+
+        {/* Sweep properties */}
+        {isSweepPart(part) && (
+          <>
+            <SweepProperties part={part} />
             <Divider />
           </>
         )}

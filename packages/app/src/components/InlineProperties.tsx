@@ -73,6 +73,7 @@ function CubeSizeInputs({
               size: { ...size, x: v },
             })
           }
+          unit="mm"
           className="text-[10px]"
         />
         <ScrubInput
@@ -85,6 +86,7 @@ function CubeSizeInputs({
               size: { ...size, y: v },
             })
           }
+          unit="mm"
           className="text-[10px]"
         />
         <ScrubInput
@@ -97,6 +99,7 @@ function CubeSizeInputs({
               size: { ...size, z: v },
             })
           }
+          unit="mm"
           className="text-[10px]"
         />
       </div>
@@ -126,6 +129,7 @@ function CylinderSizeInputs({
           onChange={(v) =>
             updatePrimitiveOp(partId, { ...op, radius: v })
           }
+          unit="mm"
           className="text-[10px]"
         />
         <ScrubInput
@@ -135,6 +139,7 @@ function CylinderSizeInputs({
           onChange={(v) =>
             updatePrimitiveOp(partId, { ...op, height: v })
           }
+          unit="mm"
           className="text-[10px]"
         />
       </div>
@@ -163,6 +168,7 @@ function SphereSizeInputs({
         onChange={(v) =>
           updatePrimitiveOp(partId, { ...op, radius: v })
         }
+        unit="mm"
         className="text-[10px]"
       />
     </div>
@@ -271,6 +277,7 @@ export function InlineProperties() {
                   onChange={(v) =>
                     setTranslation(part.id, { ...offset, x: v })
                   }
+                  unit="mm"
                   className="text-[10px]"
                 />
                 <ScrubInput
@@ -279,6 +286,7 @@ export function InlineProperties() {
                   onChange={(v) =>
                     setTranslation(part.id, { ...offset, y: v })
                   }
+                  unit="mm"
                   className="text-[10px]"
                 />
                 <ScrubInput
@@ -287,6 +295,7 @@ export function InlineProperties() {
                   onChange={(v) =>
                     setTranslation(part.id, { ...offset, z: v })
                   }
+                  unit="mm"
                   className="text-[10px]"
                 />
               </div>
