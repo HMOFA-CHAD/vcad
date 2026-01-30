@@ -1,16 +1,13 @@
 import { useRef, useEffect } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
-import { PencilSimple } from "@phosphor-icons/react";
 import { ViewportContent } from "./ViewportContent";
 import {
   useUiStore,
   useDocumentStore,
   useEngineStore,
-  useSketchStore,
 } from "@vcad/core";
 import { useTheme } from "@/hooks/useTheme";
-import { Tooltip } from "@/components/ui/tooltip";
 
 // Monokai Soda from tmTheme
 const BG_DARK = "#222222";
@@ -180,46 +177,6 @@ function BoxSelectHandler({
   return null;
 }
 
-function SketchButton() {
-  const enterSketchMode = useSketchStore((s) => s.enterSketchMode);
-  const enterFaceSelectionMode = useSketchStore(
-    (s) => s.enterFaceSelectionMode,
-  );
-  const sketchActive = useSketchStore((s) => s.active);
-  const faceSelectionMode = useSketchStore((s) => s.faceSelectionMode);
-  const parts = useDocumentStore((s) => s.parts);
-
-  const handleClick = () => {
-    if (sketchActive) return;
-    if (parts.length > 0) {
-      enterFaceSelectionMode();
-    } else {
-      enterSketchMode("XY");
-    }
-  };
-
-  return (
-    <Tooltip content="New Sketch (S)">
-      <button
-        className={`
-          flex h-8 w-8 items-center justify-center rounded
-          transition-colors
-          ${
-            faceSelectionMode
-              ? "bg-accent text-white"
-              : "bg-surface/80 text-text-muted hover:bg-surface hover:text-text border border-border/50"
-          }
-          ${sketchActive ? "opacity-40 cursor-not-allowed" : ""}
-        `}
-        disabled={sketchActive}
-        onClick={handleClick}
-      >
-        <PencilSimple size={16} />
-      </button>
-    </Tooltip>
-  );
-}
-
 export function Viewport() {
   const containerRef = useRef<HTMLDivElement>(null);
   const clearSelection = useUiStore((s) => s.clearSelection);
@@ -241,11 +198,6 @@ export function Viewport() {
         <ViewportContent />
         <BoxSelectHandler containerRef={containerRef} />
       </Canvas>
-
-      {/* Sketch button near view cube */}
-      <div className="absolute bottom-4 right-6 z-10">
-        <SketchButton />
-      </div>
     </div>
   );
 }

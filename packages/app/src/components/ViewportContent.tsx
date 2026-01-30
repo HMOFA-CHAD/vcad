@@ -15,6 +15,7 @@ import { SceneMesh } from "./SceneMesh";
 import { ClashMesh } from "./ClashMesh";
 import { PreviewMesh } from "./PreviewMesh";
 import { SketchPlane3D } from "./SketchPlane3D";
+import { PlaneGizmo } from "./PlaneGizmo";
 import { TransformGizmo } from "./TransformGizmo";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { DimensionOverlay } from "./DimensionOverlay";
@@ -466,6 +467,9 @@ export function ViewportContent() {
 
       {/* Grid */}
       <GridPlane />
+
+      {/* Plane gizmo at origin - click to start sketch */}
+      <PlaneGizmo />
 
       {/* Scene meshes - Assembly mode (instances) */}
       {scene?.instances?.map((inst: EvaluatedInstance) => {
