@@ -251,6 +251,8 @@ impl Solid {
         twist_angle: Option<f64>,
         scale_start: Option<f64>,
         scale_end: Option<f64>,
+        path_segments: Option<u32>,
+        arc_segments: Option<u32>,
     ) -> Result<Solid, JsError> {
         use vcad_kernel::vcad_kernel_sweep::{Helix, SweepOptions};
 
@@ -265,7 +267,8 @@ impl Solid {
             twist_angle: twist_angle.unwrap_or(0.0),
             scale_start: scale_start.unwrap_or(1.0),
             scale_end: scale_end.unwrap_or(1.0),
-            ..Default::default()
+            path_segments: path_segments.unwrap_or(0),
+            arc_segments: arc_segments.unwrap_or(8),
         };
 
         vcad_kernel::Solid::sweep(kernel_profile, &path, options)

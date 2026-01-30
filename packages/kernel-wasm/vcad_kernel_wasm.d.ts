@@ -129,7 +129,7 @@ export class Solid {
      *
      * Takes a sketch profile and helix parameters.
      */
-    static sweepHelix(profile_js: any, radius: number, pitch: number, height: number, turns: number, twist_angle?: number | null, scale_start?: number | null, scale_end?: number | null): Solid;
+    static sweepHelix(profile_js: any, radius: number, pitch: number, height: number, turns: number, twist_angle?: number | null, scale_start?: number | null, scale_end?: number | null, path_segments?: number | null, arc_segments?: number | null): Solid;
     /**
      * Create a solid by sweeping a profile along a line path.
      *
@@ -183,7 +183,7 @@ export interface InitOutput {
     readonly solid_shell: (a: number, b: number) => number;
     readonly solid_sphere: (a: number, b: number) => number;
     readonly solid_surfaceArea: (a: number) => number;
-    readonly solid_sweepHelix: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
+    readonly solid_sweepHelix: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
     readonly solid_sweepLine: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
     readonly solid_translate: (a: number, b: number, c: number, d: number) => number;
     readonly solid_union: (a: number, b: number) => number;

@@ -307,10 +307,12 @@ export class Solid {
      * @param {number | null} [twist_angle]
      * @param {number | null} [scale_start]
      * @param {number | null} [scale_end]
+     * @param {number | null} [path_segments]
+     * @param {number | null} [arc_segments]
      * @returns {Solid}
      */
-    static sweepHelix(profile_js, radius, pitch, height, turns, twist_angle, scale_start, scale_end) {
-        const ret = wasm.solid_sweepHelix(profile_js, radius, pitch, height, turns, !isLikeNone(twist_angle), isLikeNone(twist_angle) ? 0 : twist_angle, !isLikeNone(scale_start), isLikeNone(scale_start) ? 0 : scale_start, !isLikeNone(scale_end), isLikeNone(scale_end) ? 0 : scale_end);
+    static sweepHelix(profile_js, radius, pitch, height, turns, twist_angle, scale_start, scale_end, path_segments, arc_segments) {
+        const ret = wasm.solid_sweepHelix(profile_js, radius, pitch, height, turns, !isLikeNone(twist_angle), isLikeNone(twist_angle) ? 0 : twist_angle, !isLikeNone(scale_start), isLikeNone(scale_start) ? 0 : scale_start, !isLikeNone(scale_end), isLikeNone(scale_end) ? 0 : scale_end, isLikeNone(path_segments) ? 0x100000001 : (path_segments) >>> 0, isLikeNone(arc_segments) ? 0x100000001 : (arc_segments) >>> 0);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
