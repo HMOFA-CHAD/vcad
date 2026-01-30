@@ -25,13 +25,8 @@ export function useKeyboardShortcuts() {
         toggleCommandPalette,
         toggleFeatureTree,
       } = useUiStore.getState();
-      const {
-        undo,
-        redo,
-        removePart,
-        duplicateParts,
-        applyBoolean,
-      } = useDocumentStore.getState();
+      const { undo, redo, removePart, duplicateParts, applyBoolean } =
+        useDocumentStore.getState();
 
       const mod = e.ctrlKey || e.metaKey;
 
@@ -99,10 +94,7 @@ export function useKeyboardShortcuts() {
           const count = newIds.length;
           useToastStore
             .getState()
-            .addToast(
-              `Pasted ${count} part${count > 1 ? "s" : ""}`,
-              "success"
-            );
+            .addToast(`Pasted ${count} part${count > 1 ? "s" : ""}`, "success");
         }
         return;
       }
@@ -213,21 +205,23 @@ export function useKeyboardShortcuts() {
       ) {
         e.preventDefault();
         const ids = Array.from(selectedPartIds);
-        // Shift+Delete skips confirmation (power user fast delete)
-        if (e.shiftKey) {
-          for (const id of ids) {
-            removePart(id);
-          }
-          clearSelection();
-        } else {
-          useUiStore.getState().showDeleteConfirm(ids);
+        for (const id of ids) {
+          removePart(id);
         }
+        clearSelection();
         return;
       }
 
       // Escape: exit sketch mode, cancel face selection, or deselect
       if (e.key === "Escape") {
-        const { active, faceSelectionMode, pendingExit, requestExit, cancelExit, cancelFaceSelection } = useSketchStore.getState();
+        const {
+          active,
+          faceSelectionMode,
+          pendingExit,
+          requestExit,
+          cancelExit,
+          cancelFaceSelection,
+        } = useSketchStore.getState();
 
         // Cancel face selection mode
         if (faceSelectionMode) {

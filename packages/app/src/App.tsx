@@ -1,4 +1,10 @@
-import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastContainer } from "@/components/ui/toast";
 import { AppShell } from "@/components/AppShell";
@@ -12,8 +18,13 @@ import { AboutModal } from "@/components/AboutModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { SketchToolbar } from "@/components/SketchToolbar";
 import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
-import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
-import { useSketchStore, useEngineStore, useDocumentStore, useUiStore, parseVcadFile } from "@vcad/core";
+import {
+  useSketchStore,
+  useEngineStore,
+  useDocumentStore,
+  useUiStore,
+  parseVcadFile,
+} from "@vcad/core";
 import { useEngine } from "@/hooks/useEngine";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { saveDocument } from "@/lib/save-load";
@@ -24,8 +35,12 @@ function useThemeSync() {
   const theme = useUiStore((s) => s.theme);
   useLayoutEffect(() => {
     const applyTheme = (prefersDark: boolean) => {
-      const effectiveTheme = theme === "system" ? (prefersDark ? "dark" : "light") : theme;
-      document.documentElement.classList.toggle("light", effectiveTheme === "light");
+      const effectiveTheme =
+        theme === "system" ? (prefersDark ? "dark" : "light") : theme;
+      document.documentElement.classList.toggle(
+        "light",
+        effectiveTheme === "light",
+      );
     };
 
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -79,13 +94,10 @@ export function App() {
   const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const hasParts = useDocumentStore((s) => s.parts.length > 0);
   const sketchActive = useSketchStore((s) => s.active);
-  const deleteConfirmParts = useUiStore((s) => s.deleteConfirmParts);
-  const hideDeleteConfirm = useUiStore((s) => s.hideDeleteConfirm);
-  const clearSelection = useUiStore((s) => s.clearSelection);
-  const parts = useDocumentStore((s) => s.parts);
-  const removePart = useDocumentStore((s) => s.removePart);
 
-  const welcomeModalDismissed = useOnboardingStore((s) => s.welcomeModalDismissed);
+  const welcomeModalDismissed = useOnboardingStore(
+    (s) => s.welcomeModalDismissed,
+  );
 
   // Close welcome modal when parts are added
   useEffect(() => {
@@ -100,22 +112,6 @@ export function App() {
     useDocumentStore.getState().markSaved();
     useToastStore.getState().addToast("Document saved", "success");
   }, []);
-
-  const handleDeleteConfirm = useCallback(() => {
-    if (deleteConfirmParts) {
-      for (const id of deleteConfirmParts) {
-        removePart(id);
-      }
-      clearSelection();
-      hideDeleteConfirm();
-    }
-  }, [deleteConfirmParts, removePart, clearSelection, hideDeleteConfirm]);
-
-  // Get part names for the delete confirmation dialog
-  const deleteConfirmPartNames = deleteConfirmParts
-    ? deleteConfirmParts
-        .map((id) => parts.find((p) => p.id === id)?.name ?? id)
-    : [];
 
   const handleOpen = useCallback(() => {
     fileInputRef.current?.click();
@@ -176,7 +172,8 @@ export function App() {
   if (loading || !engineReady) return <LoadingScreen />;
 
   // Determine if welcome modal should show
-  const showWelcomeModal = !hasParts && !welcomeModalDismissed && welcomeOpen && !sketchActive;
+  const showWelcomeModal =
+    !hasParts && !welcomeModalDismissed && welcomeOpen && !sketchActive;
 
   return (
     <TooltipProvider>
@@ -204,12 +201,6 @@ export function App() {
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
         onAboutOpen={() => setAboutOpen(true)}
-      />
-      <DeleteConfirmDialog
-        isOpen={deleteConfirmParts !== null}
-        partNames={deleteConfirmPartNames}
-        onConfirm={handleDeleteConfirm}
-        onCancel={hideDeleteConfirm}
       />
       <input
         ref={fileInputRef}

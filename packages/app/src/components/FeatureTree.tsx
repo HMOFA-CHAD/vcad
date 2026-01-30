@@ -1,5 +1,21 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Cube, Cylinder, Globe, Trash, Intersect, CaretRight, CaretDown, ArrowUp, ArrowsClockwise, Spiral, Stack, X, Package, LinkSimple, Anchor } from "@phosphor-icons/react";
+import {
+  Cube,
+  Cylinder,
+  Globe,
+  Trash,
+  Intersect,
+  CaretRight,
+  CaretDown,
+  ArrowUp,
+  ArrowsClockwise,
+  Spiral,
+  Stack,
+  X,
+  Package,
+  LinkSimple,
+  Anchor,
+} from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ContextMenu } from "@/components/ContextMenu";
@@ -90,7 +106,6 @@ function TreeNode({
   const select = useUiStore((s) => s.select);
   const toggleSelect = useUiStore((s) => s.toggleSelect);
   const clearSelection = useUiStore((s) => s.clearSelection);
-  const showDeleteConfirm = useUiStore((s) => s.showDeleteConfirm);
   const removePart = useDocumentStore((s) => s.removePart);
 
   const Icon = getPartIcon(part);
@@ -117,8 +132,8 @@ function TreeNode({
           isSelected
             ? "bg-accent/20 text-accent"
             : isHovered
-              ? "bg-hover text-text"
-              : "text-text-muted hover:bg-hover hover:text-text",
+            ? "bg-hover text-text"
+            : "text-text-muted hover:bg-hover hover:text-text",
           depth > 0 && "opacity-70",
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
@@ -166,12 +181,8 @@ function TreeNode({
               className="h-5 w-5 opacity-0 group-hover:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
-                if (e.shiftKey) {
-                  removePart(part.id);
-                  if (isSelected) clearSelection();
-                } else {
-                  showDeleteConfirm([part.id]);
-                }
+                removePart(part.id);
+                if (isSelected) clearSelection();
               }}
             >
               <Trash size={12} />
@@ -203,22 +214,32 @@ function TreeNode({
 /** Get a display string for joint type */
 function getJointTypeLabel(kind: JointKind): string {
   switch (kind.type) {
-    case "Fixed": return "Fixed";
-    case "Revolute": return "Revolute";
-    case "Slider": return "Slider";
-    case "Cylindrical": return "Cylindrical";
-    case "Ball": return "Ball";
+    case "Fixed":
+      return "Fixed";
+    case "Revolute":
+      return "Revolute";
+    case "Slider":
+      return "Slider";
+    case "Cylindrical":
+      return "Cylindrical";
+    case "Ball":
+      return "Ball";
   }
 }
 
 /** Get icon for joint type */
 function getJointIcon(kind: JointKind): typeof LinkSimple {
   switch (kind.type) {
-    case "Fixed": return Anchor;
-    case "Revolute": return ArrowsClockwise;
-    case "Slider": return ArrowUp;
-    case "Cylindrical": return Spiral;
-    case "Ball": return Globe;
+    case "Fixed":
+      return Anchor;
+    case "Revolute":
+      return ArrowsClockwise;
+    case "Slider":
+      return ArrowUp;
+    case "Cylindrical":
+      return Spiral;
+    case "Ball":
+      return Globe;
   }
 }
 
@@ -239,7 +260,11 @@ function InstanceNode({ instance, joint, isGround }: InstanceNodeProps) {
   const isHovered = hoveredPartId === instance.id;
 
   const displayName = instance.name ?? instance.partDefId;
-  const jointSuffix = joint ? ` [${getJointTypeLabel(joint.kind)}]` : isGround ? " (grounded)" : "";
+  const jointSuffix = joint
+    ? ` [${getJointTypeLabel(joint.kind)}]`
+    : isGround
+    ? " (grounded)"
+    : "";
 
   return (
     <div
@@ -248,8 +273,8 @@ function InstanceNode({ instance, joint, isGround }: InstanceNodeProps) {
         isSelected
           ? "bg-accent/20 text-accent"
           : isHovered
-            ? "bg-hover text-text"
-            : "text-text-muted hover:bg-hover hover:text-text",
+          ? "bg-hover text-text"
+          : "text-text-muted hover:bg-hover hover:text-text",
       )}
       style={{ paddingLeft: "24px" }}
       onClick={(e) => {
@@ -292,7 +317,8 @@ function JointNode({ joint, instancesById }: JointNodeProps) {
   const parentName = joint.parentInstanceId
     ? instancesById.get(joint.parentInstanceId)?.name ?? joint.parentInstanceId
     : "Ground";
-  const childName = instancesById.get(joint.childInstanceId)?.name ?? joint.childInstanceId;
+  const childName =
+    instancesById.get(joint.childInstanceId)?.name ?? joint.childInstanceId;
   const displayName = joint.name ?? `${getJointTypeLabel(joint.kind)} Joint`;
 
   // Show state value for non-fixed joints
@@ -310,8 +336,8 @@ function JointNode({ joint, instancesById }: JointNodeProps) {
         isSelected
           ? "bg-accent/20 text-accent"
           : isHovered
-            ? "bg-hover text-text"
-            : "text-text-muted hover:bg-hover hover:text-text",
+          ? "bg-hover text-text"
+          : "text-text-muted hover:bg-hover hover:text-text",
       )}
       style={{ paddingLeft: "24px" }}
       onClick={(e) => {
@@ -342,16 +368,20 @@ interface AssemblyTreeProps {
   groundInstanceId?: string;
 }
 
-function AssemblyTree({ instances, joints, groundInstanceId }: AssemblyTreeProps) {
+function AssemblyTree({
+  instances,
+  joints,
+  groundInstanceId,
+}: AssemblyTreeProps) {
   const instancesById = useMemo(
     () => new Map(instances.map((i) => [i.id, i])),
-    [instances]
+    [instances],
   );
 
   // Build map of child instance -> joint
   const jointByChild = useMemo(
     () => new Map(joints.map((j) => [j.childInstanceId, j])),
-    [joints]
+    [joints],
   );
 
   return (
@@ -432,7 +462,7 @@ export function FeatureTree() {
         "border border-border",
         "bg-surface",
         "shadow-lg shadow-black/30",
-        "max-h-[calc(100vh-120px)] flex flex-col"
+        "max-h-[calc(100vh-120px)] flex flex-col",
       )}
     >
       {/* Header */}
