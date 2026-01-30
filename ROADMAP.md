@@ -30,13 +30,14 @@ This isn't incremental improvement. This is **category creation**.
 | 7 | Sketch IR + UI Integration | ✅ |
 | 8 | Shell + Pattern Operations | ✅ |
 | 9 | Constraint Solver | ✅ |
-| 10 | STEP Import/Export | 🔶 Kernel only |
+| 10 | STEP Import/Export | ✅ |
 | 11 | Sweep + Loft (Kernel) | ✅ |
 | 12 | Sweep + Loft UI Integration | ✅ |
-| 13 | Assembly + Joints | 🔶 Partial |
-| 15 | Headless Mode + API | 🔶 CLI + MCP |
+| 13 | Assembly + Joints | ✅ |
+| 14 | 2D Drafting | ✅ |
+| 15 | Headless Mode + API | ✅ |
 
-**Kernel crates:** math, topo, geom, primitives, tessellate, booleans, nurbs, fillet, sketch, sweep, shell, constraints, step
+**Kernel crates:** math, topo, geom, primitives, tessellate, booleans, nurbs, fillet, sketch, sweep, shell, constraints, step, drafting
 
 **Kernel stats:** ~29K lines Rust, ~5.4K lines in booleans alone
 
@@ -49,11 +50,12 @@ This isn't incremental improvement. This is **category creation**.
 - Extrude, Revolve, Sweep, Loft operations
 - Shell and pattern operations
 - Boolean operations (union, difference, intersection)
-- Assembly rendering with instances/joints (partial)
+- Assembly mode with instances, joints, and forward kinematics
+- 2D drawing mode with orthographic projections
 
-**Export:** STL, GLB, USD, DXF | **Import:** .vcad
+**Export:** STL, GLB, STEP, USD, DXF | **Import:** .vcad, STEP
 
-**Headless:** Rust CLI (`vcad export/info`), JS CLI (TUI), MCP server (`create_cad_document`, `export_cad`, `inspect_cad`)
+**Headless:** Rust CLI (`vcad export/import-step/info`), JS CLI (TUI), MCP server (`create_cad_document`, `export_cad`, `inspect_cad`)
 
 ---
 
@@ -186,8 +188,8 @@ vcad-pcb/
 
 ### Phase A: Robustness Foundation (Now)
 1. **Exact predicates** for boolean operations — Shewchuk's adaptive arithmetic
-2. **Parallel boolean pipeline** with `rayon` — instant 4-8x speedup
-3. **Performance benchmarking** suite — establish baseline metrics
+2. ✅ **Parallel boolean pipeline** with `rayon` — 7-8% improvement on cylinder ops
+3. ✅ **Performance benchmarking** suite — criterion benchmarks for all pipeline stages
 
 ### Phase B: AI Core (Q2)
 4. **CAD-MLLM integration** — text/image → parametric CAD
@@ -255,52 +257,61 @@ vcad already incorporates arXiv research:
 
 ## Phase Details
 
-### Phase 10: STEP Import/Export
+### Phase 10: STEP Import/Export ✅
 
-The kernel crate `vcad-kernel-step` implements STEP AP214 read/write for B-rep solids:
-- `read_step(path)` → `Vec<BRepSolid>`
-- `write_step(solid, path)`
+**Complete:**
+- Kernel crate `vcad-kernel-step` implements STEP AP214 read/write
+- High-level API: `Part::from_step()`, `Part::from_step_all()`, `Part::to_step()`
+- CLI: `vcad export input.vcad output.step` and `vcad import-step input.step output.vcad`
+- CLI supports STL, GLB, and STEP export formats
 
-**Gaps:**
-- Not wired into high-level `vcad` crate or web/app flows
-- CLI only supports STL export (GLB stub exists)
-- No STEP import in web app
+**Remaining:**
+- Web app STEP import UI (kernel support exists via WASM)
 
-### Phase 13: Assembly + Joints
+### Phase 13: Assembly + Joints ✅
 
-**What's done:**
-- TS IR types: `Joint`, `JointKind`, `Instance`, `partDefs`, `groundInstanceId`
+**Complete:**
+- Rust IR types: `Joint`, `JointKind`, `Instance`, `PartDef`, `Transform3D` with serde JSON compat
+- TS IR types mirror Rust exactly
 - Forward kinematics solver (`packages/engine/src/kinematics.ts`)
+- Engine evaluates partDefs → meshes, applies kinematics to instances
 - App UI: FeatureTree shows instances/joints, PropertyPanel has joint state sliders
-- Document store has `setInstanceTransform`, `setInstanceMaterial`, `setJointState` actions
+- Assembly creation: `createPartDef`, `addJoint`, dialogs, toolbar buttons
+- Document store: `setInstanceTransform`, `setInstanceMaterial`, `setJointState`
 
-**Gaps:**
-- Rust IR (`vcad-ir`) doesn't have `Instance`/`Joint`/`partDefs` types
-- Engine evaluator still builds meshes from `doc.roots` only
-- No UI for creating/editing joints
-- No interference detection
+**Future:**
+- Interference detection
 
-### Phase 14: 2D Drafting
+### Phase 14: 2D Drafting ✅
 
-**Goal:** Technical drawings from 3D models.
+**Complete:**
+- Kernel crate `vcad-kernel-drafting` with full implementation
+- Orthographic projection (Front, Top, Right, Back, Left, Bottom)
+- Isometric projection
+- Hidden line removal with depth-based classification
+- Section views with hatch pattern generation
+- Edge extraction (sharp edges, silhouette edges, boundary edges)
+- Dimension annotations: Linear, Angular, Radial, Ordinate
+- GD&T support: Feature control frames, datum symbols, material conditions
+- Dimension styles with customizable fonts, arrows, tolerances
+- App integration: DrawingView component, drawing-store, view direction toolbar
 
-- Projection with hidden line removal
-- Views: Front, Top, Right, Isometric, Section, Detail
-- Dimensions: Linear, angular, radial, GD&T
-- Notes, balloons, BOM
+**Remaining:**
+- Detail views (magnified regions)
+- Notes, balloons, BOM generation
+- DXF/PDF export of drawings
 
-### Phase 15: Headless Mode + API
+### Phase 15: Headless Mode + API ✅
 
-**What's done:**
-- Rust CLI: `vcad tui`, `vcad export input.vcad output.stl`, `vcad info file.vcad`
+**Complete:**
+- Rust CLI: `vcad tui`, `vcad export` (STL/GLB/STEP), `vcad import-step`, `vcad info`
 - JS CLI: TUI runner using Ink + @vcad/engine
 - MCP server: `create_cad_document`, `export_cad` (STL/GLB), `inspect_cad`
 
-**Gaps:**
-- No REST API
-- No GitHub Actions integration
-- CLI doesn't support STEP/GLB export
-- No batch processing
+**Remaining:**
+- REST API for web services
+- GitHub Actions integration
+- Batch processing mode
 
 ### Phase 16: Plugin System
 
@@ -327,25 +338,16 @@ The kernel crate `vcad-kernel-step` implements STEP AP214 read/write for B-rep s
 
 ## Immediate Next Steps
 
-### Assembly Evaluation (13a)
-1. Update `packages/engine/src/evaluate.ts` to evaluate partDefs → meshes
-2. Apply kinematics to instances
-3. Export kinematics solver from engine
+### Performance (In Progress)
+1. ✅ Add `rayon` to parallelize boolean face-pair processing (7-8% improvement)
+2. ✅ Create criterion benchmark suite for booleans
+3. Integrate Shewchuk's exact predicates for containment queries
+4. GPU acceleration via wgpu for SSI computation
 
-### Rust IR Parity (13b)
-1. Add `Instance`, `Joint`, `JointKind`, `PartDef` to `crates/vcad-ir/src/lib.rs`
-2. Add assembly fields to `Document`
-3. Update serde for JSON compat
-
-### STEP Wiring (10a + 10b)
-1. Add `step` feature to `crates/vcad/Cargo.toml`
-2. Add `Part::from_step(path)` and `Part::to_step(path)`
-3. Add `--format step` to CLI
-
-### Performance Quick Wins
-1. Add `rayon` to parallelize boolean face-pair processing
-2. Integrate Shewchuk's exact predicates for containment queries
-3. Create benchmark suite
+### Web App Enhancements
+1. STEP import UI in web app (kernel support exists)
+2. Drawing export (DXF/PDF) from 2D drafting views
+3. Detail views in drafting mode
 
 ### PCB Foundation
 1. Create `vcad-pcb-ir` crate with component/net/layer types
