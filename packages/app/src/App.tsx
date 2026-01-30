@@ -21,6 +21,7 @@ import { AboutModal } from "@/components/AboutModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { SketchToolbar } from "@/components/SketchToolbar";
 import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
+import { QuotePanel } from "@/components/QuotePanel";
 import {
   useSketchStore,
   useEngineStore,
@@ -335,6 +336,9 @@ export function App() {
         <GuidedFlowOverlay />
         <GhostPromptController />
         <CelebrationOverlay />
+
+        {/* Quote panel (slides in from right when Make It Real clicked) */}
+        <QuotePanel />
       </AppShell>
 
       {/* Modals */}

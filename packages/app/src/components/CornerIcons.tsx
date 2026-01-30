@@ -8,7 +8,6 @@ import {
   List,
   CubeTransparent,
   GridFour,
-  Export,
   Info,
   Keyboard,
   BookOpen,
@@ -22,15 +21,11 @@ import { Tooltip } from "@/components/ui/tooltip";
 import {
   useDocumentStore,
   useUiStore,
-  useEngineStore,
-  exportStlBlob,
-  exportGltfBlob,
 } from "@vcad/core";
-import { downloadBlob } from "@/lib/download";
-import { useToastStore } from "@/stores/toast-store";
 import { FloppyDisk, FolderOpen } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { examples } from "@/data/examples";
+import { OutputButton } from "./OutputButton";
 
 interface CornerIconsProps {
   onAboutOpen: () => void;
@@ -89,25 +84,6 @@ function ViewButton({
   );
 }
 
-function ExportButton({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="flex h-7 flex-1 items-center justify-center gap-1.5 text-xs font-medium text-text hover:bg-hover border border-border disabled:opacity-40 disabled:cursor-not-allowed"
-    >
-      {children}
-    </button>
-  );
-}
 
 function SettingsMenu({ onAboutOpen }: { onAboutOpen: () => void }) {
   const [showAllExamples, setShowAllExamples] = useState(false);
@@ -118,10 +94,6 @@ function SettingsMenu({ onAboutOpen }: { onAboutOpen: () => void }) {
   const toggleGridSnap = useUiStore((s) => s.toggleGridSnap);
   const snapIncrement = useUiStore((s) => s.snapIncrement);
   const setSnapIncrement = useUiStore((s) => s.setSnapIncrement);
-
-  const scene = useEngineStore((s) => s.scene);
-  const parts = useDocumentStore((s) => s.parts);
-  const hasParts = parts.length > 0;
 
   // Featured examples shown by default
   const featuredExamples = examples.slice(0, 3);
@@ -135,20 +107,6 @@ function SettingsMenu({ onAboutOpen }: { onAboutOpen: () => void }) {
         new CustomEvent("vcad:load-example", { detail: { file: example.file } }),
       );
     }
-  }
-
-  function handleExportStl() {
-    if (!scene) return;
-    const blob = exportStlBlob(scene);
-    downloadBlob(blob, "model.stl");
-    useToastStore.getState().addToast("Exported model.stl", "success");
-  }
-
-  function handleExportGlb() {
-    if (!scene) return;
-    const blob = exportGltfBlob(scene);
-    downloadBlob(blob, "model.glb");
-    useToastStore.getState().addToast("Exported model.glb", "success");
   }
 
   function handleCameraPreset(preset: string) {
@@ -306,24 +264,6 @@ function SettingsMenu({ onAboutOpen }: { onAboutOpen: () => void }) {
           {/* Divider */}
           <div className="my-2 border-t border-border" />
 
-          {/* Export Section */}
-          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
-            Export
-          </div>
-          <div className="flex gap-1 px-1 py-1">
-            <ExportButton onClick={handleExportStl} disabled={!hasParts}>
-              <Export size={12} />
-              STL
-            </ExportButton>
-            <ExportButton onClick={handleExportGlb} disabled={!hasParts}>
-              <Export size={12} weight="fill" />
-              GLB
-            </ExportButton>
-          </div>
-
-          {/* Divider */}
-          <div className="my-2 border-t border-border" />
-
           {/* Help Section */}
           <div className="flex gap-1 px-1 py-1">
             <button
@@ -394,6 +334,9 @@ export function CornerIcons({ onAboutOpen, onSave, onOpen }: CornerIconsProps) {
         <IconButton tooltip="Open (Cmd+O)" onClick={onOpen}>
           <FolderOpen size={18} />
         </IconButton>
+
+        {/* Output button - THE primary action */}
+        <OutputButton />
 
         {/* Desktop-only icons */}
         <div className="hidden sm:flex items-center gap-1">

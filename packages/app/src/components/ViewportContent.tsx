@@ -428,6 +428,7 @@ export function ViewportContent() {
       top: [0, CAMERA_DISTANCE, 0],
       bottom: [0, -CAMERA_DISTANCE, 0],
       iso: [50, 50, 50],
+      hero: [60, 45, 60], // 45deg azimuth, 30deg elevation - dramatic presentation angle
     };
 
     const handleSnapView = (e: CustomEvent<string>) => {
@@ -448,6 +449,23 @@ export function ViewportContent() {
         "vcad:snap-view",
         handleSnapView as EventListener,
       );
+  }, []);
+
+  // Hero view: special "Make It Real" presentation angle
+  useEffect(() => {
+    const handleHeroView = () => {
+      // Hero angle: 45deg azimuth, 30deg elevation - dramatic presentation angle
+      const heroPos = new Vector3(60, 45, 60);
+
+      // Animate to hero position
+      targetGoalRef.current.set(0, 0, 0);
+      cameraPositionGoalRef.current = heroPos;
+      distanceGoalRef.current = null;
+      isAnimatingTargetRef.current = true;
+    };
+
+    window.addEventListener("vcad:hero-view", handleHeroView);
+    return () => window.removeEventListener("vcad:hero-view", handleHeroView);
   }, []);
 
   return (
