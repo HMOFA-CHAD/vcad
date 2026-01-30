@@ -32,11 +32,22 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
     setDismissed(true);
   }
 
+  const startGuidedFlow = useOnboardingStore((s) => s.startGuidedFlow);
+  const skipGuidedFlow = useOnboardingStore((s) => s.skipGuidedFlow);
+
   function handleNewProject() {
     incrementProjectsCreated();
+    startGuidedFlow();
+    setDismissed(true);
+  }
+
+  function handleSkipTutorial() {
+    incrementProjectsCreated();
+    skipGuidedFlow();
     const partId = addPrimitive("cube");
     select(partId);
     setTransformMode("translate");
+    setDismissed(true);
   }
 
   function handleOpenFile() {
@@ -113,25 +124,33 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
           </p>
 
           {/* Action buttons */}
-          <div className="flex gap-2 mb-5">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleNewProject}
-              className="gap-1.5"
+          <div className="flex flex-col items-center gap-2 mb-5">
+            <div className="flex gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleNewProject}
+                className="gap-1.5"
+              >
+                <Plus size={14} weight="bold" />
+                New Project
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenFile}
+                className="gap-1.5"
+              >
+                <FolderOpen size={14} />
+                Open File
+              </Button>
+            </div>
+            <button
+              onClick={handleSkipTutorial}
+              className="text-[10px] text-text-muted hover:text-text"
             >
-              <Plus size={14} weight="bold" />
-              New Project
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleOpenFile}
-              className="gap-1.5"
-            >
-              <FolderOpen size={14} />
-              Open File
-            </Button>
+              skip tutorial
+            </button>
           </div>
 
           {/* Examples */}

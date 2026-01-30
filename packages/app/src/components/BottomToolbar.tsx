@@ -13,6 +13,11 @@ import {
   Package,
   PlusSquare,
   LinkSimple,
+  Cube as Cube3D,
+  Blueprint,
+  Eye,
+  EyeSlash,
+  Ruler,
 } from "@phosphor-icons/react";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -23,6 +28,18 @@ import {
 import type { PrimitiveKind, BooleanType } from "@vcad/core";
 import { cn } from "@/lib/utils";
 import { InsertInstanceDialog, AddJointDialog } from "@/components/dialogs";
+import { useOnboardingStore, type GuidedFlowStep } from "@/stores/onboarding-store";
+import { useDrawingStore, type ViewDirection } from "@/stores/drawing-store";
+
+const VIEW_DIRECTIONS: { value: ViewDirection; label: string }[] = [
+  { value: "front", label: "Front" },
+  { value: "back", label: "Back" },
+  { value: "top", label: "Top" },
+  { value: "bottom", label: "Bottom" },
+  { value: "left", label: "Left" },
+  { value: "right", label: "Right" },
+  { value: "isometric", label: "Isometric" },
+];
 
 const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] =
   [
@@ -53,22 +70,25 @@ function ToolbarButton({
   disabled,
   onClick,
   tooltip,
+  pulse,
 }: {
   children: React.ReactNode;
   active?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   tooltip: string;
+  pulse?: boolean;
 }) {
   return (
     <Tooltip content={tooltip}>
       <button
         className={cn(
-          "flex h-10 w-10 items-center justify-center",
+          "flex h-10 w-10 items-center justify-center relative",
           "disabled:opacity-40 disabled:cursor-not-allowed",
           active
             ? "bg-accent text-white"
             : "text-text-muted hover:bg-hover hover:text-text",
+          pulse && "animate-pulse ring-2 ring-accent ring-offset-1 ring-offset-surface",
         )}
         disabled={disabled}
         onClick={onClick}
@@ -105,6 +125,29 @@ export function BottomToolbar() {
   const [insertDialogOpen, setInsertDialogOpen] = useState(false);
   const [jointDialogOpen, setJointDialogOpen] = useState(false);
 
+  // Drawing view state
+  const viewMode = useDrawingStore((s) => s.viewMode);
+  const setViewMode = useDrawingStore((s) => s.setViewMode);
+  const viewDirection = useDrawingStore((s) => s.viewDirection);
+  const setViewDirection = useDrawingStore((s) => s.setViewDirection);
+  const showHiddenLines = useDrawingStore((s) => s.showHiddenLines);
+  const toggleHiddenLines = useDrawingStore((s) => s.toggleHiddenLines);
+  const showDimensions = useDrawingStore((s) => s.showDimensions);
+  const toggleDimensions = useDrawingStore((s) => s.toggleDimensions);
+
+  // Guided flow state
+  const guidedFlowActive = useOnboardingStore((s) => s.guidedFlowActive);
+  const guidedFlowStep = useOnboardingStore((s) => s.guidedFlowStep);
+  const advanceGuidedFlow = useOnboardingStore((s) => s.advanceGuidedFlow);
+
+  // Helper to check if a button should pulse during guided flow
+  function shouldPulse(
+    forStep: GuidedFlowStep,
+    extraCondition: boolean = true
+  ): boolean {
+    return guidedFlowActive && guidedFlowStep === forStep && extraCondition;
+  }
+
   // Listen for insert-instance event from command palette
   useEffect(() => {
     function handleInsertInstance() {
@@ -137,6 +180,15 @@ export function BottomToolbar() {
     const partId = addPrimitive(kind);
     select(partId);
     setTransformMode("translate");
+
+    // Advance guided flow if applicable
+    if (guidedFlowActive) {
+      if (guidedFlowStep === "add-cube" && kind === "cube") {
+        advanceGuidedFlow();
+      } else if (guidedFlowStep === "add-cylinder" && kind === "cylinder") {
+        advanceGuidedFlow();
+      }
+    }
   }
 
   function handleBoolean(type: BooleanType) {
@@ -144,6 +196,11 @@ export function BottomToolbar() {
     const ids = Array.from(selectedPartIds);
     const newId = applyBoolean(type, ids[0]!, ids[1]!);
     if (newId) select(newId);
+
+    // Advance guided flow if subtracting during tutorial
+    if (guidedFlowActive && guidedFlowStep === "subtract" && type === "difference") {
+      advanceGuidedFlow();
+    }
   }
 
   function handleCreatePartDef() {
@@ -185,6 +242,10 @@ export function BottomToolbar() {
             tooltip={`Add ${label}`}
             disabled={sketchActive}
             onClick={() => handleAddPrimitive(kind)}
+            pulse={
+              (kind === "cube" && shouldPulse("add-cube")) ||
+              (kind === "cylinder" && shouldPulse("add-cylinder"))
+            }
           >
             <Icon size={20} />
           </ToolbarButton>
@@ -215,6 +276,7 @@ export function BottomToolbar() {
             tooltip={`${label} (${shortcut})`}
             disabled={!hasTwoSelected}
             onClick={() => handleBoolean(type)}
+            pulse={type === "difference" && shouldPulse("subtract")}
           >
             <Icon size={20} />
           </ToolbarButton>
@@ -255,7 +317,7 @@ export function BottomToolbar() {
         <ToolbarButton
           tooltip="Move (M)"
           active={hasSelection && transformMode === "translate"}
-          disabled={!hasSelection}
+          disabled={!hasSelection || viewMode === "2d"}
           onClick={() => setTransformMode("translate")}
         >
           <ArrowsOutCardinal size={20} />
@@ -263,7 +325,7 @@ export function BottomToolbar() {
         <ToolbarButton
           tooltip="Rotate (R)"
           active={hasSelection && transformMode === "rotate"}
-          disabled={!hasSelection}
+          disabled={!hasSelection || viewMode === "2d"}
           onClick={() => setTransformMode("rotate")}
         >
           <ArrowsClockwise size={20} />
@@ -271,11 +333,67 @@ export function BottomToolbar() {
         <ToolbarButton
           tooltip="Scale (S)"
           active={hasSelection && transformMode === "scale"}
-          disabled={!hasSelection}
+          disabled={!hasSelection || viewMode === "2d"}
           onClick={() => setTransformMode("scale")}
         >
           <ArrowsOut size={20} />
         </ToolbarButton>
+
+        <Divider />
+
+        {/* View mode toggle */}
+        <ToolbarButton
+          tooltip="3D View"
+          active={viewMode === "3d"}
+          onClick={() => setViewMode("3d")}
+        >
+          <Cube3D size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="2D Drawing View"
+          active={viewMode === "2d"}
+          onClick={() => setViewMode("2d")}
+        >
+          <Blueprint size={20} />
+        </ToolbarButton>
+
+        {/* 2D view options (shown when in 2D mode) */}
+        {viewMode === "2d" && (
+          <>
+            <Divider />
+
+            {/* View direction selector */}
+            <select
+              value={viewDirection}
+              onChange={(e) => setViewDirection(e.target.value as ViewDirection)}
+              className="h-8 px-2 text-sm bg-surface border border-border rounded text-text"
+            >
+              {VIEW_DIRECTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+
+            {/* Hidden lines toggle */}
+            <ToolbarButton
+              tooltip={showHiddenLines ? "Hide Hidden Lines" : "Show Hidden Lines"}
+              active={showHiddenLines}
+              onClick={toggleHiddenLines}
+            >
+              {showHiddenLines ? <Eye size={20} /> : <EyeSlash size={20} />}
+            </ToolbarButton>
+
+            {/* Dimensions toggle */}
+            <ToolbarButton
+              tooltip={showDimensions ? "Hide Dimensions" : "Show Dimensions"}
+              active={showDimensions}
+              onClick={toggleDimensions}
+            >
+              <Ruler size={20} />
+            </ToolbarButton>
+          </>
+        )}
 
       </div>
     </div>

@@ -14,6 +14,9 @@ import { Viewport } from "@/components/Viewport";
 import { FeatureTree } from "@/components/FeatureTree";
 import { PropertyPanel } from "@/components/PropertyPanel";
 import { InlineOnboarding } from "@/components/InlineOnboarding";
+import { GuidedFlowOverlay } from "@/components/GuidedFlowOverlay";
+import { GhostPromptController } from "@/components/GhostPromptController";
+import { CelebrationOverlay } from "@/components/CelebrationOverlay";
 import { AboutModal } from "@/components/AboutModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { SketchToolbar } from "@/components/SketchToolbar";
@@ -98,6 +101,12 @@ export function App() {
   const welcomeModalDismissed = useOnboardingStore(
     (s) => s.welcomeModalDismissed,
   );
+  const guidedFlowActive = useOnboardingStore((s) => s.guidedFlowActive);
+  const guidedFlowStep = useOnboardingStore((s) => s.guidedFlowStep);
+  const advanceGuidedFlow = useOnboardingStore((s) => s.advanceGuidedFlow);
+  const incrementSessions = useOnboardingStore((s) => s.incrementSessions);
+  const parts = useDocumentStore((s) => s.parts);
+  const selectMultiple = useUiStore((s) => s.selectMultiple);
 
   const handleSave = useCallback(() => {
     const state = useDocumentStore.getState();
@@ -184,11 +193,71 @@ export function App() {
     };
   }, []);
 
+  // Increment session counter on app load (for ghost prompt fade-out)
+  useEffect(() => {
+    incrementSessions();
+  }, [incrementSessions]);
+
+  // Track cylinder position for "position-cylinder" guided flow step
+  const document = useDocumentStore((s) => s.document);
+  const selectedPartIds = useUiStore((s) => s.selectedPartIds);
+  const cylinderInitialPos = useRef<{ x: number; y: number; z: number } | null>(null);
+
+  useEffect(() => {
+    if (!guidedFlowActive || guidedFlowStep !== "position-cylinder") {
+      cylinderInitialPos.current = null;
+      return;
+    }
+
+    // Find the cylinder part
+    const cylinder = parts.find((p) => p.kind === "cylinder");
+    if (!cylinder) return;
+
+    // Get translation from document node
+    const translateNode = document.nodes[String(cylinder.translateNodeId)];
+    const offset =
+      translateNode?.op.type === "Translate"
+        ? translateNode.op.offset
+        : { x: 0, y: 0, z: 0 };
+
+    // Initialize baseline position
+    if (cylinderInitialPos.current === null) {
+      cylinderInitialPos.current = { ...offset };
+    }
+
+    // Check if cylinder has moved enough (>5mm in Y for "up")
+    const deltaY = Math.abs(offset.y - cylinderInitialPos.current.y);
+    if (deltaY > 5) {
+      // Auto-select both parts for the subtract step
+      // Order matters: first selected is the base, second is subtracted from it
+      const cube = parts.find((p) => p.kind === "cube");
+      if (cube && cylinder) {
+        selectMultiple([cube.id, cylinder.id]);
+      }
+      advanceGuidedFlow();
+    }
+  }, [guidedFlowActive, guidedFlowStep, parts, document.nodes, advanceGuidedFlow, selectMultiple]);
+
+  // Keep both parts selected during subtract step
+  useEffect(() => {
+    if (!guidedFlowActive || guidedFlowStep !== "subtract") return;
+
+    const cube = parts.find((p) => p.kind === "cube");
+    const cylinder = parts.find((p) => p.kind === "cylinder");
+    if (!cube || !cylinder) return;
+
+    // If not both selected, re-select them (cube first = base shape)
+    const hasBoth = selectedPartIds.has(cube.id) && selectedPartIds.has(cylinder.id);
+    if (!hasBoth) {
+      selectMultiple([cube.id, cylinder.id]);
+    }
+  }, [guidedFlowActive, guidedFlowStep, parts, selectedPartIds, selectMultiple]);
+
   if (error && !engineReady) return <ErrorScreen message={error} />;
   if (loading || !engineReady) return <LoadingScreen />;
 
-  // Determine if inline onboarding should show
-  const showOnboarding = !hasParts && !welcomeModalDismissed && !sketchActive;
+  // Determine if inline onboarding should show (not during guided flow)
+  const showOnboarding = !hasParts && !welcomeModalDismissed && !sketchActive && !guidedFlowActive;
 
   return (
     <TooltipProvider>
@@ -210,6 +279,11 @@ export function App() {
         {!sketchActive && <FeatureTree />}
         {!sketchActive && <PropertyPanel />}
         {!sketchActive && <BottomToolbar />}
+
+        {/* Onboarding overlays */}
+        <GuidedFlowOverlay />
+        <GhostPromptController />
+        <CelebrationOverlay />
       </AppShell>
 
       {/* Modals */}
