@@ -30,8 +30,18 @@ enum Commands {
     Export {
         /// Input .vcad file
         input: PathBuf,
-        /// Output file (format determined by extension: .stl, .glb)
+        /// Output file (format determined by extension: .stl, .glb, .step, .stp)
         output: PathBuf,
+    },
+    /// Import a STEP file to .vcad format
+    Import {
+        /// Input STEP file (.step or .stp)
+        input: PathBuf,
+        /// Output .vcad file
+        output: PathBuf,
+        /// Name for the imported part (default: derived from filename)
+        #[arg(short, long)]
+        name: Option<String>,
     },
     /// Display information about a .vcad file
     Info {
@@ -49,6 +59,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Export { input, output }) => {
             export_file(&input, &output)?;
+        }
+        Some(Commands::Import { input, output, name }) => {
+            import_step(&input, &output, name)?;
         }
         Some(Commands::Info { file }) => {
             show_info(&file)?;
@@ -90,6 +103,9 @@ fn export_file(input: &PathBuf, output: &PathBuf) -> Result<()> {
         }
         "glb" => {
             println!("GLB export not yet implemented in CLI");
+        }
+        "step" | "stp" => {
+            export_step(&doc, output)?;
         }
         _ => {
             anyhow::bail!("Unknown output format: {}", ext);
@@ -147,6 +163,124 @@ fn export_stl_bytes(vertices: &[f32], indices: &[u32]) -> Result<Vec<u8>> {
     }
 
     Ok(data)
+}
+
+fn export_step(doc: &vcad_ir::Document, output: &PathBuf) -> Result<()> {
+    use vcad_kernel::Solid;
+
+    // For now, we can only export primitives that haven't been through booleans
+    // We need to evaluate the document and check if B-rep is available
+
+    // Simple case: single root with a primitive
+    if doc.roots.is_empty() {
+        anyhow::bail!("Document has no geometry to export");
+    }
+
+    // Get the first root and try to create geometry from it
+    let root_id = doc.roots[0].root;
+    let root_node = doc
+        .nodes
+        .get(&root_id)
+        .ok_or_else(|| anyhow::anyhow!("Root node not found"))?;
+
+    // Try to create a solid from the IR
+    let solid = match &root_node.op {
+        vcad_ir::CsgOp::Cube { size } => Solid::cube(size.x, size.y, size.z),
+        vcad_ir::CsgOp::Cylinder {
+            radius,
+            height,
+            segments,
+        } => Solid::cylinder(*radius, *height, if *segments == 0 { 32 } else { *segments }),
+        vcad_ir::CsgOp::Sphere { radius, segments } => {
+            Solid::sphere(*radius, if *segments == 0 { 32 } else { *segments })
+        }
+        vcad_ir::CsgOp::Cone {
+            radius_bottom,
+            radius_top,
+            height,
+            segments,
+        } => Solid::cone(
+            *radius_bottom,
+            *radius_top,
+            *height,
+            if *segments == 0 { 32 } else { *segments },
+        ),
+        vcad_ir::CsgOp::StepImport { path } => {
+            // Re-read from the original STEP file
+            Solid::from_step(path)?
+        }
+        _ => {
+            anyhow::bail!(
+                "STEP export only supports primitive shapes (cube, cylinder, sphere, cone) \
+                 or previously imported STEP files. Boolean operations convert geometry to mesh \
+                 which cannot be exported to STEP format."
+            );
+        }
+    };
+
+    solid.to_step(output)?;
+    println!("Exported STEP to {}", output.display());
+    Ok(())
+}
+
+fn import_step(input: &PathBuf, output: &PathBuf, name: Option<String>) -> Result<()> {
+    use std::fs;
+    use vcad_kernel::Solid;
+
+    // Derive name from filename if not provided
+    let part_name = name.unwrap_or_else(|| {
+        input
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("imported")
+            .to_string()
+    });
+
+    // Import the STEP file
+    let solids = Solid::from_step_all(input)?;
+
+    if solids.is_empty() {
+        anyhow::bail!("No solids found in STEP file");
+    }
+
+    // Create a vcad document
+    let mut doc = vcad_ir::Document::new();
+
+    for (i, _solid) in solids.iter().enumerate() {
+        let node_name = if solids.len() == 1 {
+            part_name.clone()
+        } else {
+            format!("{}_{}", part_name, i)
+        };
+
+        let node_id = (i + 1) as u64;
+        doc.nodes.insert(
+            node_id,
+            vcad_ir::Node {
+                id: node_id,
+                name: Some(node_name),
+                op: vcad_ir::CsgOp::StepImport {
+                    path: input.to_string_lossy().into_owned(),
+                },
+            },
+        );
+        doc.roots.push(vcad_ir::SceneEntry {
+            root: node_id,
+            material: "default".to_string(),
+        });
+    }
+
+    // Write the document
+    let json = doc.to_json()?;
+    fs::write(output, json)?;
+
+    println!(
+        "Imported {} solid(s) from {} to {}",
+        solids.len(),
+        input.display(),
+        output.display()
+    );
+    Ok(())
 }
 
 fn show_info(file: &PathBuf) -> Result<()> {

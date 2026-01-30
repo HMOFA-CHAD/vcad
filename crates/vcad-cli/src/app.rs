@@ -581,6 +581,16 @@ fn evaluate_node(doc: &Document, node_id: NodeId) -> Result<Option<vcad_kernel::
             let c = evaluate_node(doc, *child)?;
             c.map(|s| s.shell(*thickness))
         }
+        CsgOp::StepImport { path } => {
+            // Import geometry from STEP file
+            match Solid::from_step(path) {
+                Ok(solid) => Some(solid),
+                Err(e) => {
+                    eprintln!("Failed to import STEP file '{}': {}", path, e);
+                    None
+                }
+            }
+        }
     };
 
     Ok(solid)

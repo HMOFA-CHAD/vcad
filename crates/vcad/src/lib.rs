@@ -369,6 +369,124 @@ impl Part {
         });
         doc
     }
+
+    // =========================================================================
+    // STEP import/export
+    // =========================================================================
+
+    /// Import a part from a STEP file.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name for the imported part
+    /// * `path` - Path to the STEP file
+    ///
+    /// # Returns
+    ///
+    /// A `Part` containing the imported B-rep geometry.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `StepError` if the file cannot be read, parsed, or contains no solids.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use vcad::Part;
+    ///
+    /// let imported = Part::from_step("bracket", "bracket.step").unwrap();
+    /// imported.write_stl("bracket.stl").unwrap();
+    /// ```
+    #[cfg(feature = "step")]
+    pub fn from_step(
+        name: impl Into<String>,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, step::StepError> {
+        let solid = vcad_kernel::Solid::from_step(&path)?;
+        let name = name.into();
+        let (id, nodes) = Self::make_leaf(
+            &name,
+            CsgOp::StepImport {
+                path: path.as_ref().to_string_lossy().into_owned(),
+            },
+        );
+        Ok(Self::with_ir(name, solid, id, nodes))
+    }
+
+    /// Import all solids from a STEP file as separate parts.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_name` - Base name for the imported parts (will be suffixed with _0, _1, etc.)
+    /// * `path` - Path to the STEP file
+    ///
+    /// # Returns
+    ///
+    /// A vector of `Part`s, one for each solid found in the file.
+    #[cfg(feature = "step")]
+    pub fn from_step_all(
+        base_name: impl Into<String>,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Vec<Self>, step::StepError> {
+        let solids = vcad_kernel::Solid::from_step_all(&path)?;
+        let base_name = base_name.into();
+        let path_str = path.as_ref().to_string_lossy().into_owned();
+
+        Ok(solids
+            .into_iter()
+            .enumerate()
+            .map(|(i, solid)| {
+                let name = format!("{}_{}", base_name, i);
+                let (id, nodes) = Self::make_leaf(
+                    &name,
+                    CsgOp::StepImport {
+                        path: path_str.clone(),
+                    },
+                );
+                Self::with_ir(name, solid, id, nodes)
+            })
+            .collect())
+    }
+
+    /// Export this part to a STEP file.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Output file path
+    ///
+    /// # Errors
+    ///
+    /// Returns `StepExportError::NotBRep` if the part has been through boolean operations
+    /// that converted it to mesh-only representation. STEP export requires B-rep data.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use vcad::Part;
+    ///
+    /// // Primitives can be exported to STEP
+    /// let cube = Part::cube("box", 10.0, 20.0, 30.0);
+    /// cube.write_step("box.step").unwrap();
+    ///
+    /// // After boolean operations, STEP export may fail
+    /// let hole = Part::cylinder("hole", 3.0, 40.0, 32);
+    /// let result = cube.difference(&hole);
+    /// // result.write_step("box_with_hole.step"); // May return StepExportError::NotBRep
+    /// ```
+    #[cfg(feature = "step")]
+    pub fn write_step(&self, path: impl AsRef<std::path::Path>) -> Result<(), step::StepExportError> {
+        self.solid.to_step(path)
+    }
+
+    /// Check if this part can be exported to STEP format.
+    ///
+    /// Returns `true` if the part has B-rep data (typically primitives and
+    /// transforms). Returns `false` after boolean operations that convert
+    /// the geometry to mesh representation.
+    #[cfg(feature = "step")]
+    pub fn can_export_step(&self) -> bool {
+        self.solid.can_export_step()
+    }
 }
 
 /// Helper to create a centered cube (manifold cubes are corner-aligned by default)

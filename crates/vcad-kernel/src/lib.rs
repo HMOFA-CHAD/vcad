@@ -15,6 +15,8 @@
 //! assert!(mesh.num_triangles() >= 12);
 //! ```
 
+use std::path::Path;
+
 pub use vcad_kernel_booleans;
 pub use vcad_kernel_constraints;
 pub use vcad_kernel_fillet;
@@ -31,7 +33,48 @@ pub use vcad_kernel_topo;
 use vcad_kernel_booleans::{boolean_op, BooleanOp, BooleanResult};
 use vcad_kernel_math::{Point3, Transform, Vec3};
 use vcad_kernel_primitives::BRepSolid;
+use vcad_kernel_step::StepError;
 use vcad_kernel_tessellate::{tessellate_brep, TriangleMesh};
+
+/// Error returned when STEP export fails.
+#[derive(Debug)]
+pub enum StepExportError {
+    /// The solid has been converted to mesh-only representation (e.g., after boolean operations).
+    /// B-rep data is required for STEP export.
+    NotBRep,
+    /// The solid is empty (no geometry).
+    Empty,
+    /// An error occurred during STEP file writing.
+    Step(StepError),
+}
+
+impl std::fmt::Display for StepExportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StepExportError::NotBRep => write!(
+                f,
+                "cannot export to STEP: solid has been converted to mesh (B-rep data lost after boolean operations)"
+            ),
+            StepExportError::Empty => write!(f, "cannot export to STEP: solid is empty"),
+            StepExportError::Step(e) => write!(f, "STEP export error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for StepExportError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            StepExportError::Step(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<StepError> for StepExportError {
+    fn from(e: StepError) -> Self {
+        StepExportError::Step(e)
+    }
+}
 
 /// The internal representation of a solid.
 #[derive(Debug, Clone)]
@@ -587,6 +630,124 @@ impl Solid {
         let mesh = self.to_mesh(self.segments);
         mesh.num_triangles()
     }
+
+    // =========================================================================
+    // STEP import/export
+    // =========================================================================
+
+    /// Import the first solid from a STEP file.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the STEP file
+    ///
+    /// # Returns
+    ///
+    /// A `Solid` containing the imported B-rep geometry.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `StepError` if the file cannot be read, parsed, or contains no solids.
+    pub fn from_step(path: impl AsRef<Path>) -> Result<Self, StepError> {
+        let solids = vcad_kernel_step::read_step(path)?;
+        let brep = solids.into_iter().next().ok_or(StepError::NoSolids)?;
+        Ok(Self {
+            repr: SolidRepr::BRep(Box::new(brep)),
+            segments: 32,
+        })
+    }
+
+    /// Import all solids from a STEP file.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the STEP file
+    ///
+    /// # Returns
+    ///
+    /// A vector of `Solid`s, one for each solid found in the file.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `StepError` if the file cannot be read, parsed, or contains no solids.
+    pub fn from_step_all(path: impl AsRef<Path>) -> Result<Vec<Self>, StepError> {
+        let solids = vcad_kernel_step::read_step(path)?;
+        Ok(solids
+            .into_iter()
+            .map(|brep| Self {
+                repr: SolidRepr::BRep(Box::new(brep)),
+                segments: 32,
+            })
+            .collect())
+    }
+
+    /// Import the first solid from a STEP buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Raw STEP file contents
+    ///
+    /// # Returns
+    ///
+    /// A `Solid` containing the imported B-rep geometry.
+    pub fn from_step_buffer(data: &[u8]) -> Result<Self, StepError> {
+        let solids = vcad_kernel_step::read_step_from_buffer(data)?;
+        let brep = solids.into_iter().next().ok_or(StepError::NoSolids)?;
+        Ok(Self {
+            repr: SolidRepr::BRep(Box::new(brep)),
+            segments: 32,
+        })
+    }
+
+    /// Export this solid to a STEP file.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Output file path
+    ///
+    /// # Errors
+    ///
+    /// Returns `StepExportError::NotBRep` if the solid has been converted to mesh-only
+    /// representation (e.g., after boolean operations). STEP export requires B-rep data.
+    /// Returns `StepExportError::Empty` if the solid is empty.
+    pub fn to_step(&self, path: impl AsRef<Path>) -> Result<(), StepExportError> {
+        match &self.repr {
+            SolidRepr::BRep(brep) => {
+                vcad_kernel_step::write_step(brep.as_ref(), path)?;
+                Ok(())
+            }
+            SolidRepr::Mesh(_) => Err(StepExportError::NotBRep),
+            SolidRepr::Empty => Err(StepExportError::Empty),
+        }
+    }
+
+    /// Export this solid to STEP format in memory.
+    ///
+    /// # Returns
+    ///
+    /// The STEP file contents as bytes.
+    ///
+    /// # Errors
+    ///
+    /// See [`Solid::to_step`] for error conditions.
+    pub fn to_step_buffer(&self) -> Result<Vec<u8>, StepExportError> {
+        match &self.repr {
+            SolidRepr::BRep(brep) => {
+                let buffer = vcad_kernel_step::write_step_to_buffer(brep.as_ref())?;
+                Ok(buffer)
+            }
+            SolidRepr::Mesh(_) => Err(StepExportError::NotBRep),
+            SolidRepr::Empty => Err(StepExportError::Empty),
+        }
+    }
+
+    /// Check if this solid can be exported to STEP format.
+    ///
+    /// Returns `true` if the solid has B-rep data (not converted to mesh-only).
+    /// Returns `false` for mesh-only or empty solids.
+    pub fn can_export_step(&self) -> bool {
+        matches!(&self.repr, SolidRepr::BRep(_))
+    }
 }
 
 // =============================================================================
@@ -1046,5 +1207,63 @@ mod tests {
         let empty = Solid::empty();
         let shell = empty.shell(1.0);
         assert!(shell.is_empty());
+    }
+
+    #[test]
+    fn test_step_roundtrip() {
+        // Create a cube
+        let cube = Solid::cube(15.0, 25.0, 35.0);
+
+        // Export to STEP buffer
+        let buffer = cube.to_step_buffer().expect("should export to STEP");
+        assert!(!buffer.is_empty());
+
+        // Import from buffer
+        let imported = Solid::from_step_buffer(&buffer).expect("should import from STEP");
+        assert!(!imported.is_empty());
+
+        // Verify topology
+        let cube_tris = cube.num_triangles();
+        let imported_tris = imported.num_triangles();
+        assert!(
+            cube_tris > 0 && imported_tris > 0,
+            "both should have triangles"
+        );
+
+        // Verify geometry roughly matches (volume check)
+        let cube_vol = cube.volume();
+        let imported_vol = imported.volume();
+        let vol_diff = (cube_vol - imported_vol).abs();
+        assert!(
+            vol_diff < 1.0,
+            "volumes should match: original={}, imported={}, diff={}",
+            cube_vol,
+            imported_vol,
+            vol_diff
+        );
+    }
+
+    #[test]
+    fn test_step_can_export() {
+        let cube = Solid::cube(10.0, 10.0, 10.0);
+        assert!(cube.can_export_step(), "primitive should be exportable");
+
+        // After boolean, may lose B-rep
+        let hole = Solid::cylinder(3.0, 15.0, 32);
+        let result = cube.difference(&hole);
+        // After boolean operations, the result may be mesh-only
+        // so can_export_step may return false (depending on implementation)
+        // This is expected behavior - just verify the method works
+        let _ = result.can_export_step();
+    }
+
+    #[test]
+    fn test_step_export_empty_error() {
+        let empty = Solid::empty();
+        let result = empty.to_step_buffer();
+        assert!(
+            matches!(result, Err(StepExportError::Empty)),
+            "empty solid should return Empty error"
+        );
     }
 }

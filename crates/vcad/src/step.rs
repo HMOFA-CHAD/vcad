@@ -1,53 +1,28 @@
-//! STEP file export
+//! STEP file import/export support.
 //!
-//! STEP export requires the `step` feature and OpenCASCADE (OCCT) installed.
+//! STEP (ISO 10303) is the standard format for exchanging CAD data.
+//! This module provides access to vcad's native STEP implementation.
 //!
-//! ```bash
-//! # macOS
-//! brew install cmake opencascade
+//! # Feature Flag
 //!
-//! # Ubuntu/Debian
-//! sudo apt install cmake libocct-dev
+//! STEP support is always available through the vcad kernel. The `step` feature
+//! flag controls whether STEP-related methods are exposed on the `Part` type.
 //!
-//! # Build with STEP support
-//! cargo build --features step
-//! ```
+//! # Limitations
 //!
-//! For now, use STL export (always available) or export STL and convert
-//! using FreeCAD, Blender, or online converters.
+//! - STEP export only works for solids that still have B-rep data. After boolean
+//!   operations, solids are converted to mesh representation and cannot be exported
+//!   to STEP format.
+//! - Only AP214 (Automotive Design) protocol is supported.
 
-/// Check if STEP export is available
+// Re-export error types from the kernel
+pub use vcad_kernel::vcad_kernel_step::StepError;
+pub use vcad_kernel::StepExportError;
+
+/// Check if STEP support is available.
+///
+/// This always returns `true` as STEP support is built into the vcad kernel.
+/// The `step` feature flag controls whether STEP methods are exposed on `Part`.
 pub fn is_available() -> bool {
-    cfg!(feature = "step")
+    true
 }
-
-/// Error returned when STEP export is not available
-#[derive(Debug)]
-pub struct StepNotAvailable;
-
-impl std::fmt::Display for StepNotAvailable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "STEP export requires the 'step' feature. Build with: cargo build --features step"
-        )
-    }
-}
-
-impl std::error::Error for StepNotAvailable {}
-
-#[cfg(feature = "step")]
-mod occt_impl {
-    use opencascade::primitives::Shape;
-    use std::path::Path;
-
-    /// Export a shape to STEP format
-    pub fn write_step(shape: &Shape, path: impl AsRef<Path>) -> Result<(), std::io::Error> {
-        shape
-            .write_step(path.as_ref())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    }
-}
-
-#[cfg(feature = "step")]
-pub use occt_impl::write_step;

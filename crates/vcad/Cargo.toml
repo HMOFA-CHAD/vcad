@@ -12,7 +12,7 @@ exclude = ["../../web/", "../../assets/"]
 
 [features]
 default = ["gltf"]
-step = ["opencascade"]
+step = []
 gltf = ["dep:gltf", "dep:base64"]
 usd = []
 
@@ -26,4 +26,3 @@ toml = { workspace = true }
 serde = { workspace = true }
 gltf = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
-opencascade = { workspace = true, optional = true }

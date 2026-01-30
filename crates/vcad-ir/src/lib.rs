@@ -349,6 +349,12 @@ pub enum CsgOp {
         /// Wall thickness (inward offset).
         thickness: f64,
     },
+    /// Imported geometry from a STEP file.
+    #[serde(rename = "step_import")]
+    StepImport {
+        /// Path to the STEP file (relative or absolute).
+        path: String,
+    },
 }
 
 /// A node in the IR graph.
