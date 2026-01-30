@@ -9,6 +9,9 @@
 //! - **Isometric projection**: 3D-like views for visualization
 //! - **Edge extraction**: Sharp edges, silhouette edges, and boundary edges
 //! - **Hidden line removal**: Classification of edges as visible or hidden
+//! - **Dimension annotations**: Linear, angular, radial, and ordinate dimensions
+//! - **GD&T support**: Feature control frames and datum symbols
+//! - **Detail views**: Magnified regions for fine features
 //!
 //! # Example
 //!
@@ -32,6 +35,8 @@
 //! }
 //! ```
 
+pub mod detail;
+pub mod dimension;
 pub mod edge_extract;
 pub mod hidden_line;
 pub mod projection;
@@ -39,6 +44,13 @@ pub mod section;
 pub mod types;
 
 // Re-export main types and functions for convenience
+pub use detail::create_detail_view;
+pub use dimension::{
+    AngleDefinition, AngularDimension, AnnotationLayer, ArrowType, DatumFeatureSymbol, DatumRef,
+    DimensionStyle, FeatureControlFrame, GdtSymbol, GeometryRef, LinearDimension,
+    LinearDimensionType, MaterialCondition, OrdinateDimension, RadialDimension, RenderedArc,
+    RenderedArrow, RenderedDimension, RenderedText, TextAlignment, TextPlacement, ToleranceMode,
+};
 pub use edge_extract::{
     extract_drawing_edges, extract_edges, extract_sharp_edges, extract_silhouette_edges,
     DEFAULT_SHARP_ANGLE,
@@ -50,8 +62,9 @@ pub use section::{
     section_mesh,
 };
 pub use types::{
-    BoundingBox2D, EdgeType, HatchPattern, HatchRegion, MeshEdge, Point2D, ProjectedEdge,
-    ProjectedView, SectionCurve, SectionPlane, SectionView, Triangle3D, ViewDirection, Visibility,
+    BoundingBox2D, DetailView, DetailViewParams, EdgeType, HatchPattern, HatchRegion, MeshEdge,
+    Point2D, ProjectedEdge, ProjectedView, SectionCurve, SectionPlane, SectionView, Triangle3D,
+    ViewDirection, Visibility,
 };
 
 #[cfg(test)]

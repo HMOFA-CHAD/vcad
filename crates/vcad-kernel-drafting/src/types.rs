@@ -50,6 +50,7 @@ impl From<Point2D> for vcad_kernel_math::Point2 {
 
 /// Direction for orthographic or isometric projection.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum ViewDirection {
     /// Front view: looking along -Y axis (XZ plane visible).
     #[default]
@@ -580,6 +581,100 @@ impl SectionView {
 impl Default for SectionView {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ============================================================================
+// Detail View Types
+// ============================================================================
+
+/// Parameters for creating a detail view (magnified region).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetailViewParams {
+    /// Center of the region in the parent view's 2D coordinates.
+    pub center: Point2D,
+    /// Scale factor (e.g., 2.0 = 2x magnification).
+    pub scale: f64,
+    /// Width of the region to capture (in parent view units).
+    pub width: f64,
+    /// Height of the region to capture.
+    pub height: f64,
+    /// Label for the detail view (e.g., "A", "B").
+    pub label: String,
+}
+
+impl DetailViewParams {
+    /// Create new detail view parameters.
+    pub fn new(center: Point2D, scale: f64, width: f64, height: f64, label: impl Into<String>) -> Self {
+        Self {
+            center,
+            scale,
+            width,
+            height,
+            label: label.into(),
+        }
+    }
+
+    /// Half-width of the capture region.
+    pub fn half_width(&self) -> f64 {
+        self.width / 2.0
+    }
+
+    /// Half-height of the capture region.
+    pub fn half_height(&self) -> f64 {
+        self.height / 2.0
+    }
+
+    /// Minimum X of the capture region.
+    pub fn min_x(&self) -> f64 {
+        self.center.x - self.half_width()
+    }
+
+    /// Maximum X of the capture region.
+    pub fn max_x(&self) -> f64 {
+        self.center.x + self.half_width()
+    }
+
+    /// Minimum Y of the capture region.
+    pub fn min_y(&self) -> f64 {
+        self.center.y - self.half_height()
+    }
+
+    /// Maximum Y of the capture region.
+    pub fn max_y(&self) -> f64 {
+        self.center.y + self.half_height()
+    }
+}
+
+/// A detail view showing a magnified region.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetailView {
+    /// The magnified edges.
+    pub edges: Vec<ProjectedEdge>,
+    /// Bounds of the detail view (in magnified coordinates).
+    pub bounds: BoundingBox2D,
+    /// The parameters used to create this view.
+    pub params: DetailViewParams,
+}
+
+impl DetailView {
+    /// Create a new detail view.
+    pub fn new(edges: Vec<ProjectedEdge>, bounds: BoundingBox2D, params: DetailViewParams) -> Self {
+        Self {
+            edges,
+            bounds,
+            params,
+        }
+    }
+
+    /// Number of visible edges.
+    pub fn num_visible(&self) -> usize {
+        self.edges.iter().filter(|e| e.visibility == Visibility::Visible).count()
+    }
+
+    /// Number of hidden edges.
+    pub fn num_hidden(&self) -> usize {
+        self.edges.iter().filter(|e| e.visibility == Visibility::Hidden).count()
     }
 }
 
