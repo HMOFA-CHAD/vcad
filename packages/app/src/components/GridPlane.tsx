@@ -58,12 +58,12 @@ export function GridPlane() {
         args={[1000, 1000]}
         cellSize={10}
         cellThickness={0.5}
-        cellColor={isDark ? "#2a2a2a" : "#e8e8e0"}
+        cellColor={isDark ? "#2a2a2a" : "#555555"}
         sectionSize={100}
         sectionThickness={1}
-        sectionColor={isDark ? "#3a3a3a" : "#c4c5b5"}
+        sectionColor={isDark ? "#3a3a3a" : "#333333"}
         fadeDistance={500}
-        fadeStrength={1.5}
+        fadeStrength={1}
         infiniteGrid
       />
       {/* X axis - red */}

@@ -207,7 +207,7 @@ function SketchGrid3D({ origin, xDir, yDir }: SketchGrid3DProps) {
         <Line
           key={i}
           points={line.points}
-          color={isDark ? "#404040" : "#c0c0c0"}
+          color={isDark ? "#404040" : "#888888"}
           lineWidth={line.width}
           transparent
           opacity={0.3}
@@ -938,7 +938,7 @@ export function SketchPlane3D() {
       {/* Semi-transparent backdrop */}
       <mesh geometry={planeGeometry}>
         <meshBasicMaterial
-          color={isDark ? "#000000" : "#ffffff"}
+          color={isDark ? "#000000" : "#888888"}
           transparent
           opacity={0.3}
           side={THREE.DoubleSide}
