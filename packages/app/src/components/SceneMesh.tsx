@@ -6,6 +6,11 @@ import type { TriangleMesh, PartInfo, FaceInfo } from "@vcad/core";
 import { useUiStore, useDocumentStore, useSketchStore } from "@vcad/core";
 import type { ThreeEvent } from "@react-three/fiber";
 import type { Transform3D } from "@vcad/ir";
+import { getMaterialByKey } from "@/data/materials";
+import {
+  hasProceduralShader,
+  getProceduralShaderForMaterial,
+} from "@/shaders";
 
 const HOVER_EMISSIVE = new THREE.Color(0xffb800); // neon amber
 const FACE_HIGHLIGHT_COLOR = new THREE.Color(0x00d4ff); // cyan for face selection
@@ -216,10 +221,66 @@ export function SceneMesh({
   const [draftName, setDraftName] = useState(partInfo.name);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // Resolve material from document using the materialKey passed from evaluation
+  // Material preview state for live preview on hover
+  const previewMaterial = useUiStore((s) => s.previewMaterial);
+
+  // Determine effective material key (preview takes priority)
+  const effectiveMaterialKey = useMemo(() => {
+    if (previewMaterial?.partId === partInfo.id) {
+      return previewMaterial.materialKey;
+    }
+    return materialKey;
+  }, [previewMaterial, partInfo.id, materialKey]);
+
+  // Resolve material from document, with live preview override
   const materialDef = useMemo(() => {
+    // Check for active preview for this part
+    if (previewMaterial?.partId === partInfo.id) {
+      const previewKey = previewMaterial.materialKey;
+      // First check document materials
+      if (document.materials[previewKey]) {
+        return document.materials[previewKey];
+      }
+      // Fall back to preset materials library
+      const preset = getMaterialByKey(previewKey);
+      if (preset) {
+        return {
+          name: preset.name,
+          color: preset.color,
+          metallic: preset.metallic,
+          roughness: preset.roughness,
+        };
+      }
+    }
     return document.materials[materialKey] ?? null;
-  }, [document, materialKey]);
+  }, [document, materialKey, previewMaterial, partInfo.id]);
+
+  // Check if this material should use a procedural shader
+  const proceduralShader = useMemo(() => {
+    if (!hasProceduralShader(effectiveMaterialKey)) return null;
+    return getProceduralShaderForMaterial(effectiveMaterialKey);
+  }, [effectiveMaterialKey]);
+
+  // Create procedural ShaderMaterial if needed
+  const shaderMaterial = useMemo(() => {
+    if (!proceduralShader) return null;
+
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: proceduralShader.vertexShader,
+      fragmentShader: proceduralShader.fragmentShader,
+      uniforms: proceduralShader.uniforms,
+      side: THREE.DoubleSide,
+    });
+
+    return mat;
+  }, [proceduralShader]);
+
+  // Cleanup shader material
+  useEffect(() => {
+    return () => {
+      shaderMaterial?.dispose();
+    };
+  }, [shaderMaterial]);
 
   const materialColor = useMemo(() => {
     if (materialDef) {
@@ -244,6 +305,24 @@ export function SceneMesh({
     : isHovered && !faceSelectionMode
     ? 0.08
     : 0;
+
+  // Update shader material uniforms for emissive state
+  useEffect(() => {
+    if (!shaderMaterial) return;
+    const uniforms = shaderMaterial.uniforms;
+    if (!uniforms["uEmissive"] || !uniforms["uEmissiveIntensity"]) return;
+
+    if (selected) {
+      uniforms["uEmissive"].value = materialColor.clone().multiplyScalar(0.3);
+      uniforms["uEmissiveIntensity"].value = 0.2;
+    } else if (isHovered && !faceSelectionMode) {
+      uniforms["uEmissive"].value = HOVER_EMISSIVE;
+      uniforms["uEmissiveIntensity"].value = 0.08;
+    } else {
+      uniforms["uEmissive"].value = new THREE.Color(0, 0, 0);
+      uniforms["uEmissiveIntensity"].value = 0;
+    }
+  }, [shaderMaterial, selected, isHovered, faceSelectionMode, materialColor]);
 
   useEffect(() => {
     setDraftName(partInfo.name);
@@ -419,18 +498,22 @@ export function SceneMesh({
       onPointerMove={handlePointerMove}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
+      material={shaderMaterial ?? undefined}
     >
       <bufferGeometry ref={geoRef} />
-      <meshStandardMaterial
-        color={materialColor}
-        emissive={emissiveColor}
-        emissiveIntensity={emissiveIntensity}
-        metalness={materialDef?.metallic ?? 0.0}
-        roughness={materialDef?.roughness ?? 0.7}
-        envMapIntensity={0.8}
-        flatShading={false}
-        side={THREE.DoubleSide}
-      />
+      {/* Use procedural shader if available, otherwise standard PBR */}
+      {!shaderMaterial && (
+        <meshStandardMaterial
+          color={materialColor}
+          emissive={emissiveColor}
+          emissiveIntensity={emissiveIntensity}
+          metalness={materialDef?.metallic ?? 0.0}
+          roughness={materialDef?.roughness ?? 0.7}
+          envMapIntensity={0.8}
+          flatShading={false}
+          side={THREE.DoubleSide}
+        />
+      )}
       {showWireframe && <Edges threshold={15} color="#666" />}
       {/* Face highlight overlay for individual face selection */}
       {faceHighlightGeo && (
