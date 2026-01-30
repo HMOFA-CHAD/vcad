@@ -3,8 +3,8 @@
 //! This module provides structures for common AP214 STEP entities and utilities
 //! for extracting them from parsed STEP data.
 
-pub mod geometry;
 pub mod curves;
+pub mod geometry;
 pub mod surfaces;
 pub mod topology;
 
@@ -58,15 +58,12 @@ impl EntityArgs for StepEntity {
     }
 
     fn real(&self, idx: usize) -> Result<f64, StepError> {
-        self.args
-            .get(idx)
-            .and_then(|v| v.as_real())
-            .ok_or_else(|| {
-                StepError::parser(
-                    Some(self.id),
-                    format!("expected real at arg {idx} in {}", self.type_name),
-                )
-            })
+        self.args.get(idx).and_then(|v| v.as_real()).ok_or_else(|| {
+            StepError::parser(
+                Some(self.id),
+                format!("expected real at arg {idx} in {}", self.type_name),
+            )
+        })
     }
 
     fn integer(&self, idx: usize) -> Result<i64, StepError> {
@@ -94,15 +91,12 @@ impl EntityArgs for StepEntity {
     }
 
     fn enumeration(&self, idx: usize) -> Result<&str, StepError> {
-        self.args
-            .get(idx)
-            .and_then(|v| v.as_enum())
-            .ok_or_else(|| {
-                StepError::parser(
-                    Some(self.id),
-                    format!("expected enum at arg {idx} in {}", self.type_name),
-                )
-            })
+        self.args.get(idx).and_then(|v| v.as_enum()).ok_or_else(|| {
+            StepError::parser(
+                Some(self.id),
+                format!("expected enum at arg {idx} in {}", self.type_name),
+            )
+        })
     }
 
     fn entity_ref(&self, idx: usize) -> Result<u64, StepError> {
@@ -118,15 +112,12 @@ impl EntityArgs for StepEntity {
     }
 
     fn list(&self, idx: usize) -> Result<&[StepValue], StepError> {
-        self.args
-            .get(idx)
-            .and_then(|v| v.as_list())
-            .ok_or_else(|| {
-                StepError::parser(
-                    Some(self.id),
-                    format!("expected list at arg {idx} in {}", self.type_name),
-                )
-            })
+        self.args.get(idx).and_then(|v| v.as_list()).ok_or_else(|| {
+            StepError::parser(
+                Some(self.id),
+                format!("expected list at arg {idx} in {}", self.type_name),
+            )
+        })
     }
 
     fn real_list(&self, idx: usize) -> Result<Vec<f64>, StepError> {
@@ -181,5 +172,7 @@ pub fn require_entity<'a>(
 /// Check if an entity is of a specific type (reserved for polymorphic entity handling).
 #[allow(dead_code)]
 pub fn is_entity_type(file: &StepFile, id: u64, type_name: &str) -> bool {
-    file.get(id).map(|e| e.type_name == type_name).unwrap_or(false)
+    file.get(id)
+        .map(|e| e.type_name == type_name)
+        .unwrap_or(false)
 }

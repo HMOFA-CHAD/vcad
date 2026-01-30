@@ -308,11 +308,7 @@ impl<'a> Lexer<'a> {
         }
 
         if name.is_empty() {
-            return Err(StepError::lexer(
-                start_line,
-                start_col,
-                "empty enumeration",
-            ));
+            return Err(StepError::lexer(start_line, start_col, "empty enumeration"));
         }
 
         let s = String::from_utf8(name).unwrap();
@@ -434,10 +430,7 @@ mod tests {
     #[test]
     fn test_string() {
         assert_eq!(tokenize("'hello'"), vec![Token::String("hello".into())]);
-        assert_eq!(
-            tokenize("'it''s'"),
-            vec![Token::String("it's".into())]
-        ); // escaped quote
+        assert_eq!(tokenize("'it''s'"), vec![Token::String("it's".into())]); // escaped quote
     }
 
     #[test]
@@ -485,10 +478,7 @@ mod tests {
 
     #[test]
     fn test_comments() {
-        assert_eq!(
-            tokenize("/* comment */ #1"),
-            vec![Token::EntityRef(1)]
-        );
+        assert_eq!(tokenize("/* comment */ #1"), vec![Token::EntityRef(1)]);
         assert_eq!(
             tokenize("#1 /* inline */ #2"),
             vec![Token::EntityRef(1), Token::EntityRef(2)]

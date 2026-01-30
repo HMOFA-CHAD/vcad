@@ -1,8 +1,8 @@
 //! Topology entities: vertex, edge, loop, face, shell, and solid.
 
+use super::{parse_cartesian_point, EntityArgs};
 use crate::error::StepError;
 use crate::parser::StepFile;
-use super::{EntityArgs, parse_cartesian_point};
 use vcad_kernel_math::Point3;
 
 /// Parsed VERTEX_POINT entity.
@@ -248,10 +248,7 @@ pub fn parse_manifold_solid_brep(file: &StepFile, id: u64) -> Result<StepSolid, 
     match entity.type_name.as_str() {
         "MANIFOLD_SOLID_BREP" => {
             let outer_shell_id = entity.entity_ref(1)?;
-            Ok(StepSolid {
-                id,
-                outer_shell_id,
-            })
+            Ok(StepSolid { id, outer_shell_id })
         }
         other => Err(StepError::type_mismatch("MANIFOLD_SOLID_BREP", other)),
     }
@@ -292,12 +289,21 @@ pub fn write_edge_loop(name: &str, edge_ids: &[u64]) -> String {
 /// Write a FACE_BOUND to STEP format.
 pub fn write_face_bound(name: &str, loop_id: u64, orientation: bool, is_outer: bool) -> String {
     let orient = if orientation { ".T." } else { ".F." };
-    let entity_type = if is_outer { "FACE_OUTER_BOUND" } else { "FACE_BOUND" };
+    let entity_type = if is_outer {
+        "FACE_OUTER_BOUND"
+    } else {
+        "FACE_BOUND"
+    };
     format!("{}('{}', #{}, {})", entity_type, name, loop_id, orient)
 }
 
 /// Write an ADVANCED_FACE to STEP format.
-pub fn write_advanced_face(name: &str, bound_ids: &[u64], surface_id: u64, same_sense: bool) -> String {
+pub fn write_advanced_face(
+    name: &str,
+    bound_ids: &[u64],
+    surface_id: u64,
+    same_sense: bool,
+) -> String {
     let refs: Vec<String> = bound_ids.iter().map(|id| format!("#{id}")).collect();
     let sense = if same_sense { ".T." } else { ".F." };
     format!(

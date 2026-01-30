@@ -3,18 +3,16 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::entities::{
+    parse_advanced_face, parse_edge_curve, parse_edge_loop, parse_manifold_solid_brep,
+    parse_oriented_edge, parse_shell, parse_surface, parse_vertex_point,
+};
 use crate::error::StepError;
 use crate::parser::{Parser, StepFile};
-use crate::entities::{
-    parse_manifold_solid_brep, parse_shell, parse_advanced_face, parse_edge_loop,
-    parse_oriented_edge, parse_edge_curve, parse_vertex_point, parse_surface,
-};
 
 use vcad_kernel_geom::GeometryStore;
 use vcad_kernel_primitives::BRepSolid;
-use vcad_kernel_topo::{
-    EdgeId, HalfEdgeId, LoopId, Orientation, ShellType, Topology, VertexId,
-};
+use vcad_kernel_topo::{EdgeId, HalfEdgeId, LoopId, Orientation, ShellType, Topology, VertexId};
 
 /// Read STEP file from a path.
 ///
@@ -208,9 +206,8 @@ impl<'a> StepReader<'a> {
             }
 
             // Create face
-            let outer = outer_loop.ok_or_else(|| {
-                StepError::InvalidTopology("face has no outer bound".into())
-            })?;
+            let outer = outer_loop
+                .ok_or_else(|| StepError::InvalidTopology("face has no outer bound".into()))?;
 
             let orientation = if step_face.same_sense {
                 Orientation::Forward

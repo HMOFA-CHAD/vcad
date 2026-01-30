@@ -1,8 +1,8 @@
 //! Fundamental geometry entities: points, directions, and placements.
 
+use super::EntityArgs;
 use crate::error::StepError;
 use crate::parser::StepFile;
-use super::EntityArgs;
 use vcad_kernel_math::{Dir3, Point3, Vec3};
 
 /// Parse a CARTESIAN_POINT entity.
@@ -212,8 +212,12 @@ pub fn write_axis2_placement_3d(
     axis_id: Option<u64>,
     ref_id: Option<u64>,
 ) -> String {
-    let axis_ref = axis_id.map(|id| format!("#{id}")).unwrap_or_else(|| "$".into());
-    let ref_ref = ref_id.map(|id| format!("#{id}")).unwrap_or_else(|| "$".into());
+    let axis_ref = axis_id
+        .map(|id| format!("#{id}"))
+        .unwrap_or_else(|| "$".into());
+    let ref_ref = ref_id
+        .map(|id| format!("#{id}"))
+        .unwrap_or_else(|| "$".into());
     format!(
         "AXIS2_PLACEMENT_3D('{}', #{}, {}, {})",
         name, loc_id, axis_ref, ref_ref

@@ -1,8 +1,8 @@
 //! Surface entities: planes, cylinders, cones, spheres.
 
+use super::{parse_any_axis_placement, AxisPlacement, EntityArgs};
 use crate::error::StepError;
 use crate::parser::StepFile;
-use super::{EntityArgs, parse_any_axis_placement, AxisPlacement};
 use vcad_kernel_geom::{ConeSurface, CylinderSurface, Plane, SphereSurface, Surface};
 
 /// A surface parsed from STEP.
@@ -189,7 +189,12 @@ pub fn write_cylindrical_surface(radius: f64, name: &str, placement_id: u64) -> 
 }
 
 /// Write a CONICAL_SURFACE to STEP format.
-pub fn write_conical_surface(radius: f64, semi_angle: f64, name: &str, placement_id: u64) -> String {
+pub fn write_conical_surface(
+    radius: f64,
+    semi_angle: f64,
+    name: &str,
+    placement_id: u64,
+) -> String {
     format!(
         "CONICAL_SURFACE('{}', #{}, {:.15E}, {:.15E})",
         name, placement_id, radius, semi_angle

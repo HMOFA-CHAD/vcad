@@ -4,16 +4,16 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
-use crate::error::StepError;
 use crate::entities::{
-    write_axis2_placement_3d, write_cartesian_point, write_direction,
-    write_advanced_face, write_closed_shell, write_edge_curve, write_edge_loop,
-    write_face_bound, write_manifold_solid_brep, write_oriented_edge, write_vertex_point,
-    write_plane, write_cylindrical_surface, write_spherical_surface, write_conical_surface,
-    plane_to_placement, cylinder_to_placement, sphere_to_placement, AxisPlacement,
+    cylinder_to_placement, plane_to_placement, sphere_to_placement, write_advanced_face,
+    write_axis2_placement_3d, write_cartesian_point, write_closed_shell, write_conical_surface,
+    write_cylindrical_surface, write_direction, write_edge_curve, write_edge_loop,
+    write_face_bound, write_manifold_solid_brep, write_oriented_edge, write_plane,
+    write_spherical_surface, write_vertex_point, AxisPlacement,
 };
+use crate::error::StepError;
 
-use vcad_kernel_geom::{Plane, CylinderSurface, SphereSurface, ConeSurface, SurfaceKind};
+use vcad_kernel_geom::{ConeSurface, CylinderSurface, Plane, SphereSurface, SurfaceKind};
 use vcad_kernel_math::{Dir3, Vec3};
 use vcad_kernel_primitives::BRepSolid;
 use vcad_kernel_topo::{EdgeId, FaceId, HalfEdgeId, LoopId, Orientation, VertexId};
@@ -292,11 +292,17 @@ impl<'a> StepWriter<'a> {
 
             // Write vector
             let vec_id = self.alloc_id();
-            self.emit(vec_id, &format!("VECTOR('', #{}, {:.15E})", dir_id, magnitude));
+            self.emit(
+                vec_id,
+                &format!("VECTOR('', #{}, {:.15E})", dir_id, magnitude),
+            );
 
             // Write line
             let line_id = self.alloc_id();
-            self.emit(line_id, &format!("LINE('', #{}, #{})", line_point_id, vec_id));
+            self.emit(
+                line_id,
+                &format!("LINE('', #{}, #{})", line_point_id, vec_id),
+            );
 
             // Write edge curve
             let step_edge_id = self.alloc_id();

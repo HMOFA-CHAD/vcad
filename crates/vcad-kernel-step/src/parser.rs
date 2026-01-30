@@ -318,7 +318,10 @@ impl Parser {
                 let args = self.parse_args()?;
                 Ok(StepValue::Typed { type_name, args })
             }
-            other => Err(StepError::parser(None, format!("unexpected value: {other:?}"))),
+            other => Err(StepError::parser(
+                None,
+                format!("unexpected value: {other:?}"),
+            )),
         }
     }
 

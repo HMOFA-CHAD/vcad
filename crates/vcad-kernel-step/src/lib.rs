@@ -17,10 +17,10 @@
 //! write_step(&solids[0], "output.step").unwrap();
 //! ```
 
+mod entities;
 mod error;
 mod lexer;
 mod parser;
-mod entities;
 mod reader;
 mod writer;
 

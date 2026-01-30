@@ -4,9 +4,9 @@
 
 #![allow(dead_code)]
 
+use super::{parse_any_axis_placement, parse_cartesian_point, parse_vector, EntityArgs};
 use crate::error::StepError;
 use crate::parser::StepFile;
-use super::{EntityArgs, parse_any_axis_placement, parse_cartesian_point, parse_vector};
 use vcad_kernel_geom::{Circle3d, Line3d};
 use vcad_kernel_math::{Dir3, Vec3};
 
@@ -105,16 +105,19 @@ pub fn write_line(
     let vec_str = format!("VECTOR('', #{}, {:.15E})", dir_id, magnitude);
     let line_str = format!("LINE('{}', #{}, #{})", name, point_id, vec_id);
 
-    (line_str, point_str, format!("{}\n#{} = {}", dir_str, vec_id, vec_str))
+    (
+        line_str,
+        point_str,
+        format!("{}\n#{} = {}", dir_str, vec_id, vec_str),
+    )
 }
 
 /// Write a CIRCLE to STEP format.
-pub fn write_circle(
-    circle: &Circle3d,
-    name: &str,
-    placement_id: u64,
-) -> String {
-    format!("CIRCLE('{}', #{}, {:.15E})", name, placement_id, circle.radius)
+pub fn write_circle(circle: &Circle3d, name: &str, placement_id: u64) -> String {
+    format!(
+        "CIRCLE('{}', #{}, {:.15E})",
+        name, placement_id, circle.radius
+    )
 }
 
 #[cfg(test)]
