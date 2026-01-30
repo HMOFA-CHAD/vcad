@@ -184,6 +184,14 @@ impl<'a> StepWriter<'a> {
                         ref_direction: Some(cone.ref_dir),
                     }
                 }
+                _ => {
+                    // Unsupported surface type
+                    AxisPlacement {
+                        location: vcad_kernel_math::Point3::origin(),
+                        axis: None,
+                        ref_direction: None,
+                    }
+                }
             };
 
             let placement_id = self.write_axis_placement(&placement)?;
@@ -206,6 +214,10 @@ impl<'a> StepWriter<'a> {
                     // Since apex is at the placement location, radius is 0 there
                     // We need to compute radius at a reference distance
                     write_conical_surface(0.0, cone.half_angle, "", placement_id)
+                }
+                _ => {
+                    // Unsupported surface type - write as plane placeholder
+                    write_plane("", placement_id)
                 }
             };
             self.emit(surf_id, &entity);

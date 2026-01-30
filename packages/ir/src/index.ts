@@ -20,6 +20,22 @@ export interface Vec3 {
   z: number;
 }
 
+/** 3D transform (translation, rotation in degrees, scale). */
+export interface Transform3D {
+  translation: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+}
+
+/** Create an identity transform (no translation, rotation, or scaling). */
+export function identityTransform(): Transform3D {
+  return {
+    translation: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+  };
+}
+
 // --- SketchSegment2D discriminated union ---
 
 export interface LineSegment2D {

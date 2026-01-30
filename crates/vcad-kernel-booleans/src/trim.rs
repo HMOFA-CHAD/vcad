@@ -212,6 +212,7 @@ pub fn project_point_to_uv(surface: &dyn Surface, point: &Point3) -> Point2 {
             }
         }
         SurfaceKind::Cone => approx_project_to_uv(surface, point),
+        _ => approx_project_to_uv(surface, point),
     }
 }
 

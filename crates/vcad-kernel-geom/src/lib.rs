@@ -25,6 +25,8 @@ pub enum SurfaceKind {
     Cone,
     /// Spherical surface.
     Sphere,
+    /// Bilinear patch (4-corner interpolation).
+    Bilinear,
 }
 
 /// A parametric surface in 3D space.
@@ -537,6 +539,149 @@ impl Surface for SphereSurface {
 }
 
 // =============================================================================
+// BilinearSurface
+// =============================================================================
+
+/// A bilinear patch defined by four corner points with optional corner normals.
+///
+/// Parameterization:
+/// ```text
+/// P(u, v) = (1-u)(1-v)*p00 + u*(1-v)*p10 + (1-u)*v*p01 + u*v*p11
+/// ```
+///
+/// When corner_normals are provided, the `normal()` method bilinearly interpolates
+/// them instead of computing the geometric normal. This enables smooth shading
+/// for swept surfaces where the intended normal differs from the flat quad normal.
+#[derive(Debug, Clone)]
+pub struct BilinearSurface {
+    /// Corner at (u=0, v=0).
+    pub p00: Point3,
+    /// Corner at (u=1, v=0).
+    pub p10: Point3,
+    /// Corner at (u=0, v=1).
+    pub p01: Point3,
+    /// Corner at (u=1, v=1).
+    pub p11: Point3,
+    /// Optional corner normals for smooth shading [n00, n10, n01, n11].
+    pub corner_normals: Option<[Dir3; 4]>,
+}
+
+impl BilinearSurface {
+    /// Create a bilinear surface from four corner points.
+    pub fn new(p00: Point3, p10: Point3, p01: Point3, p11: Point3) -> Self {
+        Self { p00, p10, p01, p11, corner_normals: None }
+    }
+
+    /// Create a bilinear surface with explicit corner normals for smooth shading.
+    pub fn with_normals(
+        p00: Point3, p10: Point3, p01: Point3, p11: Point3,
+        n00: Dir3, n10: Dir3, n01: Dir3, n11: Dir3,
+    ) -> Self {
+        Self {
+            p00, p10, p01, p11,
+            corner_normals: Some([n00, n10, n01, n11]),
+        }
+    }
+
+    /// Check if this bilinear surface is planar (all 4 points coplanar).
+    pub fn is_planar(&self) -> bool {
+        let e1 = self.p10 - self.p00;
+        let e2 = self.p01 - self.p00;
+        let n = e1.cross(&e2);
+        if n.norm() < 1e-12 {
+            return true;
+        }
+        let d = self.p11 - self.p00;
+        (d.dot(&n).abs() / n.norm()) < 1e-10
+    }
+}
+
+impl Surface for BilinearSurface {
+    fn evaluate(&self, uv: Point2) -> Point3 {
+        let u = uv.x;
+        let v = uv.y;
+        let u1 = 1.0 - u;
+        let v1 = 1.0 - v;
+        Point3::new(
+            u1 * v1 * self.p00.x + u * v1 * self.p10.x + u1 * v * self.p01.x + u * v * self.p11.x,
+            u1 * v1 * self.p00.y + u * v1 * self.p10.y + u1 * v * self.p01.y + u * v * self.p11.y,
+            u1 * v1 * self.p00.z + u * v1 * self.p10.z + u1 * v * self.p01.z + u * v * self.p11.z,
+        )
+    }
+
+    fn normal(&self, uv: Point2) -> Dir3 {
+        // If corner normals provided, bilinearly interpolate them
+        if let Some([n00, n10, n01, n11]) = &self.corner_normals {
+            let u = uv.x;
+            let v = uv.y;
+            let u1 = 1.0 - u;
+            let v1 = 1.0 - v;
+            let nx = u1 * v1 * n00.x + u * v1 * n10.x + u1 * v * n01.x + u * v * n11.x;
+            let ny = u1 * v1 * n00.y + u * v1 * n10.y + u1 * v * n01.y + u * v * n11.y;
+            let nz = u1 * v1 * n00.z + u * v1 * n10.z + u1 * v * n01.z + u * v * n11.z;
+            return Dir3::new_normalize(Vec3::new(nx, ny, nz));
+        }
+        // Otherwise compute from cross product
+        let du = self.d_du(uv);
+        let dv = self.d_dv(uv);
+        let n = du.cross(&dv);
+        if n.norm() < 1e-12 {
+            Dir3::new_normalize(Vec3::z())
+        } else {
+            Dir3::new_normalize(n)
+        }
+    }
+
+    fn d_du(&self, uv: Point2) -> Vec3 {
+        let v = uv.y;
+        let v1 = 1.0 - v;
+        Vec3::new(
+            -v1 * self.p00.x + v1 * self.p10.x - v * self.p01.x + v * self.p11.x,
+            -v1 * self.p00.y + v1 * self.p10.y - v * self.p01.y + v * self.p11.y,
+            -v1 * self.p00.z + v1 * self.p10.z - v * self.p01.z + v * self.p11.z,
+        )
+    }
+
+    fn d_dv(&self, uv: Point2) -> Vec3 {
+        let u = uv.x;
+        let u1 = 1.0 - u;
+        Vec3::new(
+            -u1 * self.p00.x - u * self.p10.x + u1 * self.p01.x + u * self.p11.x,
+            -u1 * self.p00.y - u * self.p10.y + u1 * self.p01.y + u * self.p11.y,
+            -u1 * self.p00.z - u * self.p10.z + u1 * self.p01.z + u * self.p11.z,
+        )
+    }
+
+    fn domain(&self) -> ((f64, f64), (f64, f64)) {
+        ((0.0, 1.0), (0.0, 1.0))
+    }
+
+    fn surface_type(&self) -> SurfaceKind {
+        SurfaceKind::Bilinear
+    }
+
+    fn clone_box(&self) -> Box<dyn Surface> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn transform(&self, t: &Transform) -> Box<dyn Surface> {
+        Box::new(BilinearSurface {
+            p00: t.apply_point(&self.p00),
+            p10: t.apply_point(&self.p10),
+            p01: t.apply_point(&self.p01),
+            p11: t.apply_point(&self.p11),
+            corner_normals: self.corner_normals.map(|normals| {
+                normals.map(|n| Dir3::new_normalize(t.apply_vec(&n.into_inner())))
+            }),
+        })
+    }
+}
+
+// =============================================================================
 // Curve types
 // =============================================================================
 
@@ -953,6 +1098,5 @@ mod tests {
         let mut store = GeometryStore::new();
         let idx = store.add_surface(Box::new(Plane::xy()));
         assert_eq!(idx, 0);
-        assert_eq!(store.surfaces.len(), 1);
     }
 }

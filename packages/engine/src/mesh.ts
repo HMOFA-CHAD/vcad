@@ -1,7 +1,9 @@
-/** Triangle mesh output — positions and indices ready for rendering. */
+/** Triangle mesh output — positions, indices, and optional normals for rendering. */
 export interface TriangleMesh {
   positions: Float32Array;
   indices: Uint32Array;
+  /** Optional vertex normals for smooth shading. If undefined, renderer computes them. */
+  normals?: Float32Array;
 }
 
 /** A single evaluated part with its mesh and material key. */

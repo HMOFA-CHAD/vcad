@@ -113,6 +113,7 @@ fn non_overlapping_boolean(
             BooleanResult::Mesh(TriangleMesh {
                 vertices: Vec::new(),
                 indices: Vec::new(),
+                normals: Vec::new(),
             })
         }
     }
@@ -179,8 +180,19 @@ fn brep_boolean(
     > = HashMap::new();
 
     for (face_a, face_b) in &pairs {
-        let surf_a = &a.geometry.surfaces[a.topology.faces[*face_a].surface_index];
-        let surf_b = &b.geometry.surfaces[b.topology.faces[*face_b].surface_index];
+        // Get face data with bounds checking to avoid panics
+        let Some(face_data_a) = a.topology.faces.get(*face_a) else {
+            continue;
+        };
+        let Some(face_data_b) = b.topology.faces.get(*face_b) else {
+            continue;
+        };
+        let Some(surf_a) = a.geometry.surfaces.get(face_data_a.surface_index) else {
+            continue;
+        };
+        let Some(surf_b) = b.geometry.surfaces.get(face_data_b.surface_index) else {
+            continue;
+        };
 
         let curve = ssi::intersect_surfaces(surf_a.as_ref(), surf_b.as_ref());
 
@@ -485,11 +497,13 @@ mod tests {
             v.point = t.apply_point(&v.point);
         }
 
-        // Transform all surfaces
-        for i in 0..brep.geometry.surfaces.len() {
-            let old_surface = brep.geometry.surfaces[i].clone();
-            brep.geometry.surfaces[i] = old_surface.transform(&t);
-        }
+        // Transform all surfaces using drain to avoid clone
+        brep.geometry.surfaces = brep
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&t))
+            .collect();
     }
 
     #[test]
@@ -1076,8 +1090,8 @@ mod tests {
         let mut hole = make_cube(12.0, 20.0, 12.0);
         translate_brep(&mut hole, 34.0, -7.0, 24.0);
 
-        // Clone and split like boolean does
-        let mut b = hole.clone();
+        // Move hole (simulates what boolean does internally with a clone)
+        let mut b = hole;
 
         // Find face pairs and split
         let pairs = bbox::find_candidate_face_pairs(&plate, &b);
@@ -1679,10 +1693,12 @@ mod tests {
         for (_, v) in &mut cyl.topology.vertices {
             v.point = t.apply_point(&v.point);
         }
-        for i in 0..cyl.geometry.surfaces.len() {
-            let old_surface = cyl.geometry.surfaces[i].clone();
-            cyl.geometry.surfaces[i] = old_surface.transform(&t);
-        }
+        cyl.geometry.surfaces = cyl
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&t))
+            .collect();
 
         println!("\n=== Cube-Cylinder Debug ===");
         println!("Cube faces: {}", cube.topology.faces.len());
@@ -1742,10 +1758,12 @@ mod tests {
         for (_, v) in &mut cyl2.topology.vertices {
             v.point = t2.apply_point(&v.point);
         }
-        for i in 0..cyl2.geometry.surfaces.len() {
-            let old_surface = cyl2.geometry.surfaces[i].clone();
-            cyl2.geometry.surfaces[i] = old_surface.transform(&t2);
-        }
+        cyl2.geometry.surfaces = cyl2
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&t2))
+            .collect();
 
         // Find the lateral face
         let lat_face = cyl2.topology.faces.iter().find(|(fid, _)| {
@@ -1796,14 +1814,16 @@ mod tests {
         for (_, v) in &mut cyl3.topology.vertices {
             v.point = t3.apply_point(&v.point);
         }
-        for i in 0..cyl3.geometry.surfaces.len() {
-            let old_surface = cyl3.geometry.surfaces[i].clone();
-            cyl3.geometry.surfaces[i] = old_surface.transform(&t3);
-        }
+        cyl3.geometry.surfaces = cyl3
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&t3))
+            .collect();
 
-        // Clone for the operation
-        let a = cube.clone();
-        let mut b = cyl3.clone();
+        // Use values directly (no need to clone in this test)
+        let a = cube;
+        let mut b = cyl3;
 
         let pairs = bbox::find_candidate_face_pairs(&a, &b);
         println!("Face pairs: {}", pairs.len());
@@ -1937,10 +1957,12 @@ mod tests {
         for (_, v) in &mut cyl.topology.vertices {
             v.point = t.apply_point(&v.point);
         }
-        for i in 0..cyl.geometry.surfaces.len() {
-            let old_surface = cyl.geometry.surfaces[i].clone();
-            cyl.geometry.surfaces[i] = old_surface.transform(&t);
-        }
+        cyl.geometry.surfaces = cyl
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&t))
+            .collect();
 
         let result = boolean_op(&cube, &cyl, BooleanOp::Difference, 32);
         let mesh = result.to_mesh(32);

@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-use vcad_kernel_geom::{Curve3d, CurveKind, GeometryStore, Plane};
-use vcad_kernel_math::{Point3, Vec3};
+use vcad_kernel_geom::{BilinearSurface, Curve3d, CurveKind, GeometryStore, Plane};
+use vcad_kernel_math::{Dir3, Point3, Vec3};
 use vcad_kernel_primitives::BRepSolid;
 use vcad_kernel_sketch::SketchProfile;
 use vcad_kernel_topo::{HalfEdgeId, Orientation, ShellType, Topology, VertexId};
@@ -141,12 +141,28 @@ pub fn sweep(
 
             let p0 = topo.vertices[v0].point;
             let p1 = topo.vertices[v1].point;
+            let p2 = topo.vertices[v2].point;
             let p3 = topo.vertices[v3].point;
 
-            // Create planar surface approximation for the quad
-            let x_dir = p1 - p0;
-            let y_dir = p3 - p0;
-            let surf_idx = geom.add_surface(Box::new(Plane::new(p0, x_dir, y_dir)));
+            // Compute radial normals from path center to each vertex for smooth shading
+            let center0 = frames[path_idx].position;
+            let center1 = frames[path_idx + 1].position;
+            let radial_normal = |pt: Point3, c: Point3| -> Dir3 {
+                let d = pt - c;
+                if d.norm() < 1e-12 { Dir3::new_normalize(Vec3::z()) } else { Dir3::new_normalize(d) }
+            };
+            let n0 = radial_normal(p0, center0);
+            let n1 = radial_normal(p1, center0);
+            let n2 = radial_normal(p2, center1);
+            let n3 = radial_normal(p3, center1);
+
+            // BilinearSurface with corner normals: v0=p00, v1=p10, v2=p11, v3=p01
+            let bilinear = BilinearSurface::with_normals(p0, p1, p3, p2, n0, n1, n3, n2);
+            let surf_idx = if bilinear.is_planar() {
+                geom.add_surface(Box::new(Plane::new(p0, p1 - p0, p3 - p0)))
+            } else {
+                geom.add_surface(Box::new(bilinear))
+            };
 
             // Create half-edges
             let he0 = topo.add_half_edge(v0);

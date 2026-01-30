@@ -67,6 +67,7 @@ export function evaluateDocument(
     const mesh: TriangleMesh = {
       positions: new Float32Array(meshData.positions),
       indices: new Uint32Array(meshData.indices),
+      normals: meshData.normals ? new Float32Array(meshData.normals) : undefined,
     };
     return {
       mesh,
@@ -86,6 +87,7 @@ export function evaluateDocument(
           clashes.push({
             positions: new Float32Array(meshData.positions),
             indices: new Uint32Array(meshData.indices),
+            normals: meshData.normals ? new Float32Array(meshData.normals) : undefined,
           });
         }
       }

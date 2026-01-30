@@ -95,14 +95,13 @@ pub fn face_aabb(brep: &BRepSolid, face_id: FaceId) -> Aabb3 {
         }
         vcad_kernel_geom::SurfaceKind::Cylinder
         | vcad_kernel_geom::SurfaceKind::Cone
-        | vcad_kernel_geom::SurfaceKind::Sphere => {
-            // Conservative expansion — worst case the surface bulges
-            // by the radius. We estimate the bulge from the AABB diagonal.
+        | vcad_kernel_geom::SurfaceKind::Sphere
+        | vcad_kernel_geom::SurfaceKind::Bilinear => {
+            // Conservative expansion for curved surfaces
             let diag = ((aabb.max.x - aabb.min.x).powi(2)
                 + (aabb.max.y - aabb.min.y).powi(2)
                 + (aabb.max.z - aabb.min.z).powi(2))
             .sqrt();
-            // Expand by 5% of diagonal as conservative bound
             aabb.expand(diag * 0.05);
         }
     }

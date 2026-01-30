@@ -9,7 +9,7 @@
 //! 4. Mapping back to 3D via surface evaluation
 
 use std::f64::consts::PI;
-use vcad_kernel_geom::{GeometryStore, SurfaceKind};
+use vcad_kernel_geom::{BilinearSurface, GeometryStore, Surface, SurfaceKind};
 use vcad_kernel_math::{Point2, Point3};
 use vcad_kernel_primitives::BRepSolid;
 use vcad_kernel_topo::{FaceId, Orientation, Topology};
@@ -21,6 +21,8 @@ pub struct TriangleMesh {
     pub vertices: Vec<f32>,
     /// Flat array of triangle indices: `[i0, i1, i2, ...]` (u32).
     pub indices: Vec<u32>,
+    /// Flat array of vertex normals: `[nx0, ny0, nz0, ...]` (f32). Same length as vertices.
+    pub normals: Vec<f32>,
 }
 
 impl TriangleMesh {
@@ -29,6 +31,7 @@ impl TriangleMesh {
         Self {
             vertices: Vec::new(),
             indices: Vec::new(),
+            normals: Vec::new(),
         }
     }
 
@@ -46,6 +49,7 @@ impl TriangleMesh {
     pub fn merge(&mut self, other: &TriangleMesh) {
         let offset = self.num_vertices() as u32;
         self.vertices.extend_from_slice(&other.vertices);
+        self.normals.extend_from_slice(&other.normals);
         self.indices
             .extend(other.indices.iter().map(|&i| i + offset));
     }
@@ -117,8 +121,9 @@ fn tessellate_face(
     match surface.surface_type() {
         SurfaceKind::Plane => tessellate_planar_face(topo, face_id, reversed),
         SurfaceKind::Cylinder => tessellate_cylindrical_face(topo, geom, face_id, params, reversed),
-        SurfaceKind::Sphere => tessellate_spherical_face(geom, face_id, params, reversed),
+        SurfaceKind::Sphere => tessellate_spherical_face(topo, geom, face_id, params, reversed),
         SurfaceKind::Cone => tessellate_conical_face(topo, geom, face_id, params, reversed),
+        SurfaceKind::Bilinear => tessellate_bilinear_face(topo, geom, face_id, params, reversed),
     }
 }
 
@@ -163,6 +168,73 @@ fn tessellate_planar_face(topo: &Topology, face_id: FaceId, reversed: bool) -> T
     }
 
     mesh
+}
+
+/// Tessellate a bilinear surface face using the surface's normal method.
+/// This enables smooth shading when corner normals are provided.
+fn tessellate_bilinear_face(
+    topo: &Topology,
+    geom: &GeometryStore,
+    face_id: FaceId,
+    params: &TessellationParams,
+    reversed: bool,
+) -> TriangleMesh {
+    let face = &topo.faces[face_id];
+    let surface = &geom.surfaces[face.surface_index];
+
+    // Try to downcast to BilinearSurface
+    if let Some(bilinear) = surface.as_any().downcast_ref::<BilinearSurface>() {
+        let n_u = params.circle_segments.max(2) as usize;
+        let n_v = params.height_segments.max(2) as usize;
+
+        let mut mesh = TriangleMesh::new();
+
+        // Generate grid of vertices with surface normals
+        for j in 0..=n_v {
+            let v = j as f64 / n_v as f64;
+            for i in 0..=n_u {
+                let u = i as f64 / n_u as f64;
+                let uv = Point2::new(u, v);
+                let pt: Point3 = bilinear.evaluate(uv);
+                let normal = bilinear.normal(uv);
+
+                mesh.vertices.push(pt.x as f32);
+                mesh.vertices.push(pt.y as f32);
+                mesh.vertices.push(pt.z as f32);
+
+                let (nx, ny, nz) = if reversed {
+                    (-normal.x as f32, -normal.y as f32, -normal.z as f32)
+                } else {
+                    (normal.x as f32, normal.y as f32, normal.z as f32)
+                };
+                mesh.normals.push(nx);
+                mesh.normals.push(ny);
+                mesh.normals.push(nz);
+            }
+        }
+
+        // Generate triangles
+        let stride = (n_u + 1) as u32;
+        for j in 0..n_v {
+            for i in 0..n_u {
+                let bl = j as u32 * stride + i as u32;
+                let br = bl + 1;
+                let tl = bl + stride;
+                let tr = tl + 1;
+
+                if reversed {
+                    mesh.indices.extend_from_slice(&[bl, tl, br, br, tl, tr]);
+                } else {
+                    mesh.indices.extend_from_slice(&[bl, br, tl, br, tr, tl]);
+                }
+            }
+        }
+
+        mesh
+    } else {
+        // Fallback to simple quad tessellation
+        TriangleMesh::new()
+    }
 }
 
 /// Tessellate a planar face with inner loops (holes).
@@ -544,14 +616,28 @@ fn tessellate_cylindrical_face(
 
 /// Tessellate a spherical face.
 /// Uses a single vertex at each pole to avoid normal computation artifacts.
+/// For split caps (from boolean operations), uses boundary-aware tessellation.
 fn tessellate_spherical_face(
+    topo: &Topology,
     geom: &GeometryStore,
     face_id: FaceId,
     params: &TessellationParams,
     reversed: bool,
 ) -> TriangleMesh {
-    let _ = face_id; // We use the sphere surface directly
-    let surface = &geom.surfaces[0]; // Sphere is always surface 0
+    let face = &topo.faces[face_id];
+    let surface = &geom.surfaces[face.surface_index];
+
+    // Count edges in the face loop to detect split caps
+    let loop_verts: Vec<Point3> = topo
+        .loop_half_edges(face.outer_loop)
+        .map(|he| topo.vertices[topo.half_edges[he].origin].point)
+        .collect();
+
+    // A normal sphere has exactly 4 edges from B-rep. Split caps have more.
+    if loop_verts.len() > 4 {
+        return tessellate_spherical_cap(surface.as_ref(), &loop_verts, reversed);
+    }
+
     let n_lon = params.circle_segments as usize;
     let n_lat = params.latitude_segments as usize;
 
@@ -630,6 +716,302 @@ fn tessellate_spherical_face(
     }
 
     mesh
+}
+
+
+/// Tessellate a spherical cap defined by a boundary loop.
+/// Used for split faces from boolean operations.
+fn tessellate_spherical_cap(
+    surface: &dyn vcad_kernel_geom::Surface,
+    loop_verts: &[Point3],
+    reversed: bool,
+) -> TriangleMesh {
+    use vcad_kernel_geom::{SphereSurface, SurfaceKind};
+
+    let mut mesh = TriangleMesh::new();
+
+    if loop_verts.len() < 3 {
+        return mesh;
+    }
+
+    // Get sphere center and radius
+    let (center, radius) = if surface.surface_type() == SurfaceKind::Sphere {
+        // Try to downcast to get sphere parameters
+        let sphere = unsafe {
+            &*(surface as *const dyn vcad_kernel_geom::Surface as *const SphereSurface)
+        };
+        (sphere.center, sphere.radius)
+    } else {
+        // Fallback: estimate center from boundary
+        let centroid: Point3 = loop_verts.iter().fold(
+            Point3::origin(),
+            |acc, p| Point3::new(acc.x + p.x, acc.y + p.y, acc.z + p.z),
+        );
+        let n = loop_verts.len() as f64;
+        let centroid = Point3::new(centroid.x / n, centroid.y / n, centroid.z / n);
+        let r = (loop_verts[0] - centroid).norm();
+        (centroid, r)
+    };
+
+    // Compute centroid of boundary vertices for cap center
+    let boundary_centroid: Point3 = loop_verts.iter().fold(
+        Point3::origin(),
+        |acc, p| Point3::new(acc.x + p.x, acc.y + p.y, acc.z + p.z),
+    );
+    let n = loop_verts.len() as f64;
+    let boundary_centroid =
+        Point3::new(boundary_centroid.x / n, boundary_centroid.y / n, boundary_centroid.z / n);
+
+    // Direction from sphere center to cap center
+    let cap_dir = (boundary_centroid - center).normalize();
+
+    // Compute angle from cap direction to each boundary vertex
+    let boundary_angles: Vec<f64> = loop_verts
+        .iter()
+        .map(|p| {
+            let v = (*p - center).normalize();
+            v.dot(&cap_dir).clamp(-1.0, 1.0).acos()
+        })
+        .collect();
+
+    let min_angle = boundary_angles.iter().cloned().fold(f64::INFINITY, f64::min);
+    let avg_angle = boundary_angles.iter().sum::<f64>() / boundary_angles.len() as f64;
+
+    // Determine if this is a large cap (> ~90 degrees) or small cap
+    let is_large_cap = avg_angle > PI / 2.0;
+
+    if is_large_cap {
+        tessellate_large_spherical_cap(loop_verts, center, radius, cap_dir, min_angle, reversed)
+    } else {
+        tessellate_small_spherical_cap(loop_verts, center, radius, cap_dir, reversed)
+    }
+}
+
+/// Tessellate a small spherical cap using fan triangulation from the cap pole.
+fn tessellate_small_spherical_cap(
+    loop_verts: &[Point3],
+    center: Point3,
+    radius: f64,
+    cap_dir: vcad_kernel_math::Vec3,
+    reversed: bool,
+) -> TriangleMesh {
+    let mut mesh = TriangleMesh::new();
+
+    // Cap pole (point on sphere in cap direction)
+    let pole = center + radius * cap_dir;
+    mesh.vertices.push(pole.x as f32);
+    mesh.vertices.push(pole.y as f32);
+    mesh.vertices.push(pole.z as f32);
+
+    // Add boundary vertices
+    for p in loop_verts {
+        mesh.vertices.push(p.x as f32);
+        mesh.vertices.push(p.y as f32);
+        mesh.vertices.push(p.z as f32);
+    }
+
+    // Fan triangulation from pole to boundary
+    let pole_idx = 0u32;
+    let n = loop_verts.len();
+    for i in 0..n {
+        let v1 = 1 + i as u32;
+        let v2 = 1 + ((i + 1) % n) as u32;
+        if reversed {
+            mesh.indices.extend_from_slice(&[pole_idx, v2, v1]);
+        } else {
+            mesh.indices.extend_from_slice(&[pole_idx, v1, v2]);
+        }
+    }
+
+    mesh
+}
+
+/// Tessellate a large spherical cap using latitude rings with boundary stitching.
+fn tessellate_large_spherical_cap(
+    loop_verts: &[Point3],
+    center: Point3,
+    radius: f64,
+    cap_dir: vcad_kernel_math::Vec3,
+    min_angle: f64,
+    reversed: bool,
+) -> TriangleMesh {
+
+    let mut mesh = TriangleMesh::new();
+
+    // Antipodal pole (opposite to cap center)
+    let anti_pole = center - radius * cap_dir;
+    mesh.vertices.push(anti_pole.x as f32);
+    mesh.vertices.push(anti_pole.y as f32);
+    mesh.vertices.push(anti_pole.z as f32);
+
+    // Create local coordinate system for longitude
+    let up = cap_dir;
+    let right = if up.x.abs() < 0.9 {
+        vcad_kernel_math::Vec3::new(1.0, 0.0, 0.0).cross(&up).normalize()
+    } else {
+        vcad_kernel_math::Vec3::new(0.0, 1.0, 0.0).cross(&up).normalize()
+    };
+    let forward = up.cross(&right);
+
+    // Number of rings between pole and boundary
+    let n_rings = 8;
+    let n_lon = 32;
+
+    // Generate latitude rings from antipodal pole toward boundary
+    let ring_stop = min_angle * 0.98;
+    for ring in 1..=n_rings {
+        let t = ring as f64 / (n_rings + 1) as f64;
+        let angle_from_pole = PI - (PI - ring_stop) * (1.0 - t);
+        let sin_a = angle_from_pole.sin();
+        let cos_a = angle_from_pole.cos();
+
+        for i in 0..=n_lon {
+            let lon = 2.0 * PI * (i as f64 / n_lon as f64);
+            let x = sin_a * lon.cos();
+            let y = sin_a * lon.sin();
+            let z = cos_a;
+
+            let local = x * right + y * forward - z * up;
+            let pt = center + radius * local;
+            mesh.vertices.push(pt.x as f32);
+            mesh.vertices.push(pt.y as f32);
+            mesh.vertices.push(pt.z as f32);
+        }
+    }
+
+    // Add boundary vertices
+    let boundary_start = mesh.num_vertices();
+    for p in loop_verts {
+        mesh.vertices.push(p.x as f32);
+        mesh.vertices.push(p.y as f32);
+        mesh.vertices.push(p.z as f32);
+    }
+
+    let pole_idx = 0u32;
+    let stride = (n_lon + 1) as u32;
+
+    // Pole fan to first ring
+    let first_ring_start = 1u32;
+    for i in 0..n_lon {
+        let v1 = first_ring_start + i as u32;
+        let v2 = first_ring_start + (i + 1) as u32;
+        if reversed {
+            mesh.indices.extend_from_slice(&[pole_idx, v1, v2]);
+        } else {
+            mesh.indices.extend_from_slice(&[pole_idx, v2, v1]);
+        }
+    }
+
+    // Bands between rings
+    for ring in 0..(n_rings - 1) {
+        let ring_start = 1 + ring as u32 * stride;
+        let next_ring_start = ring_start + stride;
+        for i in 0..n_lon {
+            let bl = ring_start + i as u32;
+            let br = ring_start + (i + 1) as u32;
+            let tl = next_ring_start + i as u32;
+            let tr = next_ring_start + (i + 1) as u32;
+            if reversed {
+                mesh.indices.extend_from_slice(&[bl, br, tl]);
+                mesh.indices.extend_from_slice(&[br, tr, tl]);
+            } else {
+                mesh.indices.extend_from_slice(&[bl, tl, br]);
+                mesh.indices.extend_from_slice(&[br, tl, tr]);
+            }
+        }
+    }
+
+    // Stitch last ring to boundary
+    let last_ring_start = 1 + (n_rings - 1) as u32 * stride;
+    let boundary_start = boundary_start as u32;
+    let boundary_len = loop_verts.len();
+
+    let last_ring_angles: Vec<f64> = (0..=n_lon)
+        .map(|i| 2.0 * PI * (i as f64 / n_lon as f64))
+        .collect();
+
+    let boundary_angles: Vec<f64> = loop_verts
+        .iter()
+        .map(|p| {
+            let v = (*p - center).normalize();
+            let x = v.dot(&right);
+            let y = v.dot(&forward);
+            y.atan2(x).rem_euclid(2.0 * PI)
+        })
+        .collect();
+
+    stitch_ring_to_boundary(
+        &mut mesh,
+        last_ring_start,
+        n_lon,
+        &last_ring_angles,
+        boundary_start,
+        boundary_len,
+        &boundary_angles,
+        reversed,
+    );
+
+    mesh
+}
+
+/// Stitch a latitude ring to an arbitrary boundary loop.
+fn stitch_ring_to_boundary(
+    mesh: &mut TriangleMesh,
+    ring_start: u32,
+    ring_len: usize,
+    ring_angles: &[f64],
+    boundary_start: u32,
+    boundary_len: usize,
+    boundary_angles: &[f64],
+    reversed: bool,
+) {
+    // For each ring edge, connect to nearest boundary vertex
+    for i in 0..ring_len {
+        let ring_curr = ring_start + i as u32;
+        let ring_next = ring_start + ((i + 1) % (ring_len + 1)) as u32;
+
+        let ring_angle = (ring_angles[i] + ring_angles[(i + 1) % (ring_len + 1)]) / 2.0;
+        let mut closest_boundary = 0usize;
+        let mut closest_dist = f64::INFINITY;
+        for (j, &ba) in boundary_angles.iter().enumerate() {
+            let dist = (ba - ring_angle).abs().min(2.0 * PI - (ba - ring_angle).abs());
+            if dist < closest_dist {
+                closest_dist = dist;
+                closest_boundary = j;
+            }
+        }
+        let boundary_idx = boundary_start + closest_boundary as u32;
+
+        if reversed {
+            mesh.indices.extend_from_slice(&[ring_curr, boundary_idx, ring_next]);
+        } else {
+            mesh.indices.extend_from_slice(&[ring_curr, ring_next, boundary_idx]);
+        }
+    }
+
+    // For each boundary edge, connect to nearest ring vertex
+    for i in 0..boundary_len {
+        let b_curr = boundary_start + i as u32;
+        let b_next = boundary_start + ((i + 1) % boundary_len) as u32;
+
+        let b_angle = (boundary_angles[i] + boundary_angles[(i + 1) % boundary_len]) / 2.0;
+        let mut closest_ring = 0usize;
+        let mut closest_dist = f64::INFINITY;
+        for (j, &ra) in ring_angles.iter().enumerate().take(ring_len + 1) {
+            let dist = (ra - b_angle).abs().min(2.0 * PI - (ra - b_angle).abs());
+            if dist < closest_dist {
+                closest_dist = dist;
+                closest_ring = j;
+            }
+        }
+        let ring_idx = ring_start + closest_ring as u32;
+
+        if reversed {
+            mesh.indices.extend_from_slice(&[b_curr, ring_idx, b_next]);
+        } else {
+            mesh.indices.extend_from_slice(&[b_curr, b_next, ring_idx]);
+        }
+    }
 }
 
 /// Tessellate a conical face (lateral surface of a cone/frustum).
@@ -976,7 +1358,7 @@ pub fn tessellate(brep: &BRepSolid, segments: u32) -> TriangleMesh {
             }
             SurfaceKind::Sphere => {
                 let face_mesh =
-                    tessellate_spherical_face(&brep.geometry, face_id, &params, reversed);
+                    tessellate_spherical_face(&brep.topology, &brep.geometry, face_id, &params, reversed);
                 mesh.merge(&face_mesh);
             }
             SurfaceKind::Cone => {
@@ -987,6 +1369,10 @@ pub fn tessellate(brep: &BRepSolid, segments: u32) -> TriangleMesh {
                     &params,
                     reversed,
                 );
+                mesh.merge(&face_mesh);
+            }
+            _ => {
+                let face_mesh = tessellate_planar_face(&brep.topology, face_id, reversed);
                 mesh.merge(&face_mesh);
             }
         }
@@ -1061,7 +1447,7 @@ pub fn tessellate_brep(brep: &BRepSolid, segments: u32) -> TriangleMesh {
             }
             SurfaceKind::Sphere => {
                 let face_mesh =
-                    tessellate_spherical_face(&brep.geometry, face_id, &params, reversed);
+                    tessellate_spherical_face(&brep.topology, &brep.geometry, face_id, &params, reversed);
                 mesh.merge(&face_mesh);
             }
             SurfaceKind::Cone => {
@@ -1072,6 +1458,10 @@ pub fn tessellate_brep(brep: &BRepSolid, segments: u32) -> TriangleMesh {
                     &params,
                     reversed,
                 );
+                mesh.merge(&face_mesh);
+            }
+            _ => {
+                let face_mesh = tessellate_planar_face(&brep.topology, face_id, reversed);
                 mesh.merge(&face_mesh);
             }
         }

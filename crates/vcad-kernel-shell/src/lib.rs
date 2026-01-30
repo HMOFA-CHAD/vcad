@@ -116,6 +116,7 @@ pub fn shell_mesh(mesh: &TriangleMesh, thickness: f64) -> TriangleMesh {
     TriangleMesh {
         vertices: combined_vertices,
         indices: combined_indices,
+        normals: Vec::new(), // Let renderer compute normals
     }
 }
 
