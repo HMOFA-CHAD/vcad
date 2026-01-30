@@ -96,7 +96,7 @@ export function createCommandRegistry(actions: CommandActions): CommandRegistry 
       label: "Move Mode",
       icon: "ArrowsOutCardinal",
       keywords: ["move", "translate", "position", "transform"],
-      shortcut: "W",
+      shortcut: "M",
       action: () => actions.setTransformMode("translate"),
     },
     {
@@ -104,7 +104,7 @@ export function createCommandRegistry(actions: CommandActions): CommandRegistry 
       label: "Rotate Mode",
       icon: "ArrowClockwise",
       keywords: ["rotate", "spin", "turn", "transform"],
-      shortcut: "E",
+      shortcut: "R",
       action: () => actions.setTransformMode("rotate"),
     },
     {
@@ -112,7 +112,7 @@ export function createCommandRegistry(actions: CommandActions): CommandRegistry 
       label: "Scale Mode",
       icon: "ArrowsOut",
       keywords: ["scale", "resize", "size", "transform"],
-      shortcut: "R",
+      shortcut: "S",
       action: () => actions.setTransformMode("scale"),
     },
 

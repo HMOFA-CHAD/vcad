@@ -139,15 +139,15 @@ export function useKeyboardShortcuts() {
       }
 
       // Transform modes
-      if (e.key === "w" || e.key === "W") {
+      if (e.key === "m" || e.key === "M") {
         setTransformMode("translate");
         return;
       }
-      if (e.key === "e" || e.key === "E") {
+      if (e.key === "r" || e.key === "R") {
         setTransformMode("rotate");
         return;
       }
-      if (e.key === "r" || e.key === "R") {
+      if (e.key === "s" || e.key === "S") {
         setTransformMode("scale");
         return;
       }

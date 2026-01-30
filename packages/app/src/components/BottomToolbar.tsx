@@ -12,7 +12,12 @@ import {
   Command,
 } from "@phosphor-icons/react";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useDocumentStore, useUiStore, useSketchStore, useEngineStore } from "@vcad/core";
+import {
+  useDocumentStore,
+  useUiStore,
+  useSketchStore,
+  useEngineStore,
+} from "@vcad/core";
 import type { PrimitiveKind, BooleanType } from "@vcad/core";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +36,12 @@ const BOOLEANS: {
 }[] = [
   { type: "union", icon: Unite, label: "Union", shortcut: "⌘⇧U" },
   { type: "difference", icon: Subtract, label: "Difference", shortcut: "⌘⇧D" },
-  { type: "intersection", icon: Intersect, label: "Intersection", shortcut: "⌘⇧I" },
+  {
+    type: "intersection",
+    icon: Intersect,
+    label: "Intersection",
+    shortcut: "⌘⇧I",
+  },
 ];
 
 function ToolbarButton({
@@ -55,7 +65,7 @@ function ToolbarButton({
           "disabled:opacity-40 disabled:cursor-not-allowed",
           active
             ? "bg-accent text-white"
-            : "text-text-muted hover:bg-hover hover:text-text"
+            : "text-text-muted hover:bg-hover hover:text-text",
         )}
         disabled={disabled}
         onClick={onClick}
@@ -89,7 +99,9 @@ function StatusSection() {
       {partCount > 0 && (
         <>
           <span className="text-border">·</span>
-          <span>{partCount} part{partCount !== 1 ? "s" : ""}</span>
+          <span>
+            {partCount} part{partCount !== 1 ? "s" : ""}
+          </span>
         </>
       )}
       <span className="text-border">·</span>
@@ -111,7 +123,9 @@ export function BottomToolbar() {
   const toggleCommandPalette = useUiStore((s) => s.toggleCommandPalette);
 
   const enterSketchMode = useSketchStore((s) => s.enterSketchMode);
-  const enterFaceSelectionMode = useSketchStore((s) => s.enterFaceSelectionMode);
+  const enterFaceSelectionMode = useSketchStore(
+    (s) => s.enterFaceSelectionMode,
+  );
   const sketchActive = useSketchStore((s) => s.active);
   const faceSelectionMode = useSketchStore((s) => s.faceSelectionMode);
   const parts = useDocumentStore((s) => s.parts);
@@ -139,7 +153,7 @@ export function BottomToolbar() {
           "flex items-center gap-1 px-2 py-1.5",
           "bg-surface",
           "border border-border",
-          "shadow-lg shadow-black/30"
+          "shadow-lg shadow-black/30",
         )}
       >
         {/* Primitives */}
@@ -188,7 +202,7 @@ export function BottomToolbar() {
 
         {/* Transform mode */}
         <ToolbarButton
-          tooltip="Move (W)"
+          tooltip="Move (M)"
           active={hasSelection && transformMode === "translate"}
           disabled={!hasSelection}
           onClick={() => setTransformMode("translate")}
@@ -196,7 +210,7 @@ export function BottomToolbar() {
           <ArrowsOutCardinal size={20} />
         </ToolbarButton>
         <ToolbarButton
-          tooltip="Rotate (E)"
+          tooltip="Rotate (R)"
           active={hasSelection && transformMode === "rotate"}
           disabled={!hasSelection}
           onClick={() => setTransformMode("rotate")}
@@ -204,7 +218,7 @@ export function BottomToolbar() {
           <ArrowsClockwise size={20} />
         </ToolbarButton>
         <ToolbarButton
-          tooltip="Scale (R)"
+          tooltip="Scale (S)"
           active={hasSelection && transformMode === "scale"}
           disabled={!hasSelection}
           onClick={() => setTransformMode("scale")}

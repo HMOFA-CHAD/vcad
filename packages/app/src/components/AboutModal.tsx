@@ -4,26 +4,56 @@ import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 const FEATURES = [
-  { title: "csg", desc: "union, difference, intersection — as operators (+, -, &)" },
-  { title: "export", desc: "stl, gltf, usd, dxf, step. one model, every format." },
-  { title: "inspect", desc: "volume, surface area, bounding box, center of mass" },
-  { title: "transforms", desc: "mirror, linear pattern, circular pattern, translate, rotate, scale" },
-  { title: "materials", desc: "pbr from toml. metallic, roughness, color, density." },
-  { title: "agents", desc: "built for coding agents. api tables, cookbook, blender mcp." },
+  {
+    title: "csg",
+    desc: "union, difference, intersection — as operators (+, -, &)",
+  },
+  {
+    title: "export",
+    desc: "stl, gltf, usd, dxf, step. one model, every format.",
+  },
+  {
+    title: "inspect",
+    desc: "volume, surface area, bounding box, center of mass",
+  },
+  {
+    title: "transforms",
+    desc: "mirror, linear pattern, circular pattern, translate, rotate, scale",
+  },
+  {
+    title: "materials",
+    desc: "pbr from toml. metallic, roughness, color, density.",
+  },
+  {
+    title: "agents",
+    desc: "built for coding agents. api tables, cookbook, blender mcp.",
+  },
 ];
 
 const WHY = [
-  { title: "not openscad", desc: "no custom language. your models are real rust — cargo, crates, tests, ci." },
-  { title: "native brep", desc: "built on vcad-kernel. b-rep geometry with proper boolean operations." },
-  { title: "every format", desc: "stl, gltf, usd, dxf, step from one codebase. no conversion pipeline." },
-  { title: "agent-native", desc: "small api, operator overloads, consistent patterns. ai agents generate models." },
+  {
+    title: "not openscad",
+    desc: "no custom language. your models are real rust — cargo, crates, tests, ci.",
+  },
+  {
+    title: "native brep",
+    desc: "built on vcad-kernel. b-rep geometry with proper boolean operations.",
+  },
+  {
+    title: "every format",
+    desc: "stl, gltf, usd, dxf, step from one codebase. no conversion pipeline.",
+  },
+  {
+    title: "agent-native",
+    desc: "small api, operator overloads, consistent patterns. ai agents generate models.",
+  },
 ];
 
 const SHORTCUTS = {
   transform: [
-    { keys: "W", desc: "Move tool" },
-    { keys: "E", desc: "Rotate tool" },
-    { keys: "R", desc: "Scale tool" },
+    { keys: "M", desc: "Move tool" },
+    { keys: "R", desc: "Rotate tool" },
+    { keys: "S", desc: "Scale tool" },
   ],
   editing: [
     { keys: "Del", desc: "Delete selected" },
@@ -50,9 +80,7 @@ const SHORTCUTS = {
     { keys: "⌘S", desc: "Save" },
     { keys: "⌘O", desc: "Open" },
   ],
-  mouse: [
-    { keys: "Shift+Click", desc: "Multi-select" },
-  ],
+  mouse: [{ keys: "Shift+Click", desc: "Multi-select" }],
 };
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -96,8 +124,17 @@ export function AboutModal({
           </div>
 
           <p className="mb-5 text-xs text-text-muted leading-relaxed">
-            free parametric cad for everyone. csg primitives, boolean operators, multi-format export.
-            built on <a href="https://github.com/ecto/vcad/tree/main/crates/vcad-kernel" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">vcad-kernel</a>. mit licensed.
+            free parametric cad for everyone. csg primitives, boolean operators,
+            multi-format export. built on{" "}
+            <a
+              href="https://github.com/ecto/vcad/tree/main/crates/vcad-kernel"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              vcad-kernel
+            </a>
+            . mit licensed.
           </p>
 
           <div className="flex flex-col gap-5">
@@ -112,7 +149,9 @@ export function AboutModal({
                 {FEATURES.map((f) => (
                   <div key={f.title}>
                     <div className="font-bold text-text">{f.title}</div>
-                    <div className="text-text-muted/70 leading-relaxed">{f.desc}</div>
+                    <div className="text-text-muted/70 leading-relaxed">
+                      {f.desc}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -124,7 +163,9 @@ export function AboutModal({
                 {WHY.map((f) => (
                   <div key={f.title}>
                     <div className="font-bold text-text">{f.title}</div>
-                    <div className="text-text-muted/70 leading-relaxed">{f.desc}</div>
+                    <div className="text-text-muted/70 leading-relaxed">
+                      {f.desc}
+                    </div>
                   </div>
                 ))}
               </div>
