@@ -23,6 +23,8 @@ pub struct SweepOptions {
     pub scale_start: f64,
     /// Scale factor at the end of the path. Default: 1.0
     pub scale_end: f64,
+    /// Number of line segments per arc in the profile. Default: 8.
+    pub arc_segments: u32,
 }
 
 impl Default for SweepOptions {
@@ -32,6 +34,7 @@ impl Default for SweepOptions {
             path_segments: 0,
             scale_start: 1.0,
             scale_end: 1.0,
+            arc_segments: 8,
         }
     }
 }
@@ -71,14 +74,17 @@ pub fn sweep(
     let n_path_segments = if options.path_segments > 0 {
         options.path_segments as usize
     } else {
-        32 // default
+        path.suggested_segments() // auto-calculate based on curve
     };
 
     if n_path_segments < 2 {
         return Err(SweepError::TooFewSegments);
     }
 
-    let n_profile_verts = profile.segments.len();
+    // Tessellate arcs in the profile for smooth curves
+    let arc_segments = options.arc_segments.max(1) as usize;
+    let tessellated_profile = profile.tessellate(arc_segments);
+    let n_profile_verts = tessellated_profile.segments.len();
     let n_path_samples = n_path_segments + 1; // number of profile copies
 
     // Compute rotation-minimizing frames along the path
@@ -87,8 +93,8 @@ pub fn sweep(
         return Err(SweepError::ZeroLengthPath);
     }
 
-    // Get profile vertices in 2D
-    let profile_verts_2d = profile.vertices_2d();
+    // Get profile vertices in 2D (from tessellated profile)
+    let profile_verts_2d = tessellated_profile.vertices_2d();
 
     let mut topo = Topology::new();
     let mut geom = GeometryStore::new();
@@ -411,6 +417,11 @@ impl Curve3d for Helix {
 
     fn clone_box(&self) -> Box<dyn Curve3d> {
         Box::new(self.clone())
+    }
+
+    fn suggested_segments(&self) -> usize {
+        // 48 segments per turn for smooth helix, minimum 64
+        ((self.turns * 48.0).ceil() as usize).max(64)
     }
 }
 

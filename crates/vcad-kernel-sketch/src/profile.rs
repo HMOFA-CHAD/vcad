@@ -257,6 +257,86 @@ impl SketchProfile {
         self.vertices_2d().iter().map(|p| self.to_3d(*p)).collect()
     }
 
+    /// Tessellate the profile, converting arcs to line segments.
+    ///
+    /// Each arc is subdivided into `segments_per_arc` line segments.
+    /// Lines are kept as-is.
+    pub fn tessellate(&self, segments_per_arc: usize) -> Self {
+        let segments_per_arc = segments_per_arc.max(1);
+        let mut new_segments = Vec::new();
+
+        for seg in &self.segments {
+            match seg {
+                SketchSegment::Line { start, end } => {
+                    new_segments.push(SketchSegment::Line {
+                        start: *start,
+                        end: *end,
+                    });
+                }
+                SketchSegment::Arc {
+                    start,
+                    end,
+                    center,
+                    ccw,
+                } => {
+                    // Compute start and end angles
+                    let start_vec = *start - *center;
+                    let end_vec = *end - *center;
+                    let radius = start_vec.norm();
+
+                    let start_angle = start_vec.y.atan2(start_vec.x);
+                    let mut end_angle = end_vec.y.atan2(end_vec.x);
+
+                    // Adjust end_angle based on direction
+                    if *ccw {
+                        while end_angle <= start_angle {
+                            end_angle += 2.0 * PI;
+                        }
+                    } else {
+                        while end_angle >= start_angle {
+                            end_angle -= 2.0 * PI;
+                        }
+                    }
+
+                    // Generate intermediate points
+                    let mut prev = *start;
+                    for i in 1..=segments_per_arc {
+                        let t = i as f64 / segments_per_arc as f64;
+                        let angle = start_angle + t * (end_angle - start_angle);
+                        let next = if i == segments_per_arc {
+                            *end // Use exact end point to maintain closure
+                        } else {
+                            Point2::new(
+                                center.x + radius * angle.cos(),
+                                center.y + radius * angle.sin(),
+                            )
+                        };
+                        new_segments.push(SketchSegment::Line {
+                            start: prev,
+                            end: next,
+                        });
+                        prev = next;
+                    }
+                }
+            }
+        }
+
+        Self {
+            origin: self.origin,
+            x_dir: self.x_dir,
+            y_dir: self.y_dir,
+            normal: self.normal,
+            segments: new_segments,
+        }
+    }
+
+    /// Get tessellated vertices for sweep operations.
+    ///
+    /// Arcs are subdivided into the specified number of segments.
+    pub fn tessellated_vertices_2d(&self, segments_per_arc: usize) -> Vec<Point2> {
+        self.tessellate(segments_per_arc).vertices_2d()
+    }
+
     /// Check if all segments are lines (no arcs).
     pub fn is_line_only(&self) -> bool {
         self.segments

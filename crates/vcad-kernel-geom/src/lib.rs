@@ -710,6 +710,14 @@ pub trait Curve3d: Send + Sync + std::fmt::Debug {
 
     /// Clone into a boxed trait object.
     fn clone_box(&self) -> Box<dyn Curve3d>;
+
+    /// Suggested number of segments for smooth tessellation.
+    ///
+    /// Override this for curves with high curvature (like helices).
+    /// Default returns 32.
+    fn suggested_segments(&self) -> usize {
+        32
+    }
 }
 
 impl Clone for Box<dyn Curve3d> {
