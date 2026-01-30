@@ -16,6 +16,10 @@ export default defineConfig({
       "@": resolve(__dirname, "./src"),
     },
   },
+  build: {
+    outDir: resolve(__dirname, "../../dist"),
+    emptyOutDir: true,
+  },
   optimizeDeps: {
     exclude: ["@vcad/kernel-wasm"],
   },
