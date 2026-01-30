@@ -1,0 +1,231 @@
+---
+title: "Parametric Spur Gear"
+description: "Generate gears with any tooth count"
+difficulty: Advanced
+time: "25 min"
+order: 6
+---
+
+Generating gear geometry programmatically demonstrates vcad's ability to create complex parametric parts. This recipe builds involute spur gears from first principles.
+
+<Callout type="warning" title="Not for production">
+This simplified gear profile is suitable for 3D printing prototypes and decorative use. For load-bearing gears, use dedicated gear design software or manufactured gears.
+</Callout>
+
+## Gear Basics
+
+Key parameters for spur gears:
+
+| Parameter | Symbol | Description |
+|-----------|--------|-------------|
+| Module | m | Tooth size (pitch diameter / tooth count) |
+| Teeth | z | Number of teeth |
+| Pressure angle | α | Typically 20° |
+| Pitch diameter | d | m × z |
+| Addendum | ha | m (tooth height above pitch) |
+| Dedendum | hf | 1.25m (tooth depth below pitch) |
+
+## Simplified Tooth Profile
+
+For 3D printing, a trapezoidal approximation works well:
+
+```rust
+use vcad::{centered_cube, centered_cylinder, Part};
+use std::f64::consts::PI;
+
+fn gear_tooth(module: f64, height: f64) -> Part {
+    let tooth_width = module * PI / 2.0;  // At pitch circle
+    let addendum = module;
+    let dedendum = module * 1.25;
+
+    // Trapezoidal tooth cross-section
+    // Approximate with a cube (simplified)
+    centered_cube("tooth", tooth_width * 0.8, addendum + dedendum, height)
+        .translate(0.0, (addendum - dedendum) / 2.0, 0.0)
+}
+```
+
+## Building the Gear
+
+```rust
+fn spur_gear(module: f64, teeth: u32, height: f64, bore: f64) -> Part {
+    let pitch_dia = module * teeth as f64;
+    let outer_dia = pitch_dia + 2.0 * module;
+    let root_dia = pitch_dia - 2.5 * module;
+
+    // Base cylinder
+    let base = centered_cylinder("base", root_dia / 2.0, height, 64);
+
+    // Generate teeth around the circumference
+    let tooth = gear_tooth(module, height);
+    let tooth_positioned = tooth.translate(pitch_dia / 2.0, 0.0, 0.0);
+    let all_teeth = tooth_positioned.circular_pattern(0.0, teeth as usize);
+
+    // Center bore
+    let center = centered_cylinder("bore", bore / 2.0, height + 5.0, 32);
+
+    base + all_teeth - center
+}
+```
+
+## Involute Profile (Advanced)
+
+For a proper involute profile, generate points along the involute curve:
+
+```rust
+use std::f64::consts::PI;
+
+fn involute_point(base_radius: f64, angle: f64) -> (f64, f64) {
+    // Parametric involute: point at parameter t
+    let x = base_radius * (angle.cos() + angle * angle.sin());
+    let y = base_radius * (angle.sin() - angle * angle.cos());
+    (x, y)
+}
+
+fn generate_tooth_profile(
+    module: f64,
+    pressure_angle: f64,  // radians
+) -> Vec<(f64, f64)> {
+    let pitch_radius = module / 2.0;  // For one tooth
+    let base_radius = pitch_radius * pressure_angle.cos();
+
+    let mut points = Vec::new();
+
+    // Generate involute from base to tip
+    for i in 0..10 {
+        let t = i as f64 * 0.1;  // Parameter along involute
+        let (x, y) = involute_point(base_radius, t);
+        points.push((x, y));
+    }
+
+    points
+}
+```
+
+<Callout type="info">
+True involute gears require extruding a 2D profile. vcad currently uses 3D primitives, so we approximate with radial teeth. Future versions may support sketch-based extrusion.
+</Callout>
+
+## Practical Approximation
+
+For most 3D printed applications, this simplified approach works:
+
+```rust
+use vcad::{centered_cube, centered_cylinder, Part};
+use std::f64::consts::PI;
+
+fn practical_gear(
+    module: f64,
+    teeth: u32,
+    height: f64,
+    bore_dia: f64,
+    hub_dia: f64,
+    hub_height: f64,
+) -> Part {
+    let pitch_dia = module * teeth as f64;
+    let outer_dia = pitch_dia + 2.0 * module;
+    let root_dia = pitch_dia - 2.5 * module;
+
+    // Root cylinder (between teeth)
+    let root = centered_cylinder("root", root_dia / 2.0, height, teeth as i32 * 4);
+
+    // Individual teeth as radial blocks
+    let tooth_angular_width = 2.0 * PI / teeth as f64 * 0.4;  // ~40% of spacing
+    let tooth_radial_length = (outer_dia - root_dia) / 2.0;
+
+    let tooth = centered_cube("tooth",
+        root_dia * tooth_angular_width,  // Approximate arc length
+        tooth_radial_length,
+        height
+    ).translate(0.0, root_dia / 2.0 + tooth_radial_length / 2.0, 0.0);
+
+    let all_teeth = tooth.circular_pattern(0.0, teeth as usize);
+
+    // Hub
+    let hub = centered_cylinder("hub", hub_dia / 2.0, hub_height, 32)
+        .translate(0.0, 0.0, (hub_height - height) / 2.0);
+
+    // Bore
+    let bore = centered_cylinder("bore", bore_dia / 2.0, hub_height + 5.0, 32);
+
+    root + all_teeth + hub - bore
+}
+```
+
+## Gear Train
+
+To mesh two gears:
+
+```rust
+fn gear_train() -> (Part, Part) {
+    let module = 2.0;  // Must match for meshing
+
+    let driver = practical_gear(module, 20, 8.0, 6.0, 15.0, 12.0);
+    let driven = practical_gear(module, 40, 8.0, 6.0, 15.0, 12.0);
+
+    // Position driven gear at correct center distance
+    let center_dist = module * (20.0 + 40.0) / 2.0;  // Sum of pitch radii
+    let driven_positioned = driven.translate(center_dist, 0.0, 0.0);
+
+    (driver, driven_positioned)
+}
+```
+
+## Complete Code
+
+```rust
+use vcad::{centered_cube, centered_cylinder, Part, Scene};
+use vcad::export::{Materials, export_scene_glb};
+use std::f64::consts::PI;
+
+fn spur_gear(
+    module: f64,
+    teeth: u32,
+    face_width: f64,
+    bore: f64,
+) -> Part {
+    let pitch_dia = module * teeth as f64;
+    let outer_dia = pitch_dia + 2.0 * module;
+    let root_dia = pitch_dia - 2.5 * module;
+
+    // Root cylinder
+    let segments = (teeth * 4).max(32) as i32;
+    let root = centered_cylinder("root", root_dia / 2.0, face_width, segments);
+
+    // Teeth
+    let tooth_angle = 2.0 * PI / teeth as f64;
+    let tooth_width = tooth_angle * root_dia * 0.45;
+    let tooth_height = (outer_dia - root_dia) / 2.0;
+
+    let tooth = centered_cube("tooth", tooth_width, tooth_height, face_width)
+        .translate(0.0, root_dia / 2.0 + tooth_height / 2.0, 0.0);
+
+    let all_teeth = tooth.circular_pattern(0.0, teeth as usize);
+
+    // Center
+    let center = centered_cylinder("bore", bore / 2.0, face_width + 5.0, 32);
+
+    root + all_teeth - center
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a 24-tooth gear, module 2
+    let gear = spur_gear(2.0, 24, 10.0, 8.0);
+
+    println!("Gear specs:");
+    println!("  Pitch diameter: {:.1} mm", 2.0 * 24.0);
+    println!("  Outer diameter: {:.1} mm", 2.0 * 24.0 + 4.0);
+    println!("  Volume: {:.1} mm³", gear.volume());
+
+    gear.write_stl("gear_m2_z24.stl")?;
+
+    Ok(())
+}
+```
+
+<Callout type="tip" title="Printing tips">
+- Print gears on their side (hub vertical) for strongest teeth
+- Use 100% infill for load-bearing gears
+- Consider PETG or nylon for wear resistance
+- Add 0.1-0.2mm to center distance for smooth operation
+</Callout>

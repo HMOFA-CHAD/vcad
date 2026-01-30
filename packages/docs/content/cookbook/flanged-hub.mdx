@@ -1,0 +1,187 @@
+---
+title: "Flanged Hub"
+description: "Shaft hub with mounting flange"
+difficulty: Intermediate
+time: "20 min"
+order: 4
+playground:
+  exampleId: "flanged-hub"
+---
+
+A flanged hub connects a rotating shaft to a larger component. This recipe builds a complete hub with bore, keyway, and bolt pattern.
+
+## The Design
+
+A typical flanged hub has:
+- Cylindrical hub section (grips the shaft)
+- Flange with bolt holes (mounts to mechanism)
+- Center bore (shaft passes through)
+- Optional keyway (prevents rotation on shaft)
+
+```rust
+use vcad::{centered_cylinder, bolt_pattern};
+
+// Hub body
+let hub = centered_cylinder("hub", 15.0, 30.0, 64);
+
+// Flange at base
+let flange = centered_cylinder("flange", 35.0, 6.0, 64)
+    .translate(0.0, 0.0, -15.0);
+
+// Center bore for shaft
+let bore = centered_cylinder("bore", 6.0, 40.0, 32);
+
+// Bolt pattern in flange
+let bolts = bolt_pattern(6, 50.0, 4.0, 10.0, 24)
+    .translate(0.0, 0.0, -15.0);
+
+let hub_assembly = hub + flange - bore - bolts;
+```
+
+<Playground exampleId="flanged-hub" />
+
+## Adding a Keyway
+
+A keyway prevents the hub from spinning on the shaft:
+
+```rust
+use vcad::centered_cube;
+
+// Standard keyway dimensions for shaft diameter
+let keyway = centered_cube("key", 4.0, 6.0, 35.0)  // width, depth, length
+    .translate(0.0, 4.5, 0.0);  // Positioned at bore surface
+
+let hub_with_key = hub_assembly - keyway;
+```
+
+<Callout type="info" title="Keyway sizing">
+Standard keyway dimensions depend on shaft diameter. For a 12mm shaft, typical key is 4mm × 4mm. Refer to DIN 6885 or ANSI B17.1 for standard sizes.
+</Callout>
+
+## Set Screw Holes
+
+For additional grip, add radial set screw holes:
+
+```rust
+let set_screw = centered_cylinder("set", 2.5, 20.0, 24)
+    .rotate(0.0, 90.0, 0.0)  // Point radially inward
+    .translate(0.0, 0.0, 5.0);  // Position along hub
+
+let with_setscrew = hub_with_key - set_screw;
+```
+
+For two opposing set screws:
+
+```rust
+let set_screws = set_screw.circular_pattern(0.0, 2);  // 180° apart
+```
+
+## Stepped Hub
+
+For different bearing surfaces:
+
+```rust
+let hub_lower = centered_cylinder("lower", 20.0, 15.0, 64)
+    .translate(0.0, 0.0, 7.5);
+
+let hub_upper = centered_cylinder("upper", 12.0, 20.0, 64)
+    .translate(0.0, 0.0, 25.0);
+
+let stepped_hub = hub_lower + hub_upper + flange;
+```
+
+## Lightening Holes
+
+For weight reduction, add radial pockets to the flange:
+
+```rust
+let pocket = centered_cylinder("pocket", 6.0, 10.0, 24)
+    .translate(22.0, 0.0, -15.0);  // Between bolt holes
+
+let pockets = pocket.circular_pattern(0.0, 6);  // Same count as bolts, offset
+
+// Rotate to sit between bolt holes (30° offset for 6-hole pattern)
+let pockets_offset = pockets.rotate(0.0, 0.0, 30.0);
+
+let lightened = hub_assembly - pockets_offset;
+```
+
+## Complete Parametric Hub
+
+```rust
+use vcad::{centered_cube, centered_cylinder, bolt_pattern, Part};
+
+struct HubParams {
+    shaft_dia: f64,
+    hub_dia: f64,
+    hub_length: f64,
+    flange_dia: f64,
+    flange_thickness: f64,
+    bolt_count: usize,
+    bcd: f64,
+    bolt_dia: f64,
+    has_keyway: bool,
+    has_set_screw: bool,
+}
+
+fn flanged_hub(p: &HubParams) -> Part {
+    // Main hub cylinder
+    let hub = centered_cylinder("hub", p.hub_dia / 2.0, p.hub_length, 64);
+
+    // Flange
+    let flange = centered_cylinder("flange", p.flange_dia / 2.0, p.flange_thickness, 64)
+        .translate(0.0, 0.0, -p.hub_length / 2.0);
+
+    // Bore
+    let bore = centered_cylinder("bore", p.shaft_dia / 2.0, p.hub_length + p.flange_thickness + 5.0, 32);
+
+    // Bolt holes
+    let bolts = bolt_pattern(p.bolt_count, p.bcd, p.bolt_dia, p.flange_thickness + 5.0, 24)
+        .translate(0.0, 0.0, -p.hub_length / 2.0);
+
+    let mut result = hub + flange - bore - bolts;
+
+    // Optional keyway
+    if p.has_keyway {
+        let key_width = p.shaft_dia / 4.0;  // Approximate
+        let key_depth = key_width;
+        let keyway = centered_cube("key", key_width, key_depth, p.hub_length + 5.0)
+            .translate(0.0, p.shaft_dia / 2.0, 0.0);
+        result = result - keyway;
+    }
+
+    // Optional set screw
+    if p.has_set_screw {
+        let set_screw = centered_cylinder("set", 2.0, p.hub_dia, 24)
+            .rotate(0.0, 90.0, 0.0)
+            .translate(0.0, 0.0, p.hub_length / 4.0);
+        result = result - set_screw;
+    }
+
+    result
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let params = HubParams {
+        shaft_dia: 12.0,
+        hub_dia: 30.0,
+        hub_length: 25.0,
+        flange_dia: 60.0,
+        flange_thickness: 6.0,
+        bolt_count: 4,
+        bcd: 45.0,
+        bolt_dia: 5.5,
+        has_keyway: true,
+        has_set_screw: true,
+    };
+
+    let part = flanged_hub(&params);
+    println!("Volume: {:.1} mm³", part.volume());
+    part.write_stl("hub.stl")?;
+    Ok(())
+}
+```
+
+<Callout type="tip" title="Material considerations">
+For 3D printing, orient with the flange on the build plate. For CNC, the flange provides a good clamping surface for second-op machining of the bore.
+</Callout>

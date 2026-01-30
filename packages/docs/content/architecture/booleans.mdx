@@ -1,0 +1,133 @@
+---
+title: "How Booleans Work"
+description: "Deep dive into CSG boolean operations in vcad"
+order: 1
+---
+
+Boolean operations are the core of CSG (Constructive Solid Geometry) modeling. Understanding how they work helps you design more efficient models and avoid common pitfalls.
+
+## What are Boolean Operations?
+
+Boolean operations combine two 3D shapes to create a new shape. There are three fundamental operations:
+
+- **Union (+)** — Combines two shapes into one, keeping all material
+- **Difference (-)** — Subtracts one shape from another, creating holes
+- **Intersection (&)** — Keeps only the overlapping region
+
+```rust
+// vcad uses operators for booleans
+let result = shape_a + shape_b;  // union
+let result = shape_a - shape_b;  // difference
+let result = shape_a & shape_b;  // intersection
+```
+
+## The Manifold Approach
+
+vcad uses the [Manifold](https://github.com/elalish/manifold) geometry kernel for boolean operations. Manifold uses a unique approach that guarantees watertight output.
+
+### 1. Mesh Representation
+
+Unlike traditional B-Rep (Boundary Representation) CAD kernels, Manifold works directly with triangle meshes. Each shape is represented as a closed mesh where:
+
+- Every edge is shared by exactly two triangles
+- The mesh has a consistent winding order (normals point outward)
+- There are no self-intersections
+
+### 2. Intersection Detection
+
+When performing a boolean, Manifold first finds where the two meshes intersect. This uses an acceleration structure (BVH) to quickly reject non-intersecting triangle pairs.
+
+### 3. Mesh Splitting
+
+At intersection curves, the triangles are subdivided to create new vertices along the intersection. This is the most complex part of the algorithm.
+
+### 4. Classification
+
+Each region of the split meshes is classified as "inside" or "outside" the other mesh. The boolean type determines which regions to keep:
+
+| Operation | Keep from A | Keep from B |
+|-----------|-------------|-------------|
+| Union | Outside B | Outside A |
+| Difference | Outside B | Inside A (flipped) |
+| Intersection | Inside B | Inside A |
+
+## Why This Matters for You
+
+### Robustness
+
+Manifold's approach is extremely robust. It handles edge cases that break traditional boolean engines:
+
+- Touching edges and faces
+- Coplanar surfaces
+- Degenerate triangles
+
+<Callout type="tip">
+You don't need to worry about "nudging" shapes by tiny amounts to avoid coincident faces. Manifold handles these cases correctly.
+</Callout>
+
+### Performance
+
+Boolean operations scale with the number of triangles. For faster booleans:
+
+- Use lower segment counts on cylinders and spheres
+- Batch multiple operations (union many holes at once, then subtract)
+- Avoid unnecessary precision
+
+```rust
+// Slow: many individual subtractions
+for hole in holes {
+    result = result - hole;
+}
+
+// Fast: batch the holes first
+let all_holes = holes.iter().fold(Part::empty("holes"), |acc, h| acc + h);
+let result = base - all_holes;
+```
+
+### Watertight Guarantee
+
+If your inputs are valid 2-manifold meshes, the output is guaranteed to be valid too. This means:
+
+- No mesh healing required
+- Direct export to 3D printing formats
+- Correct volume calculations
+
+## Segment Count Trade-offs
+
+Cylinders and spheres are approximated with triangles. The `segments` parameter controls resolution:
+
+| Segments | Triangles (cylinder) | Use case |
+|----------|---------------------|----------|
+| 16 | 64 | Prototyping, tiny features |
+| 32 | 128 | General use, holes |
+| 64 | 256 | Visible curves |
+| 128 | 512 | High quality renders |
+
+<Callout type="info">
+For holes that will be drilled or reamed later, low segment counts (16-24) are fine. Save high counts for visible surfaces.
+</Callout>
+
+## Common Issues
+
+### "Inverted" or "Inside-out" Results
+
+This happens when input meshes have inconsistent normals. vcad primitives always have correct normals, but imported meshes might not.
+
+### Thin Walls Disappearing
+
+When two surfaces are very close (within floating-point tolerance), they might collapse. Ensure minimum wall thicknesses of at least 0.01mm.
+
+### Slow Operations
+
+If a boolean is unexpectedly slow:
+
+1. Check triangle counts with `.num_triangles()`
+2. Reduce segment counts
+3. Simplify complex geometry
+
+## Research Papers
+
+For the mathematically inclined, these papers describe the techniques used:
+
+- ["Mesh Arrangements for Solid Geometry" (2018)](https://dl.acm.org/doi/10.1145/3272127.3275028)
+- ["Triangle: Engineering a 2D Quality Mesh Generator"](https://www.cs.cmu.edu/~quake/triangle.html)

@@ -1,0 +1,243 @@
+---
+title: "Inspection"
+description: "Query volume, surface area, bounding box, and more"
+order: 4
+---
+
+Inspection methods let you analyze a part's geometry without modifying it. Useful for validation, debugging, and calculating physical properties.
+
+## Volume
+
+Returns the enclosed volume of the part.
+
+```rust
+.volume() -> f64
+```
+
+Returns volume in cubic units (mm³ if using millimeters).
+
+```rust
+let cube = centered_cube("box", 10.0, 10.0, 10.0);
+let vol = cube.volume();
+// vol = 1000.0 (10 × 10 × 10)
+```
+
+### Mass Calculation
+
+With material density:
+
+```rust
+let volume_mm3 = part.volume();
+let volume_m3 = volume_mm3 * 1e-9;  // Convert to m³
+let density = 2700.0;  // kg/m³ (aluminum)
+let mass_kg = volume_m3 * density;
+```
+
+<Callout type="info">
+Volume is computed from the triangle mesh. For complex geometry, this is exact (signed volume from triangles).
+</Callout>
+
+## Surface Area
+
+Returns the total surface area of the part.
+
+```rust
+.surface_area() -> f64
+```
+
+Returns area in square units (mm² if using millimeters).
+
+```rust
+let cube = centered_cube("box", 10.0, 10.0, 10.0);
+let area = cube.surface_area();
+// area = 600.0 (6 faces × 100 mm²)
+```
+
+### Use Cases
+
+- Estimating coating/paint requirements
+- Heat transfer calculations
+- Printing cost estimates (some services charge by surface area)
+
+## Bounding Box
+
+Returns the axis-aligned bounding box.
+
+```rust
+.bounding_box() -> ([f64; 3], [f64; 3])
+```
+
+Returns `(min, max)` corners of the AABB.
+
+```rust
+let part = centered_cube("box", 30.0, 20.0, 10.0);
+let (min, max) = part.bounding_box();
+// min = [-15.0, -10.0, -5.0]
+// max = [15.0, 10.0, 5.0]
+```
+
+### Dimensions
+
+```rust
+let (min, max) = part.bounding_box();
+let width = max[0] - min[0];
+let depth = max[1] - min[1];
+let height = max[2] - min[2];
+```
+
+### Collision Detection
+
+Check if two parts might overlap:
+
+```rust
+fn boxes_overlap(a: &Part, b: &Part) -> bool {
+    let (min_a, max_a) = a.bounding_box();
+    let (min_b, max_b) = b.bounding_box();
+
+    min_a[0] <= max_b[0] && max_a[0] >= min_b[0] &&
+    min_a[1] <= max_b[1] && max_a[1] >= min_b[1] &&
+    min_a[2] <= max_b[2] && max_a[2] >= min_b[2]
+}
+```
+
+## Center of Mass
+
+Returns the volume-weighted centroid.
+
+```rust
+.center_of_mass() -> [f64; 3]
+```
+
+For uniform density, this is the geometric center of mass.
+
+```rust
+let part = centered_cube("box", 10.0, 10.0, 10.0);
+let com = part.center_of_mass();
+// com = [0.0, 0.0, 0.0] for centered cube
+```
+
+<Callout type="tip" title="Balancing">
+Use center of mass to check if a part will balance. If COM is outside the support polygon, it will tip over.
+</Callout>
+
+## Triangle Count
+
+Returns the number of triangles in the mesh.
+
+```rust
+.num_triangles() -> usize
+```
+
+```rust
+let sphere = Part::sphere("ball", 10.0, 32);
+let count = sphere.num_triangles();
+println!("Sphere has {} triangles", count);
+```
+
+### Performance Indicator
+
+High triangle counts can slow:
+- Boolean operations
+- Export (especially STEP)
+- Rendering
+
+Typical counts:
+
+| Shape | Segments | ~Triangles |
+|-------|----------|------------|
+| Cube | — | 12 |
+| Cylinder | 32 | 128 |
+| Sphere | 32 | ~2000 |
+| Complex model | — | 10k-100k |
+
+## Is Empty
+
+Checks if a part has any geometry.
+
+```rust
+.is_empty() -> bool
+```
+
+```rust
+let empty = Part::empty("nothing");
+assert!(empty.is_empty());
+
+let cube = Part::cube("box", 10.0, 10.0, 10.0);
+assert!(!cube.is_empty());
+```
+
+### After Operations
+
+Useful for checking if an intersection produced any geometry:
+
+```rust
+let result = part_a & part_b;
+if result.is_empty() {
+    println!("Parts don't overlap");
+}
+```
+
+## Inspection Summary
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `.volume()` | `f64` | Enclosed volume |
+| `.surface_area()` | `f64` | Total surface area |
+| `.bounding_box()` | `([f64;3], [f64;3])` | AABB min/max |
+| `.center_of_mass()` | `[f64; 3]` | Volume centroid |
+| `.num_triangles()` | `usize` | Mesh triangle count |
+| `.is_empty()` | `bool` | Has geometry? |
+
+## Debugging Workflow
+
+When something looks wrong:
+
+```rust
+let part = create_complex_part();
+
+println!("Volume: {:.2} mm³", part.volume());
+println!("Surface area: {:.2} mm²", part.surface_area());
+println!("Triangles: {}", part.num_triangles());
+
+let (min, max) = part.bounding_box();
+println!("Bounding box: {:?} to {:?}", min, max);
+println!("Size: {:.1} × {:.1} × {:.1} mm",
+    max[0] - min[0],
+    max[1] - min[1],
+    max[2] - min[2]
+);
+
+let com = part.center_of_mass();
+println!("Center of mass: {:?}", com);
+
+if part.is_empty() {
+    println!("WARNING: Part is empty!");
+}
+```
+
+## Example: Validation
+
+```rust
+fn validate_part(part: &Part, expected_volume: f64, tolerance: f64) -> bool {
+    if part.is_empty() {
+        eprintln!("Part is empty");
+        return false;
+    }
+
+    let volume = part.volume();
+    if (volume - expected_volume).abs() > tolerance {
+        eprintln!("Volume mismatch: got {}, expected {}", volume, expected_volume);
+        return false;
+    }
+
+    let (min, max) = part.bounding_box();
+    for i in 0..3 {
+        if min[i] > max[i] {
+            eprintln!("Invalid bounding box");
+            return false;
+        }
+    }
+
+    true
+}
+```

@@ -3,3 +3,5 @@
 *.dxf
 node_modules/
 packages/*/dist/
+.next/
+out/

@@ -1,0 +1,352 @@
+---
+title: "IR Types"
+description: "TypeScript and Rust types for the intermediate representation"
+order: 6
+---
+
+The vcad IR (Intermediate Representation) is the serializable format for CAD documents. Both Rust (`vcad-ir`) and TypeScript (`@vcad/ir`) provide equivalent types.
+
+## Document
+
+The root container for a vcad file.
+
+<TypeDef name="Document">
+```typescript
+interface Document {
+  version: "0.1";
+  nodes: Record<string, Node>;
+  materials: Record<string, MaterialDef>;
+  roots: SceneEntry[];
+}
+```
+</TypeDef>
+
+<Param name="version" type="string">
+Format version. Currently always "0.1".
+</Param>
+<Param name="nodes" type="Record<string, Node>">
+All nodes in the document, keyed by ID as string.
+</Param>
+<Param name="materials" type="Record<string, MaterialDef>">
+Material definitions, keyed by material name.
+</Param>
+<Param name="roots" type="SceneEntry[]">
+Which nodes to render and their materials.
+</Param>
+
+## Node
+
+A single operation in the CSG graph.
+
+<TypeDef name="Node">
+```typescript
+interface Node {
+  id: number;
+  name: string | null;
+  op: CsgOp;
+}
+```
+</TypeDef>
+
+<Param name="id" type="number">
+Unique identifier for this node. Used for references.
+</Param>
+<Param name="name" type="string | null">
+Optional display name. null for anonymous intermediate nodes.
+</Param>
+<Param name="op" type="CsgOp">
+The operation this node represents.
+</Param>
+
+## CsgOp
+
+Tagged union of all CSG operations.
+
+### Primitives
+
+<TypeDef name="Cube">
+```typescript
+{ type: "Cube", size: Vec3 }
+```
+</TypeDef>
+
+Box with corner at origin, extending to size.
+
+<TypeDef name="Cylinder">
+```typescript
+{ type: "Cylinder", radius: number, height: number, segments: number }
+```
+</TypeDef>
+
+Cylinder along Z axis, base at origin.
+
+<TypeDef name="Sphere">
+```typescript
+{ type: "Sphere", radius: number, segments: number }
+```
+</TypeDef>
+
+Sphere centered at origin.
+
+<TypeDef name="Cone">
+```typescript
+{
+  type: "Cone",
+  radiusBottom: number,
+  radiusTop: number,
+  height: number,
+  segments: number
+}
+```
+</TypeDef>
+
+Cone or frustum along Z axis, base at origin.
+
+### Boolean Operations
+
+<TypeDef name="Union">
+```typescript
+{ type: "Union", left: NodeId, right: NodeId }
+```
+</TypeDef>
+
+Combines two shapes.
+
+<TypeDef name="Difference">
+```typescript
+{ type: "Difference", left: NodeId, right: NodeId }
+```
+</TypeDef>
+
+Subtracts right from left.
+
+<TypeDef name="Intersection">
+```typescript
+{ type: "Intersection", left: NodeId, right: NodeId }
+```
+</TypeDef>
+
+Keeps only overlapping region.
+
+### Transforms
+
+<TypeDef name="Translate">
+```typescript
+{ type: "Translate", child: NodeId, offset: Vec3 }
+```
+</TypeDef>
+
+Moves a shape by offset.
+
+<TypeDef name="Rotate">
+```typescript
+{ type: "Rotate", child: NodeId, angles: Vec3 }
+```
+</TypeDef>
+
+Rotates a shape. Angles in degrees.
+
+<TypeDef name="Scale">
+```typescript
+{ type: "Scale", child: NodeId, factor: Vec3 }
+```
+</TypeDef>
+
+Scales a shape non-uniformly.
+
+### Patterns
+
+<TypeDef name="LinearPattern">
+```typescript
+{
+  type: "LinearPattern",
+  child: NodeId,
+  direction: Vec3,
+  count: number,
+  spacing: number
+}
+```
+</TypeDef>
+
+Creates copies along a line.
+
+<TypeDef name="CircularPattern">
+```typescript
+{
+  type: "CircularPattern",
+  child: NodeId,
+  axis: Vec3,
+  count: number,
+  angle: number
+}
+```
+</TypeDef>
+
+Creates copies around an axis.
+
+## Vec3
+
+3D vector used for positions, sizes, and directions.
+
+<TypeDef name="Vec3">
+```typescript
+interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+```
+</TypeDef>
+
+## NodeId
+
+Reference to another node by its ID.
+
+<TypeDef name="NodeId">
+```typescript
+type NodeId = number;
+```
+</TypeDef>
+
+## MaterialDef
+
+PBR material definition.
+
+<TypeDef name="MaterialDef">
+```typescript
+interface MaterialDef {
+  name: string;
+  color: [number, number, number];
+  metallic: number;
+  roughness: number;
+  density?: number;
+  description?: string;
+}
+```
+</TypeDef>
+
+<Param name="name" type="string">
+Display name for the material.
+</Param>
+<Param name="color" type="[number, number, number]">
+RGB color values, 0.0-1.0.
+</Param>
+<Param name="metallic" type="number">
+Metallic factor, 0.0-1.0.
+</Param>
+<Param name="roughness" type="number">
+Roughness factor, 0.0-1.0.
+</Param>
+<Param name="density" type="number" required={false}>
+Material density in kg/m³. For physics simulation.
+</Param>
+<Param name="description" type="string" required={false}>
+Human-readable description.
+</Param>
+
+## SceneEntry
+
+Connects a root node to a material for rendering.
+
+<TypeDef name="SceneEntry">
+```typescript
+interface SceneEntry {
+  root: NodeId;
+  material: string;
+}
+```
+</TypeDef>
+
+<Param name="root" type="NodeId">
+ID of the node to render.
+</Param>
+<Param name="material" type="string">
+Key into the materials dictionary.
+</Param>
+
+## Complete Example
+
+```typescript
+const document: Document = {
+  version: "0.1",
+  nodes: {
+    "1": {
+      id: 1,
+      name: "plate",
+      op: { type: "Cube", size: { x: 100, y: 60, z: 5 } }
+    },
+    "2": {
+      id: 2,
+      name: null,
+      op: {
+        type: "Translate",
+        child: 1,
+        offset: { x: -50, y: -30, z: -2.5 }
+      }
+    },
+    "3": {
+      id: 3,
+      name: "hole",
+      op: { type: "Cylinder", radius: 3, height: 10, segments: 32 }
+    },
+    "4": {
+      id: 4,
+      name: "result",
+      op: { type: "Difference", left: 2, right: 3 }
+    }
+  },
+  materials: {
+    aluminum: {
+      name: "Aluminum",
+      color: [0.9, 0.9, 0.92],
+      metallic: 0.95,
+      roughness: 0.3
+    }
+  },
+  roots: [
+    { root: 4, material: "aluminum" }
+  ]
+};
+```
+
+## TypeScript Import
+
+```typescript
+import type {
+  Document,
+  Node,
+  CsgOp,
+  Vec3,
+  MaterialDef,
+  SceneEntry,
+} from "@vcad/ir";
+```
+
+## Rust Import
+
+```rust
+use vcad_ir::{
+    Document,
+    Node,
+    CsgOp,
+    Vec3,
+    MaterialDef,
+    SceneEntry,
+};
+```
+
+## Serialization
+
+Both implementations use JSON with the same schema:
+
+```rust
+// Rust
+let json = serde_json::to_string_pretty(&document)?;
+let doc: Document = serde_json::from_str(&json)?;
+```
+
+```typescript
+// TypeScript
+const json = JSON.stringify(document, null, 2);
+const doc: Document = JSON.parse(json);
+```

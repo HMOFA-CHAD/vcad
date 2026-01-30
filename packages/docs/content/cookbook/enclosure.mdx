@@ -1,0 +1,221 @@
+---
+title: "Electronics Enclosure"
+description: "Box with lid, standoffs, and vent holes"
+difficulty: Intermediate
+time: "30 min"
+order: 5
+playground:
+  exampleId: "enclosure"
+---
+
+Electronics enclosures combine many vcad techniques: shelling, boss creation, vent patterns, and multi-part assembly. This recipe builds a complete box with matching lid.
+
+## Basic Shell
+
+Start by creating a hollow box using boolean difference:
+
+```rust
+use vcad::centered_cube;
+
+let wall = 2.0;
+let outer = centered_cube("outer", 80.0, 60.0, 40.0);
+let inner = centered_cube("inner",
+    80.0 - wall * 2.0,
+    60.0 - wall * 2.0,
+    40.0 - wall
+).translate(0.0, 0.0, wall);  // Keep bottom solid
+
+let shell = outer - inner;
+```
+
+<Playground exampleId="enclosure" />
+
+## Adding Mounting Bosses
+
+PCB standoffs are cylinders with screw holes:
+
+```rust
+use vcad::centered_cylinder;
+
+fn standoff(height: f64, outer_dia: f64, hole_dia: f64) -> Part {
+    let boss = centered_cylinder("boss", outer_dia / 2.0, height, 24);
+    let hole = centered_cylinder("hole", hole_dia / 2.0, height + 5.0, 16);
+    boss - hole
+}
+
+// Position at PCB mounting locations
+let pcb_x = 30.0;  // Half of PCB width
+let pcb_y = 20.0;  // Half of PCB length
+
+let standoff_template = standoff(5.0, 6.0, 2.5);
+let standoffs = standoff_template
+    .translate(pcb_x, pcb_y, wall)
+    .linear_pattern(pcb_x * 2.0, 0.0, 0.0, 2)
+    .linear_pattern(0.0, pcb_y * 2.0, 0.0, 2)
+    .translate(-pcb_x, -pcb_y, 0.0);
+
+let box_with_standoffs = shell + standoffs;
+```
+
+## Vent Pattern
+
+Add ventilation slots on the side:
+
+```rust
+let vent_slot = centered_cube("vent", 2.0, 15.0, wall + 2.0)
+    .translate(0.0, 0.0, 25.0);  // Position on wall
+
+let vents = vent_slot
+    .linear_pattern(5.0, 0.0, 0.0, 8)  // 8 slots, 5mm apart
+    .translate(-17.5, -30.0 + wall / 2.0, 0.0);  // Center on front wall
+
+// Mirror to back wall
+let all_vents = &vents + &vents.mirror_y();
+
+let ventilated = box_with_standoffs - all_vents;
+```
+
+## Creating the Lid
+
+The lid has a lip that fits inside the box:
+
+```rust
+let lid_lip = 3.0;  // How far lip extends into box
+
+// Main lid surface
+let lid_top = centered_cube("lid_top", 80.0, 60.0, wall);
+
+// Inner lip (slightly smaller for clearance)
+let clearance = 0.3;  // Printing tolerance
+let lid_lip_part = centered_cube("lip",
+    80.0 - wall * 2.0 - clearance * 2.0,
+    60.0 - wall * 2.0 - clearance * 2.0,
+    lid_lip
+).translate(0.0, 0.0, -lid_lip / 2.0 - wall / 2.0);
+
+let lid = lid_top + lid_lip_part;
+```
+
+## Connector Cutouts
+
+Add holes for USB, power, etc.:
+
+```rust
+// USB-C cutout (approximate)
+let usb = centered_cube("usb", 10.0, wall + 2.0, 4.0)
+    .translate(20.0, -30.0, 10.0);
+
+// Power jack
+let power = centered_cylinder("power", 4.0, wall + 2.0, 24)
+    .rotate(90.0, 0.0, 0.0)
+    .translate(-25.0, -30.0, 10.0);
+
+let with_cutouts = ventilated - usb - power;
+```
+
+## Snap Fit Clips
+
+For tool-less assembly, add snap clips:
+
+```rust
+// Simple cantilever snap on lid lip
+let clip = centered_cube("clip", 8.0, 2.0, lid_lip + 2.0)
+    .translate(0.0, -(60.0 / 2.0 - wall - clearance - 1.0), -lid_lip / 2.0);
+
+let clips = &clip + &clip.mirror_y();  // Front and back
+let lid_with_clips = lid + clips;
+
+// Matching slots in box
+let slot = centered_cube("slot", 9.0, 3.0, 5.0)
+    .translate(0.0, -(60.0 / 2.0 - wall / 2.0), 40.0 - 5.0);
+
+let slots = &slot + &slot.mirror_y();
+let box_with_slots = with_cutouts - slots;
+```
+
+## Complete Code
+
+```rust
+use vcad::{centered_cube, centered_cylinder, Part, Scene};
+use vcad::export::{Materials, export_scene_glb};
+
+fn enclosure(
+    width: f64,
+    depth: f64,
+    height: f64,
+    wall: f64,
+) -> (Part, Part) {
+    // Box shell
+    let outer = centered_cube("outer", width, depth, height);
+    let inner = centered_cube("inner",
+        width - wall * 2.0,
+        depth - wall * 2.0,
+        height - wall
+    ).translate(0.0, 0.0, wall);
+
+    let shell = outer - inner;
+
+    // Standoffs
+    let standoff = {
+        let boss = centered_cylinder("boss", 3.0, 5.0, 24);
+        let hole = centered_cylinder("hole", 1.25, 8.0, 16);
+        (boss - hole).translate(0.0, 0.0, wall)
+    };
+
+    let standoffs = standoff
+        .translate(width / 2.0 - 8.0, depth / 2.0 - 8.0, 0.0)
+        .linear_pattern(-(width - 16.0), 0.0, 0.0, 2)
+        .linear_pattern(0.0, -(depth - 16.0), 0.0, 2);
+
+    // Vents
+    let vent = centered_cube("vent", 2.0, wall + 2.0, 15.0)
+        .translate(0.0, -depth / 2.0, height / 2.0);
+    let vents = vent.linear_pattern(5.0, 0.0, 0.0, 6)
+        .translate(-12.5, 0.0, 0.0);
+    let all_vents = &vents + &vents.mirror_y();
+
+    let box_part = shell + standoffs - all_vents;
+
+    // Lid
+    let lip = 3.0;
+    let clearance = 0.3;
+    let lid_top = centered_cube("lid", width, depth, wall)
+        .translate(0.0, 0.0, height + 5.0);  // Offset for visualization
+    let lid_lip = centered_cube("lip",
+        width - wall * 2.0 - clearance * 2.0,
+        depth - wall * 2.0 - clearance * 2.0,
+        lip
+    ).translate(0.0, 0.0, height + 5.0 - wall / 2.0 - lip / 2.0);
+
+    let lid_part = lid_top + lid_lip;
+
+    (box_part, lid_part)
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (box_part, lid) = enclosure(80.0, 60.0, 40.0, 2.0);
+
+    // Export individually for printing
+    box_part.write_stl("enclosure_box.stl")?;
+    lid.write_stl("enclosure_lid.stl")?;
+
+    // Export as scene for visualization
+    let materials = Materials::parse(r#"
+        [materials.abs]
+        color = [0.15, 0.15, 0.15]
+        metallic = 0.0
+        roughness = 0.6
+    "#)?;
+
+    let mut scene = Scene::new("enclosure");
+    scene.add(box_part, "abs");
+    scene.add(lid, "abs");
+    export_scene_glb(&scene, &materials, "enclosure.glb")?;
+
+    Ok(())
+}
+```
+
+<Callout type="tip" title="Print orientation">
+Print the box upside-down (open end up) for best surface quality on the outside. Print the lid flat for best dimensional accuracy on the lip.
+</Callout>

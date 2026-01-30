@@ -1,0 +1,234 @@
+---
+title: "Primitives"
+description: "Basic 3D shapes: cube, cylinder, sphere, cone"
+order: 1
+---
+
+Primitives are the building blocks of vcad models. Every part starts with one or more primitives combined with boolean operations.
+
+## Cube
+
+Creates a box with one corner at the origin.
+
+```rust
+Part::cube(name: &str, x: f64, y: f64, z: f64) -> Part
+```
+
+<Param name="name" type="&str">
+Part name for identification in scenes and debugging.
+</Param>
+<Param name="x" type="f64">
+Width (size along X axis) in millimeters.
+</Param>
+<Param name="y" type="f64">
+Depth (size along Y axis) in millimeters.
+</Param>
+<Param name="z" type="f64">
+Height (size along Z axis) in millimeters.
+</Param>
+
+**Origin:** Corner at (0, 0, 0), extends to (x, y, z).
+
+```rust
+// 30mm cube
+let cube = Part::cube("box", 30.0, 30.0, 30.0);
+```
+
+## Centered Cube
+
+Creates a box centered at the origin.
+
+```rust
+centered_cube(name: &str, x: f64, y: f64, z: f64) -> Part
+```
+
+**Origin:** Center at (0, 0, 0), extends from (-x/2, -y/2, -z/2) to (x/2, y/2, z/2).
+
+```rust
+// 30mm cube centered at origin
+let cube = centered_cube("box", 30.0, 30.0, 30.0);
+```
+
+<Callout type="tip">
+Use `centered_cube` when combining shapes at the origin. Use `Part::cube` when positioning relative to a corner.
+</Callout>
+
+## Cylinder
+
+Creates a cylinder along the Z axis.
+
+```rust
+Part::cylinder(name: &str, radius: f64, height: f64, segments: i32) -> Part
+```
+
+<Param name="name" type="&str">
+Part name.
+</Param>
+<Param name="radius" type="f64">
+Radius in millimeters.
+</Param>
+<Param name="height" type="f64">
+Height along Z axis in millimeters.
+</Param>
+<Param name="segments" type="i32">
+Number of facets around circumference. Higher = smoother.
+</Param>
+
+**Origin:** Base center at (0, 0, 0), extends to (0, 0, height).
+
+```rust
+// Cylinder: 10mm radius, 25mm tall, 32 segments
+let cyl = Part::cylinder("shaft", 10.0, 25.0, 32);
+```
+
+## Centered Cylinder
+
+Creates a cylinder centered on all axes.
+
+```rust
+centered_cylinder(name: &str, radius: f64, height: f64, segments: i32) -> Part
+```
+
+**Origin:** Center at (0, 0, 0), extends from (0, 0, -height/2) to (0, 0, height/2).
+
+```rust
+// Centered cylinder
+let cyl = centered_cylinder("shaft", 10.0, 25.0, 32);
+```
+
+### Segment Count Guidelines
+
+| Segments | Use case |
+|----------|----------|
+| 16 | Tiny holes, prototyping |
+| 24 | Small features, internal holes |
+| 32 | General purpose (default) |
+| 64 | Visible curves |
+| 128 | High-quality renders |
+
+## Sphere
+
+Creates a sphere at the origin.
+
+```rust
+Part::sphere(name: &str, radius: f64, segments: i32) -> Part
+```
+
+<Param name="name" type="&str">
+Part name.
+</Param>
+<Param name="radius" type="f64">
+Radius in millimeters.
+</Param>
+<Param name="segments" type="i32">
+Subdivision level (both latitude and longitude).
+</Param>
+
+**Origin:** Center at (0, 0, 0).
+
+```rust
+// 15mm radius sphere
+let ball = Part::sphere("ball", 15.0, 32);
+```
+
+## Cone
+
+Creates a cone or truncated cone along the Z axis.
+
+```rust
+Part::cone(name: &str, r_bottom: f64, r_top: f64, height: f64, segments: i32) -> Part
+```
+
+<Param name="name" type="&str">
+Part name.
+</Param>
+<Param name="r_bottom" type="f64">
+Bottom radius in millimeters.
+</Param>
+<Param name="r_top" type="f64">
+Top radius in millimeters. Use 0 for a pointed cone.
+</Param>
+<Param name="height" type="f64">
+Height along Z axis in millimeters.
+</Param>
+<Param name="segments" type="i32">
+Number of facets around circumference.
+</Param>
+
+**Origin:** Base center at (0, 0, 0), extends to (0, 0, height).
+
+```rust
+// Pointed cone
+let cone = Part::cone("point", 10.0, 0.0, 20.0, 32);
+
+// Truncated cone (frustum)
+let frustum = Part::cone("frustum", 15.0, 8.0, 25.0, 32);
+```
+
+## Empty Part
+
+Creates a part with no geometry. Useful as an identity for union operations.
+
+```rust
+Part::empty(name: &str) -> Part
+```
+
+```rust
+// Accumulate parts
+let mut result = Part::empty("combined");
+for part in parts {
+    result = result + part;
+}
+```
+
+## Helper Functions
+
+### Counterbore Hole
+
+Creates a hole with counterbore for socket head cap screws.
+
+```rust
+counterbore_hole(
+    hole_dia: f64,
+    cb_dia: f64,
+    cb_depth: f64,
+    total_depth: f64,
+    segments: i32,
+) -> Part
+```
+
+```rust
+// M5 SHCS counterbore
+let hole = counterbore_hole(5.5, 10.0, 5.0, 20.0, 32);
+let result = plate - hole;
+```
+
+### Bolt Pattern
+
+Creates a circular pattern of holes (bolt circle).
+
+```rust
+bolt_pattern(
+    count: usize,
+    bcd: f64,        // Bolt Circle Diameter
+    hole_dia: f64,
+    depth: f64,
+    segments: i32,
+) -> Part
+```
+
+```rust
+// 6 holes on a 60mm BCD
+let holes = bolt_pattern(6, 60.0, 5.5, 10.0, 32);
+let flange = flange - holes;
+```
+
+## Units
+
+vcad is unit-agnostic—all dimensions are `f64`. By convention:
+
+- **Length**: millimeters
+- **Angles**: degrees (in transforms)
+- **Segments**: integer count
+
+This matches STL/DXF conventions used in manufacturing.

@@ -1,0 +1,233 @@
+---
+title: "Transforms"
+description: "Move, rotate, scale, mirror, and pattern parts"
+order: 2
+---
+
+Transforms modify a part's position, orientation, or size. All transform methods return a new `Part`, leaving the original unchanged.
+
+## Translate
+
+Moves a part by the specified offset.
+
+```rust
+.translate(x: f64, y: f64, z: f64) -> Part
+```
+
+<Param name="x" type="f64">
+Offset along X axis in millimeters.
+</Param>
+<Param name="y" type="f64">
+Offset along Y axis in millimeters.
+</Param>
+<Param name="z" type="f64">
+Offset along Z axis in millimeters.
+</Param>
+
+```rust
+let moved = part.translate(50.0, 0.0, 10.0);
+```
+
+### translate_vec
+
+Translate using a nalgebra Vector3.
+
+```rust
+.translate_vec(v: Vector3<f64>) -> Part
+```
+
+```rust
+use nalgebra::Vector3;
+let offset = Vector3::new(50.0, 0.0, 10.0);
+let moved = part.translate_vec(offset);
+```
+
+## Rotate
+
+Rotates a part around the origin. Angles are in **degrees**.
+
+```rust
+.rotate(x_deg: f64, y_deg: f64, z_deg: f64) -> Part
+```
+
+<Param name="x_deg" type="f64">
+Rotation around X axis in degrees.
+</Param>
+<Param name="y_deg" type="f64">
+Rotation around Y axis in degrees.
+</Param>
+<Param name="z_deg" type="f64">
+Rotation around Z axis in degrees.
+</Param>
+
+Rotation order is X → Y → Z (Euler angles, extrinsic).
+
+```rust
+// Rotate 45° around Z axis
+let rotated = part.rotate(0.0, 0.0, 45.0);
+
+// Tip cylinder horizontal (lay on side)
+let horizontal = cylinder.rotate(90.0, 0.0, 0.0);
+```
+
+<Callout type="info">
+To rotate around a point other than the origin: translate to origin, rotate, translate back.
+</Callout>
+
+## Scale
+
+Scales a part by the specified factors.
+
+```rust
+.scale(x: f64, y: f64, z: f64) -> Part
+```
+
+<Param name="x" type="f64">
+Scale factor along X axis.
+</Param>
+<Param name="y" type="f64">
+Scale factor along Y axis.
+</Param>
+<Param name="z" type="f64">
+Scale factor along Z axis.
+</Param>
+
+```rust
+// Double width, keep other dimensions
+let stretched = part.scale(2.0, 1.0, 1.0);
+
+// Shrink to half size
+let smaller = part.scale(0.5, 0.5, 0.5);
+```
+
+### scale_uniform
+
+Scales uniformly in all directions.
+
+```rust
+.scale_uniform(s: f64) -> Part
+```
+
+```rust
+let doubled = part.scale_uniform(2.0);
+```
+
+<Callout type="warning">
+Negative scale factors create mirrored geometry. Use the explicit mirror methods for clarity.
+</Callout>
+
+## Mirror
+
+Creates a mirrored copy across a plane through the origin.
+
+```rust
+.mirror_x() -> Part  // Mirror across YZ plane (flip X)
+.mirror_y() -> Part  // Mirror across XZ plane (flip Y)
+.mirror_z() -> Part  // Mirror across XY plane (flip Z)
+```
+
+```rust
+// Create symmetric bracket
+let arm = centered_cube("arm", 40.0, 10.0, 5.0)
+    .translate(25.0, 0.0, 0.0);
+let bracket = &arm + &arm.mirror_x();
+```
+
+## Linear Pattern
+
+Creates copies of a part along a vector.
+
+```rust
+.linear_pattern(dx: f64, dy: f64, dz: f64, count: usize) -> Part
+```
+
+<Param name="dx" type="f64">
+Spacing in X direction (total distance to last copy).
+</Param>
+<Param name="dy" type="f64">
+Spacing in Y direction.
+</Param>
+<Param name="dz" type="f64">
+Spacing in Z direction.
+</Param>
+<Param name="count" type="usize">
+Total number of copies (including original).
+</Param>
+
+The spacing parameters define the **total distance** from first to last copy. The actual spacing between copies is `distance / (count - 1)`.
+
+```rust
+// 4 holes, 30mm apart
+let hole = centered_cylinder("hole", 3.0, 10.0, 32);
+let row = hole.linear_pattern(90.0, 0.0, 0.0, 4);
+// Creates holes at X = 0, 30, 60, 90
+```
+
+### 2D Grid Pattern
+
+Chain linear patterns for grids:
+
+```rust
+let grid = hole
+    .linear_pattern(90.0, 0.0, 0.0, 4)   // 4 columns
+    .linear_pattern(0.0, 60.0, 0.0, 3);  // 3 rows
+// Creates 12 holes
+```
+
+## Circular Pattern
+
+Creates copies of a part around the Z axis.
+
+```rust
+.circular_pattern(radius: f64, count: usize) -> Part
+```
+
+<Param name="radius" type="f64">
+Radius of the pattern circle. Use 0 to rotate around origin.
+</Param>
+<Param name="count" type="usize">
+Number of copies around the circle.
+</Param>
+
+Copies are evenly spaced around 360°.
+
+```rust
+// 6 holes around a 30mm radius
+let hole = centered_cylinder("hole", 3.0, 10.0, 32)
+    .translate(30.0, 0.0, 0.0);  // Position at radius
+let pattern = hole.circular_pattern(0.0, 6);
+```
+
+<Callout type="tip">
+When `radius` is 0, the part rotates around the origin. Pre-translate the part to set the pattern radius.
+</Callout>
+
+## Chaining Transforms
+
+Transforms can be chained. Each returns a new Part:
+
+```rust
+let positioned = part
+    .translate(-5.0, -5.0, 0.0)  // Center at origin
+    .rotate(0.0, 0.0, 45.0)      // Rotate
+    .translate(50.0, 0.0, 0.0);  // Move to final position
+```
+
+<Callout type="warning" title="Order matters">
+Transform order matters! `translate → rotate` gives different results than `rotate → translate`.
+</Callout>
+
+## Transform Reference
+
+| Method | Description |
+|--------|-------------|
+| `.translate(x, y, z)` | Move by offset |
+| `.translate_vec(v)` | Move by Vector3 |
+| `.rotate(x, y, z)` | Rotate (degrees) |
+| `.scale(x, y, z)` | Non-uniform scale |
+| `.scale_uniform(s)` | Uniform scale |
+| `.mirror_x()` | Flip across YZ plane |
+| `.mirror_y()` | Flip across XZ plane |
+| `.mirror_z()` | Flip across XY plane |
+| `.linear_pattern(dx, dy, dz, n)` | Line of copies |
+| `.circular_pattern(r, n)` | Circle of copies |

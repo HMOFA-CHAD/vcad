@@ -1,0 +1,293 @@
+---
+title: "Export"
+description: "Save parts to STL, glTF, USD, DXF, and STEP"
+order: 5
+---
+
+vcad supports multiple export formats for different use cases. This reference covers all export functions and options.
+
+## STL Export
+
+Binary STL for 3D printing and CNC.
+
+### write_stl
+
+Writes a part to a binary STL file.
+
+```rust
+.write_stl(path: &str) -> Result<(), CadError>
+```
+
+```rust
+let part = centered_cube("box", 30.0, 30.0, 30.0);
+part.write_stl("cube.stl")?;
+```
+
+### to_stl
+
+Returns STL data as bytes.
+
+```rust
+.to_stl() -> Vec<u8>
+```
+
+```rust
+let stl_data = part.to_stl();
+// Write to custom location, send over network, etc.
+std::fs::write("custom/path.stl", &stl_data)?;
+```
+
+<Callout type="info">
+vcad always writes binary STL. Binary is smaller and faster than ASCII; all modern slicers support both.
+</Callout>
+
+## glTF/GLB Export
+
+PBR-capable format for visualization. Requires the `gltf` feature (enabled by default).
+
+### export_glb
+
+Exports a single part with material.
+
+```rust
+export_glb(
+    part: &Part,
+    material: &MaterialDef,
+    path: &str,
+) -> Result<(), CadError>
+```
+
+```rust
+use vcad::export::{export_glb, MaterialDef};
+
+let material = MaterialDef {
+    name: "Aluminum".into(),
+    color: [0.9, 0.9, 0.92],
+    metallic: 0.95,
+    roughness: 0.3,
+    density: None,
+    description: None,
+};
+
+export_glb(&part, &material, "model.glb")?;
+```
+
+### export_scene_glb
+
+Exports a multi-part scene with different materials.
+
+```rust
+export_scene_glb(
+    scene: &Scene,
+    materials: &Materials,
+    path: &str,
+) -> Result<(), CadError>
+```
+
+```rust
+use vcad::{Part, Scene};
+use vcad::export::{Materials, export_scene_glb};
+
+let materials = Materials::parse(r#"
+    [materials.steel]
+    color = [0.7, 0.7, 0.72]
+    metallic = 0.9
+    roughness = 0.4
+
+    [materials.rubber]
+    color = [0.1, 0.1, 0.1]
+    metallic = 0.0
+    roughness = 0.9
+"#)?;
+
+let mut scene = Scene::new("assembly");
+scene.add(Part::cube("frame", 100.0, 50.0, 30.0), "steel");
+scene.add(Part::cylinder("wheel", 20.0, 10.0, 32), "rubber");
+
+export_scene_glb(&scene, &materials, "assembly.glb")?;
+```
+
+## MaterialDef
+
+PBR material definition for glTF/USD export.
+
+```rust
+struct MaterialDef {
+    name: String,
+    color: [f32; 3],      // RGB, 0.0-1.0
+    metallic: f32,        // 0.0-1.0
+    roughness: f32,       // 0.0-1.0
+    density: Option<f64>, // kg/m³
+    description: Option<String>,
+}
+```
+
+### Common Materials
+
+| Material | Color | Metallic | Roughness |
+|----------|-------|----------|-----------|
+| Aluminum | [0.9, 0.9, 0.92] | 0.95 | 0.3 |
+| Steel | [0.7, 0.7, 0.72] | 0.9 | 0.4 |
+| Brass | [0.88, 0.73, 0.35] | 0.9 | 0.3 |
+| ABS (black) | [0.08, 0.08, 0.08] | 0.0 | 0.6 |
+| PLA (white) | [0.95, 0.95, 0.95] | 0.0 | 0.5 |
+
+## Materials
+
+Collection of materials loaded from TOML.
+
+### Materials::parse
+
+Parse materials from a TOML string.
+
+```rust
+Materials::parse(toml: &str) -> Result<Materials, ParseError>
+```
+
+### Materials::load
+
+Load materials from a TOML file.
+
+```rust
+Materials::load(path: &str) -> Result<Materials, LoadError>
+```
+
+### TOML Format
+
+```toml
+[materials.aluminum_6061]
+color = [0.85, 0.85, 0.88]
+metallic = 0.95
+roughness = 0.35
+density = 2700
+description = "6061-T6 Aluminum"
+
+[materials.abs_black]
+color = [0.08, 0.08, 0.08]
+metallic = 0.0
+roughness = 0.7
+density = 1040
+
+[part_materials]
+frame = "aluminum_6061"
+cover = "abs_black"
+```
+
+## USD Export
+
+Universal Scene Description for simulation. Requires the `usd` feature.
+
+### export_usd
+
+Exports a part with physics properties.
+
+```rust
+export_usd(
+    part: &Part,
+    material: &MaterialDef,
+    path: &str,
+) -> Result<(), CadError>
+```
+
+```rust
+use vcad::export::export_usd;
+
+let material = MaterialDef {
+    name: "Steel".into(),
+    color: [0.7, 0.7, 0.72],
+    metallic: 0.9,
+    roughness: 0.4,
+    density: Some(7800.0),  // For physics
+    description: None,
+};
+
+export_usd(&part, &material, "model.usda")?;
+```
+
+### export_robot_usd
+
+Exports an articulated robot for Isaac Sim.
+
+```rust
+export_robot_usd(
+    body: &Part,
+    wheels: &[Part],
+    config: &RobotConfig,
+    path: &str,
+) -> Result<(), CadError>
+```
+
+## DXF Export
+
+2D profiles for laser cutting and CNC routing.
+
+### DxfDocument
+
+Builder for DXF files.
+
+```rust
+use vcad::export::DxfDocument;
+
+let mut doc = DxfDocument::new();
+
+// Add shapes
+doc.add_rectangle(width, height, center_x, center_y);
+doc.add_circle(center_x, center_y, radius);
+doc.add_line(x1, y1, x2, y2);
+doc.add_arc(cx, cy, radius, start_angle, end_angle);
+
+// Sheet metal bend line (BEND layer)
+doc.add_bend_line(x1, y1, x2, y2);
+
+// Export
+doc.export("profile.dxf")?;
+```
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `add_rectangle(w, h, cx, cy)` | Rectangle centered at (cx, cy) |
+| `add_circle(cx, cy, r)` | Circle at (cx, cy) with radius r |
+| `add_line(x1, y1, x2, y2)` | Line segment |
+| `add_arc(cx, cy, r, start, end)` | Arc (angles in degrees) |
+| `add_bend_line(x1, y1, x2, y2)` | Line on BEND layer |
+| `export(path)` | Write DXF R12 file |
+
+<Callout type="tip">
+DXF files use R12 format for maximum compatibility with laser cutting software.
+</Callout>
+
+## STEP Export
+
+CAD interchange format. Requires the `step` feature and OpenCASCADE.
+
+```rust
+#[cfg(feature = "step")]
+export_step(part: &Part, path: &str) -> Result<(), CadError>
+```
+
+```rust
+#[cfg(feature = "step")]
+{
+    use vcad::export::export_step;
+    export_step(&part, "model.step")?;
+}
+```
+
+<Callout type="warning">
+STEP export requires OpenCASCADE, which significantly increases compile time and binary size. Only enable if you need CAD interchange.
+</Callout>
+
+## Error Handling
+
+All export functions return `Result<(), CadError>`:
+
+```rust
+match part.write_stl("output.stl") {
+    Ok(()) => println!("Export successful"),
+    Err(CadError::IoError(e)) => eprintln!("File error: {}", e),
+    Err(CadError::MeshError(e)) => eprintln!("Mesh error: {}", e),
+    Err(e) => eprintln!("Export failed: {:?}", e),
+}
+```

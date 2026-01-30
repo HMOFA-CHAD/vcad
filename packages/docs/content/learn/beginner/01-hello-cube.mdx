@@ -1,0 +1,57 @@
+---
+title: "Hello Cube"
+description: "Create your first 3D shape with vcad"
+section: beginner
+order: 1
+playground:
+  exampleId: "cube"
+---
+
+Welcome to vcad! In this tutorial, you'll create your first 3D shape—a simple cube. This is the "Hello World" of CAD.
+
+## Creating a Cube
+
+Every vcad model starts with a **primitive**—a basic shape like a cube, cylinder, or sphere. Here's how to create a cube:
+
+<Playground exampleId="cube" />
+
+## What's happening here?
+
+- `Part::cube()` creates a new cube primitive
+- The first argument (`"my_cube"`) is the part name
+- The next three arguments are width, depth, and height in millimeters
+- `write_stl()` exports the geometry to a file
+
+<Callout type="tip" title="Try it yourself">
+In the playground above, try changing the cube dimensions. Make it taller, wider, or turn it into a thin plate. Notice how the 3D preview updates automatically.
+</Callout>
+
+## The Part Type
+
+In vcad, everything is a `Part`. A Part represents 3D geometry that you can transform, combine with other parts, and export to various formats.
+
+The basic primitives are:
+
+| Primitive | Parameters |
+|-----------|------------|
+| `Part::cube()` | name, width, depth, height |
+| `Part::cylinder()` | name, radius, height, segments |
+| `Part::sphere()` | name, radius, segments |
+| `Part::cone()` | name, bottom_radius, top_radius, height, segments |
+
+## Centered Variants
+
+By default, `Part::cube()` places the corner at the origin. For many modeling tasks, it's more convenient to have the shape centered:
+
+```rust
+use vcad::centered_cube;
+
+// Centered at origin
+let cube = centered_cube("box", 30.0, 30.0, 30.0);
+```
+
+The centered variants (`centered_cube`, `centered_cylinder`) place the geometry's center at the origin, making it easier to combine shapes.
+
+## Next Steps
+
+Now that you can create basic shapes, let's learn how to **transform** them—move them around, rotate them, and scale them to different sizes.

@@ -1,0 +1,177 @@
+---
+title: "L-Bracket"
+description: "Create an L-shaped mounting bracket"
+difficulty: Beginner
+time: "15 min"
+order: 2
+playground:
+  exampleId: "bracket"
+---
+
+L-brackets are fundamental structural components. This recipe shows how to build one from two plates with mounting holes.
+
+## The Pattern
+
+Build the bracket from two overlapping cubes (union), then subtract holes:
+
+```rust
+use vcad::{centered_cube, centered_cylinder};
+
+// Vertical plate
+let vertical = centered_cube("v", 40.0, 5.0, 50.0)
+    .translate(0.0, 0.0, 25.0);
+
+// Horizontal plate
+let horizontal = centered_cube("h", 40.0, 30.0, 5.0)
+    .translate(0.0, 12.5, 2.5);
+
+// Combine into L shape
+let bracket = vertical + horizontal;
+
+// Add mounting holes
+let hole = centered_cylinder("hole", 2.5, 20.0, 24);
+let mount_holes = hole
+    .rotate(90.0, 0.0, 0.0)
+    .linear_pattern(20.0, 0.0, 0.0, 2)
+    .translate(-10.0, 0.0, 35.0);
+
+let result = bracket - mount_holes;
+```
+
+<Playground exampleId="bracket" />
+
+## Step by Step
+
+### 1. Create the vertical plate
+
+```rust
+let vertical = centered_cube("v", 40.0, 5.0, 50.0)
+    .translate(0.0, 0.0, 25.0);
+```
+
+We create a centered cube and translate it up so its bottom is at Z=0.
+
+### 2. Create the horizontal plate
+
+```rust
+let horizontal = centered_cube("h", 40.0, 30.0, 5.0)
+    .translate(0.0, 12.5, 2.5);
+```
+
+Position it to sit at the base and extend forward.
+
+### 3. Union the plates
+
+```rust
+let bracket = vertical + horizontal;
+```
+
+The boolean union creates a single solid where the plates overlap.
+
+### 4. Create rotated mounting holes
+
+```rust
+let hole = centered_cylinder("hole", 2.5, 20.0, 24);
+let mount_holes = hole
+    .rotate(90.0, 0.0, 0.0)  // Rotate to horizontal (through Y)
+    .linear_pattern(20.0, 0.0, 0.0, 2)
+    .translate(-10.0, 0.0, 35.0);
+```
+
+<Callout type="info">
+Cylinders default to vertical (Z-axis). Rotate 90° around X to make them horizontal, pointing through Y.
+</Callout>
+
+### 5. Subtract the holes
+
+```rust
+let result = bracket - mount_holes;
+```
+
+## Variations
+
+### Gusseted bracket
+
+Add triangular reinforcement:
+
+```rust
+use vcad::Part;
+
+// Simple gusset approximation using a rotated cube
+let gusset = centered_cube("gusset", 4.0, 20.0, 20.0)
+    .rotate(0.0, 45.0, 0.0)
+    .translate(0.0, 5.0, 10.0);
+
+let reinforced = bracket + gusset - mount_holes;
+```
+
+### Symmetric bracket
+
+Create both sides using mirror:
+
+```rust
+let half = centered_cube("arm", 40.0, 10.0, 5.0)
+    .translate(25.0, 0.0, 0.0);
+let symmetric = &half + &half.mirror_x();
+```
+
+### Slotted holes
+
+For adjustment slots, use elongated holes:
+
+```rust
+let slot = centered_cube("slot", 10.0, 5.0, 20.0)
+    .rotate(90.0, 0.0, 0.0)
+    .translate(0.0, 0.0, 35.0);
+
+// Round the ends with half-cylinders
+let end1 = centered_cylinder("end", 2.5, 20.0, 24)
+    .rotate(90.0, 0.0, 0.0)
+    .translate(-5.0, 0.0, 35.0);
+let end2 = end1.translate(10.0, 0.0, 0.0);
+
+let slotted_hole = slot + end1 + end2;
+```
+
+## Complete Parametric Version
+
+```rust
+use vcad::{centered_cube, centered_cylinder, Part};
+
+fn l_bracket(
+    width: f64,
+    vertical_height: f64,
+    horizontal_depth: f64,
+    thickness: f64,
+    hole_dia: f64,
+) -> Part {
+    // Vertical plate
+    let vertical = centered_cube("v", width, thickness, vertical_height)
+        .translate(0.0, 0.0, vertical_height / 2.0);
+
+    // Horizontal plate (extends from vertical plate)
+    let horizontal = centered_cube("h", width, horizontal_depth, thickness)
+        .translate(0.0, (horizontal_depth - thickness) / 2.0, thickness / 2.0);
+
+    let bracket = vertical + horizontal;
+
+    // Mounting holes through vertical plate
+    let hole = centered_cylinder("hole", hole_dia / 2.0, thickness + 10.0, 24);
+    let holes = hole
+        .rotate(90.0, 0.0, 0.0)
+        .linear_pattern(width - 20.0, 0.0, 0.0, 2)
+        .translate(-(width - 20.0) / 2.0, 0.0, vertical_height * 0.7);
+
+    bracket - holes
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let part = l_bracket(40.0, 50.0, 30.0, 5.0, 5.0);
+    part.write_stl("bracket.stl")?;
+    Ok(())
+}
+```
+
+<Callout type="tip" title="Sheet metal">
+For sheet metal brackets, export a DXF of the flat pattern with bend lines. The horizontal depth becomes the bend allowance.
+</Callout>

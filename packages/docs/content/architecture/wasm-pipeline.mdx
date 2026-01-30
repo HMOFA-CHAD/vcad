@@ -1,0 +1,259 @@
+---
+title: "WASM Pipeline"
+description: "How vcad evaluates geometry in the browser"
+order: 3
+---
+
+vcad runs in the browser using WebAssembly. This page explains the evaluation pipeline from IR document to rendered mesh.
+
+## Architecture Overview
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│  IR Document │ ──▶ │  @vcad/engine │ ──▶ │  Three.js   │
+│    (JSON)   │     │   (WASM)     │     │  (WebGL)    │
+└─────────────┘     └──────────────┘     └─────────────┘
+```
+
+1. **IR Document** — JSON describing the CAD operations
+2. **@vcad/engine** — TypeScript + WASM evaluator
+3. **Three.js** — WebGL rendering
+
+## The Engine Package
+
+`@vcad/engine` wraps the manifold-3d WASM module:
+
+```typescript
+import { Engine } from "@vcad/engine";
+
+// Initialize (loads WASM)
+const engine = await Engine.create();
+
+// Evaluate a document
+const scene = engine.evaluate(document);
+
+// Access mesh data
+for (const part of scene.parts) {
+  console.log(`${part.name}: ${part.mesh.triangleCount} triangles`);
+}
+```
+
+## WASM Module
+
+The geometry operations use [manifold-3d](https://github.com/elalish/manifold), compiled to WebAssembly:
+
+- Boolean operations (union, difference, intersection)
+- Mesh generation (cube, cylinder, sphere, cone)
+- Transformations (translate, rotate, scale)
+
+The WASM module is loaded asynchronously:
+
+```typescript
+// Engine.create() internally does:
+const wasm = await import("manifold-3d");
+await wasm.default();  // Initialize WASM
+```
+
+## Evaluation Process
+
+### 1. Parse Document
+
+The IR document is validated and node dependencies are resolved:
+
+```typescript
+interface EvalContext {
+  document: Document;
+  cache: Map<number, Manifold>;
+}
+```
+
+### 2. Topological Sort
+
+Nodes are sorted so dependencies are evaluated first:
+
+```typescript
+function evaluationOrder(doc: Document): number[] {
+  // Returns node IDs in dependency order
+  // Root nodes come last
+}
+```
+
+### 3. Evaluate Nodes
+
+Each node is evaluated based on its operation type:
+
+```typescript
+function evalNode(ctx: EvalContext, nodeId: number): Manifold {
+  // Check cache first
+  if (ctx.cache.has(nodeId)) {
+    return ctx.cache.get(nodeId)!;
+  }
+
+  const node = ctx.document.nodes[nodeId];
+  let result: Manifold;
+
+  switch (node.op.type) {
+    case "Cube":
+      result = Manifold.cube(node.op.size);
+      break;
+
+    case "Difference":
+      const left = evalNode(ctx, node.op.left);
+      const right = evalNode(ctx, node.op.right);
+      result = left.subtract(right);
+      break;
+
+    // ... other operations
+  }
+
+  ctx.cache.set(nodeId, result);
+  return result;
+}
+```
+
+### 4. Extract Meshes
+
+Final geometry is extracted as triangle meshes:
+
+```typescript
+interface TriangleMesh {
+  positions: Float32Array;  // [x,y,z, x,y,z, ...]
+  normals: Float32Array;    // Per-vertex normals
+  indices: Uint32Array;     // Triangle indices
+}
+
+function toMesh(manifold: Manifold): TriangleMesh {
+  const mesh = manifold.getMesh();
+  return {
+    positions: new Float32Array(mesh.vertProperties),
+    normals: computeNormals(mesh),
+    indices: new Uint32Array(mesh.triVerts),
+  };
+}
+```
+
+## Memory Management
+
+WASM has its own memory space. Key considerations:
+
+### Explicit Cleanup
+
+Manifold objects must be explicitly deleted:
+
+```typescript
+const cube = Manifold.cube([10, 10, 10]);
+// ... use cube ...
+cube.delete();  // Free WASM memory
+```
+
+The engine handles this automatically:
+
+```typescript
+// Engine tracks allocations and cleans up
+const scene = engine.evaluate(doc);
+// Intermediate Manifolds are freed
+// Only final meshes remain
+```
+
+### Memory Limits
+
+Browser WASM has memory limits (~2-4GB). Complex models with high segment counts can exceed this. The engine checks memory before operations:
+
+```typescript
+if (estimatedMemory > availableMemory * 0.8) {
+  throw new Error("Model too complex for browser");
+}
+```
+
+## Performance Optimization
+
+### Caching
+
+Node results are cached during evaluation. If a node is referenced multiple times, it's computed once:
+
+```typescript
+// This pattern is efficient:
+const hole = { type: "Cylinder", ... };
+const pattern = { type: "LinearPattern", child: hole.id, count: 10 };
+// hole is evaluated once, then patterned
+```
+
+### Lazy Evaluation
+
+Only nodes reachable from roots are evaluated. Orphan nodes are skipped.
+
+### Web Workers
+
+For complex models, evaluation can move to a Web Worker:
+
+```typescript
+// Main thread
+const worker = new Worker("engine-worker.js");
+worker.postMessage({ type: "evaluate", document });
+
+// Worker thread
+const engine = await Engine.create();
+const scene = engine.evaluate(document);
+postMessage({ type: "result", scene });
+```
+
+<Callout type="info">
+The playground uses a single-threaded approach for simplicity. Large models may cause brief UI freezes during evaluation.
+</Callout>
+
+## Three.js Integration
+
+The evaluated mesh is rendered with Three.js:
+
+```typescript
+import * as THREE from "three";
+
+function createMesh(triMesh: TriangleMesh, material: MaterialDef): THREE.Mesh {
+  const geometry = new THREE.BufferGeometry();
+
+  geometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(triMesh.positions, 3)
+  );
+  geometry.setAttribute(
+    "normal",
+    new THREE.BufferAttribute(triMesh.normals, 3)
+  );
+  geometry.setIndex(new THREE.BufferAttribute(triMesh.indices, 1));
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(...material.color),
+    metalness: material.metallic,
+    roughness: material.roughness,
+  });
+
+  return new THREE.Mesh(geometry, mat);
+}
+```
+
+## Error Handling
+
+The engine validates documents before evaluation:
+
+```typescript
+try {
+  const scene = engine.evaluate(document);
+} catch (error) {
+  if (error instanceof ValidationError) {
+    // Invalid document structure
+  } else if (error instanceof EvaluationError) {
+    // Geometry operation failed
+  } else if (error instanceof MemoryError) {
+    // Out of WASM memory
+  }
+}
+```
+
+Common errors:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Missing node` | Reference to non-existent node | Check node IDs |
+| `Circular dependency` | Node references itself | Fix DAG structure |
+| `Non-manifold result` | Boolean produced invalid geometry | Check input meshes |
+| `Out of memory` | Model too complex | Reduce segment counts |

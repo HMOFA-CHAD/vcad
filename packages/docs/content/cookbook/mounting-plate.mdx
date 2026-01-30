@@ -1,0 +1,157 @@
+---
+title: "Mounting Plate"
+description: "Design a plate with bolt pattern holes"
+difficulty: Beginner
+time: "10 min"
+order: 1
+playground:
+  exampleId: "plate"
+---
+
+A mounting plate with a regular hole pattern is one of the most common CAD tasks. This recipe shows the idiomatic vcad approach.
+
+## The Pattern
+
+The key insight is using `linear_pattern` to create a grid of holes efficiently:
+
+```rust
+use vcad::{centered_cube, centered_cylinder};
+
+let plate = centered_cube("plate", 100.0, 60.0, 5.0);
+
+let hole = centered_cylinder("hole", 3.0, 10.0, 32);
+let holes = hole
+    .linear_pattern(80.0, 0.0, 0.0, 2)   // 2 copies, 80mm apart in X
+    .linear_pattern(0.0, 40.0, 0.0, 2)   // then 2 copies, 40mm apart in Y
+    .translate(-40.0, -20.0, 0.0);       // center the pattern
+
+let part = plate - holes;
+```
+
+<Playground exampleId="plate" />
+
+## Step by Step
+
+### 1. Create the base plate
+
+```rust
+let plate = centered_cube("plate", 100.0, 60.0, 5.0);
+```
+
+Using `centered_cube` makes positioning easier—the plate is centered at the origin.
+
+### 2. Create one hole
+
+```rust
+let hole = centered_cylinder("hole", 3.0, 10.0, 32);
+```
+
+Make the hole taller than the plate (10mm vs 5mm) to ensure it cuts through completely.
+
+### 3. Pattern the hole
+
+```rust
+let holes = hole
+    .linear_pattern(80.0, 0.0, 0.0, 2)   // 2 in X direction
+    .linear_pattern(0.0, 40.0, 0.0, 2);  // then 2 in Y direction
+```
+
+This creates 4 holes in a 80mm × 40mm grid.
+
+### 4. Center the pattern
+
+```rust
+let holes = holes.translate(-40.0, -20.0, 0.0);
+```
+
+The pattern starts at origin, so we shift it by half the spacing to center it on the plate.
+
+### 5. Subtract the holes
+
+```rust
+let part = plate - holes;
+```
+
+## Variations
+
+### Different hole counts
+
+For a 3×2 pattern (6 holes):
+
+```rust
+let holes = hole
+    .linear_pattern(40.0, 0.0, 0.0, 3)   // 3 in X, 40mm apart
+    .linear_pattern(0.0, 40.0, 0.0, 2)   // 2 in Y, 40mm apart
+    .translate(-40.0, -20.0, 0.0);
+```
+
+### Edge-based positioning
+
+If you want holes inset from the edges:
+
+```rust
+let inset = 10.0;  // mm from edge
+let plate_w = 100.0;
+let plate_h = 60.0;
+
+let spacing_x = plate_w - 2.0 * inset;  // 80mm
+let spacing_y = plate_h - 2.0 * inset;  // 40mm
+
+let holes = hole
+    .linear_pattern(spacing_x, 0.0, 0.0, 2)
+    .linear_pattern(0.0, spacing_y, 0.0, 2)
+    .translate(-spacing_x / 2.0, -spacing_y / 2.0, 0.0);
+```
+
+### Countersunk holes
+
+For flat-head screws:
+
+```rust
+use vcad::counterbore_hole;
+
+let hole = counterbore_hole(
+    5.5,   // through hole dia
+    10.0,  // counterbore dia
+    5.0,   // counterbore depth
+    10.0,  // total depth
+    32     // segments
+);
+```
+
+<Callout type="tip" title="Parametric design">
+Wrap the dimensions in variables and you have a reusable, parametric mounting plate generator.
+</Callout>
+
+## Complete Code
+
+```rust
+use vcad::{centered_cube, centered_cylinder, Part};
+
+fn mounting_plate(
+    width: f64,
+    height: f64,
+    thickness: f64,
+    hole_dia: f64,
+    hole_inset: f64,
+) -> Part {
+    let plate = centered_cube("plate", width, height, thickness);
+
+    let spacing_x = width - 2.0 * hole_inset;
+    let spacing_y = height - 2.0 * hole_inset;
+
+    let hole = centered_cylinder("hole", hole_dia / 2.0, thickness + 5.0, 32);
+    let holes = hole
+        .linear_pattern(spacing_x, 0.0, 0.0, 2)
+        .linear_pattern(0.0, spacing_y, 0.0, 2)
+        .translate(-spacing_x / 2.0, -spacing_y / 2.0, 0.0);
+
+    plate - holes
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let part = mounting_plate(100.0, 60.0, 5.0, 6.0, 10.0);
+    part.write_stl("plate.stl")?;
+    Ok(())
+}
+```

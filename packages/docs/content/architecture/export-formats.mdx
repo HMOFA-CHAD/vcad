@@ -1,0 +1,268 @@
+---
+title: "Export Formats"
+description: "Understanding vcad's multi-format export capabilities"
+order: 4
+---
+
+vcad supports multiple export formats, each optimized for different use cases. This page explains the technical details of each format.
+
+## Format Overview
+
+| Format | Extension | Use Case | Materials | Feature Flag |
+|--------|-----------|----------|-----------|--------------|
+| STL | `.stl` | 3D printing, CNC | No | Always on |
+| glTF/GLB | `.glb` | Web viewers, rendering | Yes (PBR) | `gltf` (default) |
+| USD | `.usda` | Simulation, Omniverse | Yes + physics | `usd` |
+| DXF | `.dxf` | Laser cutting (2D) | No | Always on |
+| STEP | `.step` | CAD interchange | No | `step` |
+
+## STL (Stereolithography)
+
+The oldest and most universal format for 3D printing.
+
+### Format Details
+
+- **Binary STL** — Compact, fast to read
+- **Triangle soup** — No topology, just triangles
+- **No materials** — Color/material not supported
+
+### vcad Implementation
+
+```rust
+pub fn write_stl(&self, path: &str) -> Result<(), CadError> {
+    let mesh = self.manifold.to_mesh();
+    let triangles = mesh_to_stl_triangles(&mesh);
+    write_binary_stl(path, &triangles)
+}
+```
+
+Binary STL structure:
+```
+[80 bytes header]
+[4 bytes: triangle count]
+[50 bytes per triangle]:
+  - 12 bytes: normal (3 × f32)
+  - 36 bytes: vertices (3 × 3 × f32)
+  - 2 bytes: attribute (unused)
+```
+
+### When to Use
+
+- 3D printing (slicers require STL or 3MF)
+- CNC machining
+- Simple geometry transfer
+- Maximum compatibility
+
+<Callout type="info">
+STL is unit-agnostic. By convention, vcad uses millimeters. Some slicers default to inches—check your slicer's unit settings.
+</Callout>
+
+## glTF/GLB (Graphics Language Transmission Format)
+
+Modern format for 3D graphics with PBR materials.
+
+### Format Details
+
+- **GLB** — Binary container (JSON + buffers)
+- **PBR materials** — Metallic-roughness workflow
+- **Multiple meshes** — Scene graph support
+- **Widely supported** — Three.js, Blender, web browsers
+
+### vcad Implementation
+
+```rust
+pub fn export_glb(
+    part: &Part,
+    material: &MaterialDef,
+    path: &str,
+) -> Result<(), CadError> {
+    let mesh = part.manifold.to_mesh();
+    let gltf = build_gltf_document(&mesh, material);
+    write_glb(path, &gltf)
+}
+```
+
+Material mapping:
+```rust
+// vcad MaterialDef → glTF pbrMetallicRoughness
+{
+    "baseColorFactor": [r, g, b, 1.0],
+    "metallicFactor": metallic,
+    "roughnessFactor": roughness
+}
+```
+
+### Multi-material Scenes
+
+```rust
+let mut scene = Scene::new("assembly");
+scene.add(part_a, "steel");
+scene.add(part_b, "rubber");
+export_scene_glb(&scene, &materials, "assembly.glb")?;
+```
+
+Each part becomes a separate mesh node with its material.
+
+### When to Use
+
+- Web viewers and interactive apps
+- Blender/Unity/Unreal import
+- Product visualization
+- PBR material fidelity
+
+## USD (Universal Scene Description)
+
+Pixar's format for complex scenes and simulation.
+
+### Format Details
+
+- **USDA** — ASCII format (human-readable)
+- **USDC** — Binary crate format
+- **Physics properties** — Mass, friction, etc.
+- **Isaac Sim compatible** — Robot simulation
+
+### vcad Implementation
+
+```rust
+pub fn export_usd(
+    part: &Part,
+    material: &MaterialDef,
+    path: &str,
+) -> Result<(), CadError> {
+    let mesh = part.manifold.to_mesh();
+    let usda = build_usda(&mesh, material);
+    write_usda(path, &usda)
+}
+```
+
+Physics attributes:
+```
+def "physics" {
+    float physics:mass = 0.5
+    float physics:density = 2700
+    bool physics:rigidBodyEnabled = true
+}
+```
+
+### Robot Export
+
+Special function for articulated robots:
+
+```rust
+pub fn export_robot_usd(
+    body: &Part,
+    wheels: &[Part],
+    config: &RobotConfig,
+    path: &str,
+) -> Result<(), CadError>;
+```
+
+### When to Use
+
+- NVIDIA Isaac Sim
+- Omniverse applications
+- Physics simulation
+- Film/VFX pipelines
+
+## DXF (Drawing Exchange Format)
+
+2D vector format for CNC and laser cutting.
+
+### Format Details
+
+- **DXF R12** — Maximum compatibility
+- **2D only** — No 3D geometry
+- **Layers** — Separate cut/score/bend lines
+- **ASCII** — Human-readable
+
+### vcad Implementation
+
+```rust
+impl DxfDocument {
+    pub fn add_rectangle(&mut self, w: f64, h: f64, cx: f64, cy: f64);
+    pub fn add_circle(&mut self, cx: f64, cy: f64, r: f64);
+    pub fn add_line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
+    pub fn add_bend_line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
+    pub fn export(&self, path: &str) -> Result<(), CadError>;
+}
+```
+
+Layer organization:
+- **0** — Default layer (cut lines)
+- **BEND** — Bend lines for sheet metal
+
+### When to Use
+
+- Laser cutting services
+- CNC routing
+- Sheet metal fabrication
+- 2D profiles from 3D models
+
+<Callout type="tip" title="Flat patterns">
+For sheet metal, design your part in 3D, then export the flat pattern as DXF. The BEND layer indicates where to fold.
+</Callout>
+
+## STEP (ISO 10303)
+
+Industry standard for CAD data exchange.
+
+### Format Details
+
+- **AP214** — Automotive design
+- **B-Rep geometry** — Exact surfaces, not meshes
+- **Full fidelity** — Preserves design intent
+- **Requires OpenCASCADE** — Heavy dependency
+
+### vcad Implementation
+
+```rust
+#[cfg(feature = "step")]
+pub fn export_step(
+    part: &Part,
+    path: &str,
+) -> Result<(), CadError> {
+    let brep = mesh_to_brep(&part.manifold)?;
+    write_step_ap214(path, &brep)
+}
+```
+
+<Callout type="warning" title="Feature flag">
+STEP export requires the `step` feature flag, which depends on OpenCASCADE. This significantly increases compile time and binary size.
+</Callout>
+
+### When to Use
+
+- Professional CAD interchange
+- Manufacturing documentation
+- When exact geometry is required
+- Regulatory compliance
+
+## Format Selection Guide
+
+```
+Need 3D printing?
+  └─▶ STL
+
+Need materials/visualization?
+  └─▶ GLB
+
+Need simulation?
+  └─▶ USD
+
+Need laser cutting?
+  └─▶ DXF
+
+Need CAD interchange?
+  └─▶ STEP (if available)
+```
+
+## Coordinate Systems
+
+All formats use the same coordinate system:
+
+- **X** — Right
+- **Y** — Forward
+- **Z** — Up
+- **Units** — Millimeters (by convention)
+
+Some software uses Y-up. vcad does not transform coordinates on export—the model appears the same orientation.

@@ -1,0 +1,214 @@
+---
+title: "CSG Operations"
+description: "Boolean union, difference, and intersection"
+order: 3
+---
+
+CSG (Constructive Solid Geometry) operations combine parts using boolean logic. vcad provides both operator overloads and named methods.
+
+## Union
+
+Combines two parts into one, keeping all material from both.
+
+```rust
+// Operator
+let result = part_a + part_b;
+
+// Method
+let result = part_a.union(&part_b);
+```
+
+```rust
+// Create an L-bracket from two plates
+let vertical = centered_cube("v", 40.0, 5.0, 50.0);
+let horizontal = centered_cube("h", 40.0, 30.0, 5.0);
+let bracket = vertical + horizontal;
+```
+
+### Multiple Unions
+
+```rust
+// Chain with operators
+let combined = part_a + part_b + part_c + part_d;
+
+// Or accumulate
+let mut result = Part::empty("combined");
+for part in parts {
+    result = result + part;
+}
+```
+
+## Difference
+
+Subtracts the right part from the left, creating holes or cutouts.
+
+```rust
+// Operator
+let result = part_a - part_b;
+
+// Method
+let result = part_a.difference(&part_b);
+```
+
+```rust
+// Create a hole
+let plate = centered_cube("plate", 50.0, 50.0, 5.0);
+let hole = centered_cylinder("hole", 5.0, 10.0, 32);
+let result = plate - hole;
+```
+
+<Callout type="tip" title="Cutting tool size">
+Make cutting shapes (holes, pockets) extend beyond the target part to ensure clean cuts. A hole cylinder should be taller than the plate thickness.
+</Callout>
+
+### Order Matters
+
+`A - B` is different from `B - A`:
+
+```rust
+let cube = centered_cube("cube", 30.0, 30.0, 30.0);
+let sphere = Part::sphere("sphere", 20.0, 32);
+
+let cube_minus_sphere = cube - sphere;  // Cube with spherical cavity
+let sphere_minus_cube = sphere - cube;  // Spherical shell fragments
+```
+
+## Intersection
+
+Keeps only the overlapping region of two parts.
+
+```rust
+// Operator
+let result = part_a & part_b;
+
+// Method
+let result = part_a.intersection(&part_b);
+```
+
+```rust
+// Rounded edge by intersecting cube and cylinder
+let cube = centered_cube("cube", 30.0, 30.0, 30.0);
+let cyl = centered_cylinder("cyl", 20.0, 40.0, 64);
+let rounded = cube & cyl;
+```
+
+### Common Uses
+
+- Clipping geometry to a bounding shape
+- Creating rounded edges (intersect with cylinders)
+- Extracting shared regions
+
+## Operator Reference
+
+| Operator | Method | Description |
+|----------|--------|-------------|
+| `a + b` | `a.union(&b)` | Combine both |
+| `a - b` | `a.difference(&b)` | Subtract b from a |
+| `a & b` | `a.intersection(&b)` | Keep overlap only |
+
+All operators work with both `Part` and `&Part`:
+
+```rust
+let result = part_a + &part_b;  // Works
+let result = &part_a + part_b;  // Works
+let result = &part_a + &part_b; // Works
+```
+
+## Operation Order
+
+Boolean operations follow standard operator precedence:
+
+1. `&` (intersection) — highest
+2. `+` and `-` — equal, left to right
+
+Use parentheses for clarity:
+
+```rust
+// Confusing
+let result = base + feature - hole1 - hole2;
+
+// Clear
+let result = (base + feature) - hole1 - hole2;
+
+// Also clear
+let body = base + feature;
+let holes = hole1 + hole2;
+let result = body - holes;
+```
+
+## Batching for Performance
+
+Boolean operations are expensive. Batching improves performance:
+
+```rust
+// Slow: N boolean operations
+let mut result = plate;
+for hole in holes {
+    result = result - hole;
+}
+
+// Fast: 2 boolean operations
+let all_holes = holes.iter().fold(
+    Part::empty("holes"),
+    |acc, h| acc + h
+);
+let result = plate - all_holes;
+```
+
+<Callout type="info">
+Union many small parts first, then do a single difference. This minimizes the number of complex mesh operations.
+</Callout>
+
+## Edge Cases
+
+### Touching Faces
+
+When faces touch exactly, the result depends on the operation:
+
+- **Union**: Shared face is removed (parts merge)
+- **Difference**: Shared face is kept on the remaining part
+- **Intersection**: Only the shared face region remains
+
+vcad (via Manifold) handles these cases correctly without numerical errors.
+
+### No Overlap
+
+When parts don't overlap:
+
+- **Union**: Both parts kept, separate
+- **Difference**: First part unchanged
+- **Intersection**: Empty result
+
+### Identical Parts
+
+- **Union**: Single copy of the part
+- **Difference**: Empty result
+- **Intersection**: Single copy of the part
+
+## Troubleshooting
+
+### Empty Results
+
+Check that parts actually overlap:
+
+```rust
+let (min_a, max_a) = part_a.bounding_box();
+let (min_b, max_b) = part_b.bounding_box();
+// Verify bounding boxes intersect
+```
+
+### Unexpected Geometry
+
+Visualize intermediate steps:
+
+```rust
+part_a.write_stl("debug_a.stl")?;
+part_b.write_stl("debug_b.stl")?;
+(part_a - part_b).write_stl("debug_result.stl")?;
+```
+
+### Slow Operations
+
+- Reduce segment counts on cylinders/spheres
+- Batch operations
+- Check for unnecessarily complex input geometry

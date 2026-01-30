@@ -1,0 +1,234 @@
+---
+title: "The IR Format"
+description: "Understanding vcad's intermediate representation"
+order: 2
+---
+
+vcad uses an **Intermediate Representation (IR)** to bridge Rust and TypeScript implementations. The IR is a JSON-serializable format that describes CAD operations as a directed acyclic graph (DAG).
+
+## Why an IR?
+
+The IR serves several purposes:
+
+1. **Language interop** — Same format works in Rust (`vcad-ir`) and TypeScript (`@vcad/ir`)
+2. **Serialization** — Save and load models as `.vcad` JSON files
+3. **Tooling** — Build viewers, editors, and analysis tools
+4. **AI agents** — Structured format that LLMs can generate directly
+
+## Document Structure
+
+A vcad document has four main sections:
+
+```typescript
+interface Document {
+  version: "0.1";
+  nodes: Record<string, Node>;
+  materials: Record<string, MaterialDef>;
+  roots: SceneEntry[];
+}
+```
+
+### Nodes
+
+Nodes form a DAG where each node represents an operation:
+
+```typescript
+interface Node {
+  id: number;
+  name: string | null;
+  op: CsgOp;
+}
+```
+
+Nodes reference other nodes by ID, creating the dependency graph.
+
+### Operations (CsgOp)
+
+Operations are tagged unions. Each type has specific fields:
+
+```typescript
+// Primitives
+{ type: "Cube", size: { x, y, z } }
+{ type: "Cylinder", radius, height, segments }
+{ type: "Sphere", radius, segments }
+{ type: "Cone", radiusBottom, radiusTop, height, segments }
+
+// Booleans
+{ type: "Union", left: nodeId, right: nodeId }
+{ type: "Difference", left: nodeId, right: nodeId }
+{ type: "Intersection", left: nodeId, right: nodeId }
+
+// Transforms
+{ type: "Translate", child: nodeId, offset: { x, y, z } }
+{ type: "Rotate", child: nodeId, angles: { x, y, z } }
+{ type: "Scale", child: nodeId, factor: { x, y, z } }
+
+// Patterns
+{ type: "LinearPattern", child: nodeId, direction: vec3, count, spacing }
+{ type: "CircularPattern", child: nodeId, axis, count, angle }
+```
+
+### Materials
+
+PBR material definitions:
+
+```typescript
+interface MaterialDef {
+  name: string;
+  color: [number, number, number];  // RGB, 0-1
+  metallic: number;                  // 0-1
+  roughness: number;                 // 0-1
+  density?: number;                  // kg/m³ (optional)
+  description?: string;
+}
+```
+
+### Scene Roots
+
+The `roots` array defines which nodes to render and their materials:
+
+```typescript
+interface SceneEntry {
+  root: number;      // Node ID
+  material: string;  // Material key
+}
+```
+
+## Example Document
+
+Here's a complete document for a plate with holes:
+
+```json
+{
+  "version": "0.1",
+  "nodes": {
+    "1": {
+      "id": 1,
+      "name": "plate",
+      "op": { "type": "Cube", "size": { "x": 100, "y": 60, "z": 5 } }
+    },
+    "2": {
+      "id": 2,
+      "name": null,
+      "op": { "type": "Translate", "child": 1, "offset": { "x": -50, "y": -30, "z": -2.5 } }
+    },
+    "3": {
+      "id": 3,
+      "name": "hole",
+      "op": { "type": "Cylinder", "radius": 3, "height": 10, "segments": 32 }
+    },
+    "4": {
+      "id": 4,
+      "name": null,
+      "op": { "type": "Translate", "child": 3, "offset": { "x": 40, "y": 20, "z": 0 } }
+    },
+    "5": {
+      "id": 5,
+      "name": "result",
+      "op": { "type": "Difference", "left": 2, "right": 4 }
+    }
+  },
+  "materials": {
+    "aluminum": {
+      "name": "Aluminum",
+      "color": [0.9, 0.9, 0.92],
+      "metallic": 0.95,
+      "roughness": 0.3,
+      "density": 2700
+    }
+  },
+  "roots": [
+    { "root": 5, "material": "aluminum" }
+  ]
+}
+```
+
+## DAG Evaluation
+
+The IR is evaluated bottom-up:
+
+1. Start from root nodes
+2. Recursively evaluate dependencies
+3. Cache intermediate results (nodes may be referenced multiple times)
+
+```typescript
+function evaluate(doc: Document, nodeId: number): Mesh {
+  const node = doc.nodes[nodeId];
+
+  switch (node.op.type) {
+    case "Cube":
+      return createCubeMesh(node.op.size);
+
+    case "Difference":
+      const left = evaluate(doc, node.op.left);
+      const right = evaluate(doc, node.op.right);
+      return booleanDifference(left, right);
+
+    // ... etc
+  }
+}
+```
+
+<Callout type="info">
+The `@vcad/engine` package provides a complete evaluator that uses the manifold-3d WASM module for geometry operations.
+</Callout>
+
+## TypeScript Types
+
+The `@vcad/ir` package exports all IR types:
+
+```typescript
+import type {
+  Document,
+  Node,
+  CsgOp,
+  MaterialDef,
+  SceneEntry,
+  Vec3,
+} from "@vcad/ir";
+```
+
+## Rust Types
+
+The `vcad-ir` crate provides equivalent types with serde serialization:
+
+```rust
+use vcad_ir::{Document, Node, CsgOp, MaterialDef};
+
+// Serialize to JSON
+let json = serde_json::to_string_pretty(&document)?;
+
+// Deserialize from JSON
+let doc: Document = serde_json::from_str(&json)?;
+```
+
+## Design Decisions
+
+### Why a DAG?
+
+A DAG (vs a tree) allows:
+
+- **Reuse** — A hole pattern can be referenced by multiple difference operations
+- **Efficiency** — Shared subexpressions are computed once
+- **History** — The graph preserves construction history
+
+### Why JSON?
+
+- Human-readable for debugging
+- Universal language support
+- Easy to generate from LLMs
+- Simple tooling (jq, editors, etc.)
+
+### Why not a tree structure?
+
+Trees require duplicating shared geometry. The DAG with explicit node references is more memory-efficient and preserves the logical structure.
+
+## File Extension
+
+vcad documents use the `.vcad` extension:
+
+```
+model.vcad  →  JSON document
+```
+
+The format is intentionally simple JSON with no compression. For large models, standard compression (gzip) works well.
