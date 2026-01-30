@@ -8,9 +8,112 @@ import type { ThreeEvent } from "@react-three/fiber";
 import type { Transform3D } from "@vcad/ir";
 
 const HOVER_EMISSIVE = new THREE.Color(0xffb800); // neon amber
-const FACE_SELECT_EMISSIVE = new THREE.Color(0x00d4ff); // cyan for face selection
+const FACE_HIGHLIGHT_COLOR = new THREE.Color(0x00d4ff); // cyan for face selection
 
 const DEG2RAD = Math.PI / 180;
+const NORMAL_TOLERANCE = 0.01; // Tolerance for grouping triangles by normal
+
+/** Find all triangle indices that share the same normal as the given triangle */
+function findCoplanarTriangles(
+  mesh: TriangleMesh,
+  targetFaceIndex: number,
+): number[] {
+  const indices = mesh.indices;
+  const positions = mesh.positions;
+
+  // Get the normal of the target triangle
+  const ti0 = indices[targetFaceIndex * 3]!;
+  const ti1 = indices[targetFaceIndex * 3 + 1]!;
+  const ti2 = indices[targetFaceIndex * 3 + 2]!;
+
+  const tv0 = new THREE.Vector3(
+    positions[ti0 * 3]!,
+    positions[ti0 * 3 + 1]!,
+    positions[ti0 * 3 + 2]!,
+  );
+  const tv1 = new THREE.Vector3(
+    positions[ti1 * 3]!,
+    positions[ti1 * 3 + 1]!,
+    positions[ti1 * 3 + 2]!,
+  );
+  const tv2 = new THREE.Vector3(
+    positions[ti2 * 3]!,
+    positions[ti2 * 3 + 1]!,
+    positions[ti2 * 3 + 2]!,
+  );
+
+  const targetEdge1 = tv1.clone().sub(tv0);
+  const targetEdge2 = tv2.clone().sub(tv0);
+  const targetNormal = targetEdge1.cross(targetEdge2).normalize();
+
+  // Find all triangles with matching normal
+  const matchingTriangles: number[] = [];
+  const numTriangles = indices.length / 3;
+
+  for (let i = 0; i < numTriangles; i++) {
+    const i0 = indices[i * 3]!;
+    const i1 = indices[i * 3 + 1]!;
+    const i2 = indices[i * 3 + 2]!;
+
+    const v0 = new THREE.Vector3(
+      positions[i0 * 3]!,
+      positions[i0 * 3 + 1]!,
+      positions[i0 * 3 + 2]!,
+    );
+    const v1 = new THREE.Vector3(
+      positions[i1 * 3]!,
+      positions[i1 * 3 + 1]!,
+      positions[i1 * 3 + 2]!,
+    );
+    const v2 = new THREE.Vector3(
+      positions[i2 * 3]!,
+      positions[i2 * 3 + 1]!,
+      positions[i2 * 3 + 2]!,
+    );
+
+    const edge1 = v1.clone().sub(v0);
+    const edge2 = v2.clone().sub(v0);
+    const normal = edge1.cross(edge2).normalize();
+
+    // Check if normals match (dot product close to 1)
+    if (normal.dot(targetNormal) > 1 - NORMAL_TOLERANCE) {
+      matchingTriangles.push(i);
+    }
+  }
+
+  return matchingTriangles;
+}
+
+/** Build geometry for a subset of triangles */
+function buildFaceHighlightGeometry(
+  mesh: TriangleMesh,
+  triangleIndices: number[],
+): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  const positions: number[] = [];
+
+  for (const triIdx of triangleIndices) {
+    const i0 = mesh.indices[triIdx * 3]!;
+    const i1 = mesh.indices[triIdx * 3 + 1]!;
+    const i2 = mesh.indices[triIdx * 3 + 2]!;
+
+    positions.push(
+      mesh.positions[i0 * 3]!,
+      mesh.positions[i0 * 3 + 1]!,
+      mesh.positions[i0 * 3 + 2]!,
+      mesh.positions[i1 * 3]!,
+      mesh.positions[i1 * 3 + 1]!,
+      mesh.positions[i1 * 3 + 2]!,
+      mesh.positions[i2 * 3]!,
+      mesh.positions[i2 * 3 + 1]!,
+      mesh.positions[i2 * 3 + 2]!,
+    );
+  }
+
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
 
 interface SceneMeshProps {
   partInfo: PartInfo;
@@ -27,7 +130,7 @@ function computeFaceInfo(
   mesh: TriangleMesh,
   faceIndex: number,
   partId: string,
-  hitPoint: THREE.Vector3
+  hitPoint: THREE.Vector3,
 ): FaceInfo {
   // Get triangle vertices from mesh indices
   const i0 = mesh.indices[faceIndex * 3]!;
@@ -37,17 +140,17 @@ function computeFaceInfo(
   const v0 = new THREE.Vector3(
     mesh.positions[i0 * 3]!,
     mesh.positions[i0 * 3 + 1]!,
-    mesh.positions[i0 * 3 + 2]!
+    mesh.positions[i0 * 3 + 2]!,
   );
   const v1 = new THREE.Vector3(
     mesh.positions[i1 * 3]!,
     mesh.positions[i1 * 3 + 1]!,
-    mesh.positions[i1 * 3 + 2]!
+    mesh.positions[i1 * 3 + 2]!,
   );
   const v2 = new THREE.Vector3(
     mesh.positions[i2 * 3]!,
     mesh.positions[i2 * 3 + 1]!,
-    mesh.positions[i2 * 3 + 2]!
+    mesh.positions[i2 * 3 + 2]!,
   );
 
   // Compute face normal via cross product
@@ -63,7 +166,14 @@ function computeFaceInfo(
   };
 }
 
-export function SceneMesh({ partInfo, mesh, materialKey, selected, transform, selectionId }: SceneMeshProps) {
+export function SceneMesh({
+  partInfo,
+  mesh,
+  materialKey,
+  selected,
+  transform,
+  selectionId,
+}: SceneMeshProps) {
   const geoRef = useRef<THREE.BufferGeometry>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const select = useUiStore((s) => s.select);
@@ -83,7 +193,25 @@ export function SceneMesh({ partInfo, mesh, materialKey, selected, transform, se
   // Use selectionId if provided, otherwise fall back to partInfo.id
   const effectiveSelectionId = selectionId ?? partInfo.id;
   const isHovered = hoveredPartId === effectiveSelectionId;
-  const isHoveredFace = faceSelectionMode && hoveredFace?.partId === partInfo.id;
+  const isHoveredFace =
+    faceSelectionMode && hoveredFace?.partId === partInfo.id;
+
+  // Compute highlighted face geometry (triangles sharing same normal)
+  const faceHighlightGeo = useMemo(() => {
+    if (!isHoveredFace || hoveredFace?.faceIndex == null) return null;
+    const matchingTriangles = findCoplanarTriangles(
+      mesh,
+      hoveredFace.faceIndex,
+    );
+    return buildFaceHighlightGeometry(mesh, matchingTriangles);
+  }, [isHoveredFace, hoveredFace?.faceIndex, mesh]);
+
+  // Cleanup face highlight geometry
+  useEffect(() => {
+    return () => {
+      faceHighlightGeo?.dispose();
+    };
+  }, [faceHighlightGeo]);
   const [isRenaming, setIsRenaming] = useState(false);
   const [draftName, setDraftName] = useState(partInfo.name);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -97,15 +225,18 @@ export function SceneMesh({ partInfo, mesh, materialKey, selected, transform, se
     return new THREE.Color(0.7, 0.7, 0.75);
   }, [document, materialKey]);
 
-  // Compute emissive state: face selection mode > selected > hovered > none
+  // Compute emissive state: selected > hovered > none (face highlight uses overlay)
   const emissiveColor = useMemo(() => {
-    if (isHoveredFace) return FACE_SELECT_EMISSIVE;
     if (selected) return materialColor.clone().multiplyScalar(0.3);
-    if (isHovered) return HOVER_EMISSIVE;
+    if (isHovered && !faceSelectionMode) return HOVER_EMISSIVE;
     return undefined;
-  }, [selected, isHovered, isHoveredFace, materialColor]);
+  }, [selected, isHovered, faceSelectionMode, materialColor]);
 
-  const emissiveIntensity = isHoveredFace ? 0.15 : selected ? 0.2 : isHovered ? 0.08 : 0;
+  const emissiveIntensity = selected
+    ? 0.2
+    : isHovered && !faceSelectionMode
+    ? 0.08
+    : 0;
 
   useEffect(() => {
     setDraftName(partInfo.name);
@@ -161,13 +292,13 @@ export function SceneMesh({ partInfo, mesh, materialKey, selected, transform, se
       m.position.set(
         transform.translation.x,
         transform.translation.y,
-        transform.translation.z
+        transform.translation.z,
       );
       const euler = new THREE.Euler(
         transform.rotation.x * DEG2RAD,
         transform.rotation.y * DEG2RAD,
         transform.rotation.z * DEG2RAD,
-        "XYZ"
+        "XYZ",
       );
       m.quaternion.setFromEuler(euler);
       m.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
@@ -185,7 +316,11 @@ export function SceneMesh({ partInfo, mesh, materialKey, selected, transform, se
     const box = new THREE.Box3();
     const pos = new THREE.Vector3();
     for (let i = 0; i < mesh.positions.length; i += 3) {
-      pos.set(mesh.positions[i]!, mesh.positions[i + 1]!, mesh.positions[i + 2]!);
+      pos.set(
+        mesh.positions[i]!,
+        mesh.positions[i + 1]!,
+        mesh.positions[i + 2]!,
+      );
       box.expandByPoint(pos);
     }
     const topCenter = new THREE.Vector3();
@@ -207,38 +342,57 @@ export function SceneMesh({ partInfo, mesh, materialKey, selected, transform, se
     setIsRenaming(false);
   }, [partInfo.name]);
 
-  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation();
-
-    // In face selection mode, select the face
-    if (faceSelectionMode && e.faceIndex != null) {
-      const faceInfo = computeFaceInfo(mesh, e.faceIndex, partInfo.id, e.point);
-      selectFace(faceInfo);
-      return;
-    }
-
-    // Normal click behavior
-    if (e.nativeEvent.shiftKey) {
-      toggleSelect(partInfo.id);
-    } else {
-      select(partInfo.id);
-    }
-  }, [faceSelectionMode, mesh, partInfo.id, selectFace, toggleSelect, select]);
-
-  const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
-    if (faceSelectionMode && e.faceIndex != null) {
+  const handleClick = useCallback(
+    (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
-      const faceInfo = computeFaceInfo(mesh, e.faceIndex, partInfo.id, e.point);
-      setHoveredFace(faceInfo);
-    }
-  }, [faceSelectionMode, mesh, partInfo.id, setHoveredFace]);
 
-  const handlePointerOver = useCallback((e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    if (!faceSelectionMode) {
-      setHoveredPartId(partInfo.id);
-    }
-  }, [faceSelectionMode, partInfo.id, setHoveredPartId]);
+      // In face selection mode, select the face
+      if (faceSelectionMode && e.faceIndex != null) {
+        const faceInfo = computeFaceInfo(
+          mesh,
+          e.faceIndex,
+          partInfo.id,
+          e.point,
+        );
+        selectFace(faceInfo);
+        return;
+      }
+
+      // Normal click behavior
+      if (e.nativeEvent.shiftKey) {
+        toggleSelect(partInfo.id);
+      } else {
+        select(partInfo.id);
+      }
+    },
+    [faceSelectionMode, mesh, partInfo.id, selectFace, toggleSelect, select],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      if (faceSelectionMode && e.faceIndex != null) {
+        e.stopPropagation();
+        const faceInfo = computeFaceInfo(
+          mesh,
+          e.faceIndex,
+          partInfo.id,
+          e.point,
+        );
+        setHoveredFace(faceInfo);
+      }
+    },
+    [faceSelectionMode, mesh, partInfo.id, setHoveredFace],
+  );
+
+  const handlePointerOver = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
+      if (!faceSelectionMode) {
+        setHoveredPartId(partInfo.id);
+      }
+    },
+    [faceSelectionMode, partInfo.id, setHoveredPartId],
+  );
 
   const handlePointerOut = useCallback(() => {
     if (faceSelectionMode) {
@@ -270,6 +424,22 @@ export function SceneMesh({ partInfo, mesh, materialKey, selected, transform, se
         side={THREE.DoubleSide}
       />
       {showWireframe && <Edges threshold={15} color="#666" />}
+      {/* Face highlight overlay for individual face selection */}
+      {faceHighlightGeo && (
+        <mesh geometry={faceHighlightGeo} renderOrder={1}>
+          <meshBasicMaterial
+            color={FACE_HIGHLIGHT_COLOR}
+            transparent
+            opacity={0.4}
+            depthTest={true}
+            depthWrite={false}
+            polygonOffset={true}
+            polygonOffsetFactor={-1}
+            polygonOffsetUnits={-1}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
       {selected && !faceSelectionMode && (
         <Html position={labelPosition} center style={{ pointerEvents: "auto" }}>
           <div className="px-2 py-1 text-xs font-medium text-text whitespace-nowrap">
