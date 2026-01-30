@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { Theme, ToolMode, TransformMode } from "../types.js";
 
+export interface MaterialPreview {
+  partId: string;
+  materialKey: string;
+}
+
 export interface UiState {
   selectedPartIds: Set<string>;
   hoveredPartId: string | null;
@@ -16,6 +21,10 @@ export interface UiState {
   snapIncrement: number;
   clipboard: string[];
   deleteConfirmParts: string[] | null;
+  // Material selector state
+  previewMaterial: MaterialPreview | null;
+  recentMaterials: string[]; // Last 6 used material keys
+  favoriteMaterials: string[]; // User-pinned material keys
 
   select: (partId: string | null) => void;
   toggleSelect: (partId: string) => void;
@@ -38,7 +47,30 @@ export interface UiState {
   copyToClipboard: (partIds: string[]) => void;
   showDeleteConfirm: (partIds: string[]) => void;
   hideDeleteConfirm: () => void;
+  // Material selector actions
+  setPreviewMaterial: (preview: MaterialPreview | null) => void;
+  addRecentMaterial: (key: string) => void;
+  toggleFavoriteMaterial: (key: string) => void;
 }
+
+// Load persisted material preferences from localStorage
+function loadPersistedMaterials(): { recent: string[]; favorites: string[] } {
+  if (typeof window === "undefined") {
+    return { recent: [], favorites: [] };
+  }
+  try {
+    const recent = JSON.parse(localStorage.getItem("vcad:recentMaterials") ?? "[]");
+    const favorites = JSON.parse(localStorage.getItem("vcad:favoriteMaterials") ?? "[]");
+    return {
+      recent: Array.isArray(recent) ? recent : [],
+      favorites: Array.isArray(favorites) ? favorites : [],
+    };
+  } catch {
+    return { recent: [], favorites: [] };
+  }
+}
+
+const persistedMaterials = loadPersistedMaterials();
 
 export const useUiStore = create<UiState>((set) => ({
   selectedPartIds: new Set(),
@@ -55,6 +87,9 @@ export const useUiStore = create<UiState>((set) => ({
   snapIncrement: 5,
   clipboard: [],
   deleteConfirmParts: null,
+  previewMaterial: null,
+  recentMaterials: persistedMaterials.recent,
+  favoriteMaterials: persistedMaterials.favorites,
 
   select: (partId) =>
     set({ selectedPartIds: partId ? new Set([partId]) : new Set() }),
@@ -117,4 +152,35 @@ export const useUiStore = create<UiState>((set) => ({
   showDeleteConfirm: (partIds) => set({ deleteConfirmParts: partIds }),
 
   hideDeleteConfirm: () => set({ deleteConfirmParts: null }),
+
+  setPreviewMaterial: (preview) => set({ previewMaterial: preview }),
+
+  addRecentMaterial: (key) =>
+    set((s) => {
+      // Remove if already exists, then add to front
+      const filtered = s.recentMaterials.filter((k) => k !== key);
+      const recent = [key, ...filtered].slice(0, 6);
+      // Persist to localStorage
+      try {
+        localStorage.setItem("vcad:recentMaterials", JSON.stringify(recent));
+      } catch {
+        // Ignore storage errors
+      }
+      return { recentMaterials: recent };
+    }),
+
+  toggleFavoriteMaterial: (key) =>
+    set((s) => {
+      const isFavorite = s.favoriteMaterials.includes(key);
+      const favorites = isFavorite
+        ? s.favoriteMaterials.filter((k) => k !== key)
+        : [...s.favoriteMaterials, key];
+      // Persist to localStorage
+      try {
+        localStorage.setItem("vcad:favoriteMaterials", JSON.stringify(favorites));
+      } catch {
+        // Ignore storage errors
+      }
+      return { favoriteMaterials: favorites };
+    }),
 }));
