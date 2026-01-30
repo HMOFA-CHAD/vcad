@@ -15,6 +15,7 @@
 
 pub mod bbox;
 pub mod classify;
+mod repair;
 pub mod sew;
 pub mod split;
 pub mod ssi;
@@ -2034,5 +2035,138 @@ mod tests {
         assert!(matches!(result, BooleanResult::BRep(_)));
         let mesh = result.to_mesh(32);
         assert!(mesh.num_triangles() > 0);
+    }
+
+    /// Test boolean difference with a ROTATED cylinder (axis along Y instead of Z).
+    /// This is the exact scenario from the plate.vcad example that showed tearing.
+    #[test]
+    fn test_cube_minus_rotated_cylinder_y_axis() {
+        use vcad_kernel_geom::SurfaceKind;
+        use vcad_kernel_math::Transform;
+        use vcad_kernel_primitives::make_cylinder;
+
+        // Plate: 80x6x60 (X x Y x Z)
+        let plate = make_cube(80.0, 6.0, 60.0);
+
+        // Create cylinder along Z axis: radius 6, height 20
+        let cyl = make_cylinder(6.0, 20.0, 32);
+
+        // Rotate -90° around X axis to align cylinder with Y axis
+        // Then translate to center of plate: (40, -7, 30)
+        // (-7 because cylinder is 20 tall, plate is 6, so we want it to extend beyond both sides)
+        let rotation = Transform::rotation_x(-90.0_f64.to_radians());
+        let translation = Transform::translation(40.0, -7.0, 30.0);
+        // Apply rotation first, then translation: translation * rotation means rotation(point) then translation(result)
+        let combined = translation.then(&rotation);
+
+        let mut rotated_cyl = cyl.clone();
+        for (_, v) in &mut rotated_cyl.topology.vertices {
+            v.point = combined.apply_point(&v.point);
+        }
+        rotated_cyl.geometry.surfaces = rotated_cyl
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&combined))
+            .collect();
+
+        println!("\n=== Rotated Cylinder Test ===");
+        println!("Plate: 80x6x60");
+        println!("Cylinder: radius 6, height 20, rotated -90° around X, translated to (40, -7, 30)");
+
+        // Check the cylinder surface after transform
+        for surf in &rotated_cyl.geometry.surfaces {
+            if surf.surface_type() == SurfaceKind::Cylinder {
+                if let Some(cyl_surf) = surf.as_any().downcast_ref::<vcad_kernel_geom::CylinderSurface>() {
+                    println!("Rotated cylinder surface:");
+                    println!("  center: {:?}", cyl_surf.center);
+                    println!("  axis: {:?}", cyl_surf.axis.as_ref());
+                    println!("  radius: {}", cyl_surf.radius);
+                }
+            }
+        }
+
+        // Perform boolean difference
+        let result = boolean_op(&plate, &rotated_cyl, BooleanOp::Difference, 32);
+        let mesh = result.to_mesh(32);
+
+        println!("Result mesh: {} triangles, {} vertices", mesh.num_triangles(), mesh.num_vertices());
+
+        // Check for problematic triangles near the hole
+        // Hole is at X≈40, Z≈30, Y=0 to 6
+        // Look for triangles with vertices near the hole that have unusual aspect ratios
+        let positions = &mesh.vertices;
+        let indices = &mesh.indices;
+        let mut hole_triangle_count = 0;
+        let mut problematic_count = 0;
+
+        let hole_x = 40.0;
+        let hole_z = 30.0;
+        let hole_radius = 6.0;
+
+        for tri in indices.chunks(3) {
+            let (i0, i1, i2) = (tri[0] as usize * 3, tri[1] as usize * 3, tri[2] as usize * 3);
+            let v0 = [positions[i0] as f64, positions[i0 + 1] as f64, positions[i0 + 2] as f64];
+            let v1 = [positions[i1] as f64, positions[i1 + 1] as f64, positions[i1 + 2] as f64];
+            let v2 = [positions[i2] as f64, positions[i2 + 1] as f64, positions[i2 + 2] as f64];
+
+            // Check if any vertex is near the hole (on top or bottom face)
+            let near_hole = |v: &[f64; 3]| -> bool {
+                let dx = v[0] - hole_x;
+                let dz = v[2] - hole_z;
+                let dist_xz = (dx * dx + dz * dz).sqrt();
+                dist_xz < hole_radius + 5.0 && (v[1].abs() < 0.1 || (v[1] - 6.0).abs() < 0.1)
+            };
+
+            if near_hole(&v0) || near_hole(&v1) || near_hole(&v2) {
+                hole_triangle_count += 1;
+
+                let edge0 = ((v1[0] - v0[0]).powi(2) + (v1[1] - v0[1]).powi(2) + (v1[2] - v0[2]).powi(2)).sqrt();
+                let edge1 = ((v2[0] - v1[0]).powi(2) + (v2[1] - v1[1]).powi(2) + (v2[2] - v1[2]).powi(2)).sqrt();
+                let edge2 = ((v0[0] - v2[0]).powi(2) + (v0[1] - v2[1]).powi(2) + (v0[2] - v2[2]).powi(2)).sqrt();
+
+                // Problematic: very long edges or very high aspect ratio
+                // With ring-based triangulation, aspect ratios up to ~20 are acceptable
+                // for hole-to-ring triangles. Only flag truly degenerate triangles.
+                let max_edge = edge0.max(edge1).max(edge2);
+                let min_edge = edge0.min(edge1).min(edge2);
+                let aspect_ratio = if min_edge > 0.001 { max_edge / min_edge } else { 1000.0 };
+
+                // Flag triangles with edge > 30mm (half the face dimension) or aspect > 25
+                if max_edge > 30.0 || aspect_ratio > 25.0 {
+                    problematic_count += 1;
+                    if problematic_count <= 10 {
+                        println!("Problematic hole triangle: v0={:?}, v1={:?}, v2={:?}", v0, v1, v2);
+                        println!("  edges: {:.2}, {:.2}, {:.2}, aspect: {:.1}", edge0, edge1, edge2, aspect_ratio);
+                    }
+                }
+            }
+        }
+
+        println!("Triangles near hole: {}", hole_triangle_count);
+        println!("Problematic hole triangles: {}", problematic_count);
+
+        // Compute volume
+        let volume = compute_mesh_volume(&mesh);
+        // Expected: plate volume - cylinder volume inside plate
+        // Plate: 80 * 6 * 60 = 28800
+        // Cylinder inside: π * 6² * 6 = 678.6
+        let expected_volume = 80.0 * 6.0 * 60.0 - std::f64::consts::PI * 36.0 * 6.0;
+        println!("Volume: {:.1}, expected: {:.1}", volume, expected_volume);
+
+        // The test should FAIL if there are problematic triangles near the hole (indicating tearing)
+        assert!(
+            problematic_count == 0,
+            "Found {} problematic triangles near the hole indicating tessellation issues",
+            problematic_count
+        );
+
+        // Check volume is reasonable
+        assert!(
+            volume > expected_volume * 0.85 && volume < expected_volume * 1.15,
+            "Expected volume ~{:.0}, got {:.0}",
+            expected_volume,
+            volume
+        );
     }
 }

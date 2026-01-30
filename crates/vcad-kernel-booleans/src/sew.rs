@@ -49,6 +49,8 @@ use vcad_kernel_topo::{FaceId, Orientation, ShellType, Topology};
 
 use std::collections::HashMap;
 
+use crate::repair;
+
 /// Sew selected faces from two solids into a new result solid.
 ///
 /// - `faces_a`: Face IDs to keep from solid A (in A's topology)
@@ -74,6 +76,9 @@ pub fn sew_faces(
 
     // Merge vertices within tolerance
     merge_nearby_vertices(&mut topo, tolerance);
+
+    // Repair topology issues after merges
+    repair::repair_topology(&mut topo, tolerance);
 
     // Build shell from all faces
     let all_faces: Vec<FaceId> = topo.faces.keys().collect();
