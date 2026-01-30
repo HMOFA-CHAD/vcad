@@ -1,7 +1,13 @@
 import { useRef, useEffect, useMemo } from "react";
 import { MOUSE, Spherical, Vector3, Box3 } from "three";
 import { useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls, GizmoHelper, GizmoViewcube, Environment, ContactShadows } from "@react-three/drei";
+import {
+  OrbitControls,
+  GizmoHelper,
+  GizmoViewport,
+  Environment,
+  ContactShadows,
+} from "@react-three/drei";
 import { EffectComposer, N8AO, Vignette } from "@react-three/postprocessing";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { GridPlane } from "./GridPlane";
@@ -12,7 +18,12 @@ import { SketchPlane3D } from "./SketchPlane3D";
 import { TransformGizmo } from "./TransformGizmo";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { DimensionOverlay } from "./DimensionOverlay";
-import { useEngineStore, useDocumentStore, useUiStore, useSketchStore } from "@vcad/core";
+import {
+  useEngineStore,
+  useDocumentStore,
+  useUiStore,
+  useSketchStore,
+} from "@vcad/core";
 import type { PartInfo } from "@vcad/core";
 import { useCameraControls } from "@/hooks/useCameraControls";
 import { useTheme } from "@/hooks/useTheme";
@@ -34,6 +45,7 @@ export function ViewportContent() {
   const parts = useDocumentStore((s) => s.parts);
   const document = useDocumentStore((s) => s.document);
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
+  const isDraggingGizmo = useUiStore((s) => s.isDraggingGizmo);
   const sketchActive = useSketchStore((s) => s.active);
   const orbitRef = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
@@ -103,7 +115,8 @@ export function ViewportContent() {
     if (scene.instances && scene.instances.length > 0) {
       for (const inst of scene.instances) {
         const instanceSelectionId = getInstanceSelectionId(inst);
-        if (!instanceSelectionId || !selectedPartIds.has(instanceSelectionId)) continue;
+        if (!instanceSelectionId || !selectedPartIds.has(instanceSelectionId))
+          continue;
 
         const positions = inst.mesh.positions;
         const t = inst.transform;
@@ -112,7 +125,7 @@ export function ViewportContent() {
           tempVec.set(
             positions[i]! * t.scale.x + t.translation.x,
             positions[i + 1]! * t.scale.y + t.translation.y,
-            positions[i + 2]! * t.scale.z + t.translation.z
+            positions[i + 2]! * t.scale.z + t.translation.z,
           );
           box.expandByPoint(tempVec);
           hasPoints = true;
@@ -144,14 +157,18 @@ export function ViewportContent() {
   }, [selectedPartIds, scene, parts, rootIndexToInstanceId]);
 
   // Animate orbit target to selection center and zoom to fit
+  // Skip during gizmo drag to avoid fighting with the user's transform
   useEffect(() => {
-    if (selectionInfo) {
+    if (selectionInfo && !isDraggingGizmo) {
       targetGoalRef.current.copy(selectionInfo.center);
       // Distance = 2.5x the max dimension, clamped to reasonable range
-      distanceGoalRef.current = Math.max(30, Math.min(300, selectionInfo.maxDim * 2.5));
+      distanceGoalRef.current = Math.max(
+        30,
+        Math.min(300, selectionInfo.maxDim * 2.5),
+      );
       isAnimatingTargetRef.current = true;
     }
-  }, [selectionInfo]);
+  }, [selectionInfo, isDraggingGizmo]);
 
   // Smooth target and distance animation
   useFrame(() => {
@@ -182,9 +199,14 @@ export function ViewportContent() {
 
     // Stop animating when close enough
     const targetDone = target.distanceTo(targetGoal) < 0.01;
-    const distanceDone = distanceGoal === null ||
-      Math.abs(offsetRef.current.subVectors(camera.position, target).length() - distanceGoal) < 0.1;
-    const positionDone = cameraPositionGoal === null ||
+    const distanceDone =
+      distanceGoal === null ||
+      Math.abs(
+        offsetRef.current.subVectors(camera.position, target).length() -
+          distanceGoal,
+      ) < 0.1;
+    const positionDone =
+      cameraPositionGoal === null ||
       camera.position.distanceTo(cameraPositionGoal) < 0.1;
 
     if (targetDone && distanceDone && positionDone) {
@@ -287,7 +309,8 @@ export function ViewportContent() {
         camera.matrix.extractBasis(right, up, new Vector3());
 
         // Calculate pan offset: drag to pull the view
-        const panOffset = right.multiplyScalar(dx * panSpeed)
+        const panOffset = right
+          .multiplyScalar(dx * panSpeed)
           .add(up.multiplyScalar(-dy * panSpeed));
 
         // Move both camera and target by the same amount
@@ -338,7 +361,12 @@ export function ViewportContent() {
 
   // Face selection: swing camera to view face flat
   useEffect(() => {
-    const handleFaceSelected = (e: CustomEvent<{ normal: { x: number; y: number; z: number }; centroid: { x: number; y: number; z: number } }>) => {
+    const handleFaceSelected = (
+      e: CustomEvent<{
+        normal: { x: number; y: number; z: number };
+        centroid: { x: number; y: number; z: number };
+      }>,
+    ) => {
       const { normal, centroid } = e.detail;
 
       // Set target to face centroid
@@ -350,15 +378,22 @@ export function ViewportContent() {
       const cameraPos = new Vector3(
         centroid.x + normal.x * viewDistance,
         centroid.y + normal.y * viewDistance,
-        centroid.z + normal.z * viewDistance
+        centroid.z + normal.z * viewDistance,
       );
       cameraPositionGoalRef.current = cameraPos;
       distanceGoalRef.current = viewDistance;
       isAnimatingTargetRef.current = true;
     };
 
-    window.addEventListener("vcad:face-selected", handleFaceSelected as EventListener);
-    return () => window.removeEventListener("vcad:face-selected", handleFaceSelected as EventListener);
+    window.addEventListener(
+      "vcad:face-selected",
+      handleFaceSelected as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        "vcad:face-selected",
+        handleFaceSelected as EventListener,
+      );
   }, []);
 
   // Snap view: animate camera to predefined positions
@@ -387,7 +422,11 @@ export function ViewportContent() {
     };
 
     window.addEventListener("vcad:snap-view", handleSnapView as EventListener);
-    return () => window.removeEventListener("vcad:snap-view", handleSnapView as EventListener);
+    return () =>
+      window.removeEventListener(
+        "vcad:snap-view",
+        handleSnapView as EventListener,
+      );
   }, []);
 
   return (
@@ -454,19 +493,20 @@ export function ViewportContent() {
       })}
 
       {/* Scene meshes - Legacy mode (parts) */}
-      {(!scene?.instances || scene.instances.length === 0) && scene?.parts.map((evalPart, idx) => {
-        const partInfo = parts[idx];
-        if (!partInfo) return null;
-        return (
-          <SceneMesh
-            key={partInfo.id}
-            partInfo={partInfo}
-            mesh={evalPart.mesh}
-            materialKey={evalPart.material}
-            selected={isPartSelected(partInfo.id, idx)}
-          />
-        );
-      })}
+      {(!scene?.instances || scene.instances.length === 0) &&
+        scene?.parts.map((evalPart, idx) => {
+          const partInfo = parts[idx];
+          if (!partInfo) return null;
+          return (
+            <SceneMesh
+              key={partInfo.id}
+              partInfo={partInfo}
+              mesh={evalPart.mesh}
+              materialKey={evalPart.material}
+              selected={isPartSelected(partInfo.id, idx)}
+            />
+          );
+        })}
 
       {/* Clash visualization (zebra pattern on intersections) */}
       {scene?.clashes.map((clashMesh, idx) => (
@@ -496,21 +536,17 @@ export function ViewportContent() {
         dampingFactor={0.1}
         enableZoom={false}
         mouseButtons={{
-          LEFT: undefined,      // LMB reserved for selection
-          MIDDLE: MOUSE.PAN,    // MMB = pan
-          RIGHT: MOUSE.PAN,     // RMB = pan (fallback for mouse users)
+          LEFT: undefined, // LMB reserved for selection
+          MIDDLE: MOUSE.PAN, // MMB = pan
+          RIGHT: MOUSE.PAN, // RMB = pan (fallback for mouse users)
         }}
       />
 
-      {/* View cube - clickable orientation gizmo */}
+      {/* Orientation gizmo - RGB axes, click to snap view */}
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-        <GizmoViewcube
-          color="#3a3a3a"
-          hoverColor="#4a9eff"
-          textColor="#aaa"
-          strokeColor="#666"
-          opacity={0.9}
-          faces={["Right", "Left", "Top", "Bottom", "Front", "Back"]}
+        <GizmoViewport
+          axisColors={["#e06c75", "#98c379", "#61afef"]}
+          labelColor="#abb2bf"
         />
       </GizmoHelper>
 
@@ -524,11 +560,7 @@ export function ViewportContent() {
           denoiseSamples={4}
         />
         {/* Subtle vignette for focus */}
-        <Vignette
-          offset={0.3}
-          darkness={isDark ? 0.5 : 0.3}
-          eskil={false}
-        />
+        <Vignette offset={0.3} darkness={isDark ? 0.5 : 0.3} eskil={false} />
       </EffectComposer>
     </>
   );
