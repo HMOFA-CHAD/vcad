@@ -1,7 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rootDirectory": "packages/app",
-  "installCommand": "cd ../.. && npm ci",
-  "buildCommand": "cd ../.. && npm run build --workspace=@vcad/ir && npm run build --workspace=@vcad/engine && npm run build --workspace=@vcad/core && npm run build --workspace=@vcad/app",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build --workspace=@vcad/ir && npm run build --workspace=@vcad/engine && npm run build --workspace=@vcad/core && npm run build --workspace=@vcad/app && ls -la && ls -la packages/app/ && mv packages/app/dist dist",
   "outputDirectory": "dist"
 }
