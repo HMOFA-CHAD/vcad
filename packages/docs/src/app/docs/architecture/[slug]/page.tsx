@@ -10,20 +10,19 @@ import {
   getNavigation,
 } from "@/lib/content";
 import { getMdxComponents } from "@/lib/mdx-components";
-import { cn } from "@/lib/utils";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
 export async function generateStaticParams() {
-  const paths = getContentPaths("cookbook");
+  const paths = getContentPaths("architecture");
   return paths.map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const data = getContentBySlugResolved("cookbook", slug);
+  const data = getContentBySlugResolved("architecture", slug);
 
   if (!data) {
     return { title: "Not Found" };
@@ -35,54 +34,38 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-const difficultyColors = {
-  Beginner: "bg-green-500/20 text-green-500",
-  Intermediate: "bg-yellow-500/20 text-yellow-500",
-  Advanced: "bg-red-500/20 text-red-500",
-};
-
-export default async function CookbookRecipePage({ params }: PageProps) {
+export default async function ArchitecturePage({ params }: PageProps) {
   const { slug } = await params;
-  const data = getContentBySlugResolved("cookbook", slug);
+  const data = getContentBySlugResolved("architecture", slug);
 
   if (!data) {
     notFound();
   }
 
-  // Get all recipes for navigation
-  const allRecipes = getAllContent("cookbook");
-  const { prev, next } = getNavigation(allRecipes, slug, "/cookbook");
+  // Get all architecture pages for navigation
+  const allPages = getAllContent("architecture");
+  const { prev, next } = getNavigation(allPages, slug, "/docs/architecture");
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-16">
       {/* Breadcrumb */}
       <Link
-        href="/cookbook"
+        href="/docs/architecture"
         className="inline-flex items-center gap-2 text-sm text-text-muted hover:text-text mb-8"
       >
         <ArrowLeft size={14} />
-        Back to Cookbook
+        Back to Architecture
       </Link>
 
       {/* Header */}
       <div className="mb-12">
-        <div className="flex items-center gap-3 mb-4">
-          {data.meta.difficulty && (
-            <span
-              className={cn(
-                "px-2 py-1 text-xs font-medium rounded uppercase",
-                difficultyColors[data.meta.difficulty]
-              )}
-            >
-              {data.meta.difficulty}
-            </span>
-          )}
-          {data.meta.time && (
-            <span className="text-xs text-text-muted">{data.meta.time}</span>
-          )}
+        <div className="inline-block px-2 py-1 text-xs font-medium bg-purple-500/20 text-purple-500 rounded mb-4 uppercase">
+          Architecture
         </div>
         <h1 className="text-4xl font-bold mb-4">{data.meta.title}</h1>
-        <p className="text-text-muted text-lg">{data.meta.description}</p>
+        {data.meta.description && (
+          <p className="text-text-muted text-lg">{data.meta.description}</p>
+        )}
       </div>
 
       {/* Content */}

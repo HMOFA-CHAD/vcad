@@ -3,46 +3,46 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, CheckCircle, Circle } from "@phosphor-icons/react/dist/ssr";
 
 export const metadata: Metadata = {
-  title: "Advanced",
-  description: "Master parametric design and kernel internals",
+  title: "Intermediate",
+  description: "Build real parts with patterns and assemblies",
 };
 
 const lessons = [
   {
-    id: "parametric",
-    title: "Parametric Design",
-    description: "Build configuration-driven models with variables",
-    duration: "20 min",
+    id: "patterns",
+    title: "Bolt Patterns",
+    description: "Create linear and circular arrays for mounting holes",
+    duration: "12 min",
     completed: false,
   },
   {
-    id: "step",
-    title: "STEP Import/Export",
-    description: "Exchange models with industry-standard CAD software",
+    id: "assembly",
+    title: "Multi-Part Assembly",
+    description: "Combine multiple parts into a complete assembly",
     duration: "15 min",
     completed: false,
   },
   {
-    id: "kernel",
-    title: "Kernel Internals",
-    description: "Understand how the geometry engine works",
-    duration: "25 min",
+    id: "materials",
+    title: "Materials & GLB",
+    description: "Add PBR materials and export for visualization",
+    duration: "10 min",
     completed: false,
   },
   {
-    id: "contributing",
-    title: "Contributing",
-    description: "Help build vcad - code, docs, and examples",
-    duration: "10 min",
+    id: "scenes",
+    title: "Scene Composition",
+    description: "Build complex scenes with multiple components",
+    duration: "12 min",
     completed: false,
   },
 ];
 
-export default function AdvancedPage() {
+export default function IntermediatePage() {
   return (
     <div className="max-w-3xl mx-auto px-8 py-16">
       <Link
-        href="/learn"
+        href="/docs/learn"
         className="inline-flex items-center gap-2 text-sm text-text-muted hover:text-text mb-8"
       >
         <ArrowLeft size={14} />
@@ -50,13 +50,13 @@ export default function AdvancedPage() {
       </Link>
 
       <div className="mb-12">
-        <div className="inline-block px-2 py-1 text-xs font-medium bg-red-500/20 text-red-500 rounded mb-4">
-          ADVANCED
+        <div className="inline-block px-2 py-1 text-xs font-medium bg-yellow-500/20 text-yellow-500 rounded mb-4">
+          INTERMEDIATE
         </div>
-        <h1 className="text-4xl font-bold mb-4">Mastery</h1>
+        <h1 className="text-4xl font-bold mb-4">Real-World Parts</h1>
         <p className="text-text-muted text-lg">
-          Dive deep into parametric design patterns and understand how vcad works
-          under the hood. These topics will make you a power user.
+          Build production-ready parts with patterns, assemblies, and materials.
+          You'll learn techniques used in actual mechanical design.
         </p>
       </div>
 
@@ -65,7 +65,7 @@ export default function AdvancedPage() {
           0 of {lessons.length} completed
         </div>
         <div className="flex-1 h-2 bg-border rounded-full overflow-hidden">
-          <div className="h-full bg-red-500 rounded-full" style={{ width: "0%" }} />
+          <div className="h-full bg-yellow-500 rounded-full" style={{ width: "0%" }} />
         </div>
       </div>
 
@@ -73,12 +73,12 @@ export default function AdvancedPage() {
         {lessons.map((lesson, idx) => (
           <Link
             key={lesson.id}
-            href={`/learn/advanced/${lesson.id}`}
+            href={`/docs/learn/intermediate/${lesson.id}`}
             className="flex items-center gap-4 p-4 rounded-lg border border-border hover:border-text-muted bg-surface hover:bg-hover transition-all group"
           >
             <div className="flex-shrink-0">
               {lesson.completed ? (
-                <CheckCircle size={24} weight="fill" className="text-red-500" />
+                <CheckCircle size={24} weight="fill" className="text-yellow-500" />
               ) : (
                 <Circle size={24} className="text-text-muted" />
               )}
@@ -109,8 +109,8 @@ export default function AdvancedPage() {
 
       <div className="mt-12 text-center">
         <Link
-          href="/learn/advanced/parametric"
-          className="inline-flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+          href="/docs/learn/intermediate/patterns"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium transition-colors"
         >
           Start Learning
           <ArrowRight size={18} />

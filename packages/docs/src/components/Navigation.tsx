@@ -15,6 +15,8 @@ import {
   List,
   X,
   CaretRight,
+  GameController,
+  Code,
 } from "@phosphor-icons/react";
 import { useTheme } from "./ThemeProvider";
 import { useSearch } from "./Search/SearchProvider";
@@ -30,38 +32,48 @@ interface NavItem {
 const navItems: NavItem[] = [
   {
     label: "Home",
-    href: "/",
+    href: "/docs",
     icon: <House size={18} weight="regular" />,
   },
   {
     label: "Learn",
-    href: "/learn",
+    href: "/docs/learn",
     icon: <Book size={18} weight="regular" />,
     children: [
-      { label: "Beginner", href: "/learn/beginner" },
-      { label: "Intermediate", href: "/learn/intermediate" },
-      { label: "Advanced", href: "/learn/advanced" },
+      { label: "Beginner", href: "/docs/learn/beginner" },
+      { label: "Intermediate", href: "/docs/learn/intermediate" },
+      { label: "Advanced", href: "/docs/learn/advanced" },
     ],
   },
   {
     label: "Cookbook",
-    href: "/cookbook",
+    href: "/docs/cookbook",
     icon: <CookingPot size={18} weight="regular" />,
   },
   {
+    label: "Reference",
+    href: "/docs/reference",
+    icon: <Code size={18} weight="regular" />,
+  },
+  {
     label: "Gallery",
-    href: "/gallery",
+    href: "/docs/gallery",
     icon: <Images size={18} weight="regular" />,
   },
   {
+    label: "Playground",
+    href: "/docs/playground",
+    icon: <GameController size={18} weight="regular" />,
+  },
+  {
     label: "Architecture",
-    href: "/architecture",
+    href: "/docs/architecture",
     icon: <Cpu size={18} weight="regular" />,
     children: [
-      { label: "How Booleans Work", href: "/architecture/booleans" },
-      { label: "The IR Format", href: "/architecture/ir" },
-      { label: "WASM Pipeline", href: "/architecture/wasm" },
-      { label: "Export Formats", href: "/architecture/exports" },
+      { label: "How Booleans Work", href: "/docs/architecture/booleans" },
+      { label: "The IR Format", href: "/docs/architecture/ir" },
+      { label: "WASM Pipeline", href: "/docs/architecture/wasm" },
+      { label: "Export Formats", href: "/docs/architecture/exports" },
     ],
   },
 ];
@@ -74,6 +86,9 @@ export function Navigation() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["Learn", "Architecture"])
   );
+
+  // Only show sidebar on /docs/* routes
+  const isDocsRoute = pathname.startsWith("/docs");
 
   const toggleSection = (label: string) => {
     setExpandedSections(prev => {
@@ -88,9 +103,14 @@ export function Navigation() {
   };
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
+    if (href === "/docs") return pathname === "/docs";
     return pathname.startsWith(href);
   };
+
+  // Don't render sidebar on non-docs pages
+  if (!isDocsRoute) {
+    return null;
+  }
 
   return (
     <>
@@ -106,6 +126,13 @@ export function Navigation() {
             aria-label="Search"
           >
             <MagnifyingGlass size={20} />
+          </button>
+          <button
+            onClick={toggleTheme}
+            className="p-2 hover:bg-hover rounded-md transition-colors"
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
           </button>
           <button
             onClick={() => setMobileOpen(!mobileOpen)}

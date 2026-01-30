@@ -39,15 +39,9 @@ const nextConfig = {
     return config;
   },
 
-  // Output as static site for easy deployment
-  output: "export",
-
-  // Base path for GitHub Pages deployment at vcad.io/docs
-  basePath: process.env.NEXT_PUBLIC_BASE_PATH || "",
-
-  // Images must be unoptimized for static export
+  // Images configuration for Vercel
   images: {
-    unoptimized: true,
+    unoptimized: false,
   },
 };
 
