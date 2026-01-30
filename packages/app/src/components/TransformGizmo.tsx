@@ -36,36 +36,72 @@ export function TransformGizmo({
     selectedPartIds.size === 1
       ? Array.from(selectedPartIds)[0]!
       : null;
+
+  // Check if selection is a part or an instance
   const selectedPart = singleSelectedId
     ? parts.find((p) => p.id === singleSelectedId)
     : null;
+  const selectedInstance = singleSelectedId
+    ? document.instances?.find((i) => i.id === singleSelectedId)
+    : null;
+
+  // We can transform either a part or an instance (but not joints)
+  const hasTransformableSelection = selectedPart !== null || selectedInstance !== null;
 
   // Sync proxy position from IR when selection/document changes (but not during drag)
   useEffect(() => {
-    if (!proxy || !selectedPart) return;
+    if (!proxy || !hasTransformableSelection) return;
     if (isDraggingRef.current) return;
 
-    const translateNode = document.nodes[String(selectedPart.translateNodeId)];
-    const rotateNode = document.nodes[String(selectedPart.rotateNodeId)];
-    const scaleNode = document.nodes[String(selectedPart.scaleNodeId)];
+    if (selectedPart) {
+      // Handle part transform (from nodes)
+      const translateNode = document.nodes[String(selectedPart.translateNodeId)];
+      const rotateNode = document.nodes[String(selectedPart.rotateNodeId)];
+      const scaleNode = document.nodes[String(selectedPart.scaleNodeId)];
 
-    if (translateNode?.op.type === "Translate") {
-      const { offset } = translateNode.op;
-      proxy.position.set(offset.x, offset.y, offset.z);
+      if (translateNode?.op.type === "Translate") {
+        const { offset } = translateNode.op;
+        proxy.position.set(offset.x, offset.y, offset.z);
+      }
+      if (rotateNode?.op.type === "Rotate") {
+        const { angles } = rotateNode.op;
+        proxy.rotation.set(
+          angles.x * DEG2RAD,
+          angles.y * DEG2RAD,
+          angles.z * DEG2RAD,
+        );
+      }
+      if (scaleNode?.op.type === "Scale") {
+        const { factor } = scaleNode.op;
+        proxy.scale.set(factor.x, factor.y, factor.z);
+      }
+    } else if (selectedInstance) {
+      // Handle instance transform
+      const transform = selectedInstance.transform;
+      if (transform) {
+        proxy.position.set(
+          transform.translation.x,
+          transform.translation.y,
+          transform.translation.z,
+        );
+        proxy.rotation.set(
+          transform.rotation.x * DEG2RAD,
+          transform.rotation.y * DEG2RAD,
+          transform.rotation.z * DEG2RAD,
+        );
+        proxy.scale.set(
+          transform.scale.x,
+          transform.scale.y,
+          transform.scale.z,
+        );
+      } else {
+        // Default identity transform
+        proxy.position.set(0, 0, 0);
+        proxy.rotation.set(0, 0, 0);
+        proxy.scale.set(1, 1, 1);
+      }
     }
-    if (rotateNode?.op.type === "Rotate") {
-      const { angles } = rotateNode.op;
-      proxy.rotation.set(
-        angles.x * DEG2RAD,
-        angles.y * DEG2RAD,
-        angles.z * DEG2RAD,
-      );
-    }
-    if (scaleNode?.op.type === "Scale") {
-      const { factor } = scaleNode.op;
-      proxy.scale.set(factor.x, factor.y, factor.z);
-    }
-  }, [proxy, selectedPart, document]);
+  }, [proxy, selectedPart, selectedInstance, hasTransformableSelection, document]);
 
   // Handle dragging-changed event
   useEffect(() => {
@@ -104,27 +140,53 @@ export function TransformGizmo({
 
       const store = useDocumentStore.getState();
 
-      if (transformMode === "translate") {
-        store.setTranslation(
-          singleSelectedId,
-          { x: proxy.position.x, y: proxy.position.y, z: proxy.position.z },
-          true, // skipUndo — we pushed at drag start
-        );
-      } else if (transformMode === "rotate") {
-        store.setRotation(
+      if (selectedPart) {
+        // Update part transform
+        if (transformMode === "translate") {
+          store.setTranslation(
+            singleSelectedId,
+            { x: proxy.position.x, y: proxy.position.y, z: proxy.position.z },
+            true, // skipUndo — we pushed at drag start
+          );
+        } else if (transformMode === "rotate") {
+          store.setRotation(
+            singleSelectedId,
+            {
+              x: proxy.rotation.x * RAD2DEG,
+              y: proxy.rotation.y * RAD2DEG,
+              z: proxy.rotation.z * RAD2DEG,
+            },
+            true,
+          );
+        } else if (transformMode === "scale") {
+          store.setScale(
+            singleSelectedId,
+            { x: proxy.scale.x, y: proxy.scale.y, z: proxy.scale.z },
+            true,
+          );
+        }
+      } else if (selectedInstance) {
+        // Update instance transform (all in one call)
+        store.setInstanceTransform(
           singleSelectedId,
           {
-            x: proxy.rotation.x * RAD2DEG,
-            y: proxy.rotation.y * RAD2DEG,
-            z: proxy.rotation.z * RAD2DEG,
+            translation: {
+              x: proxy.position.x,
+              y: proxy.position.y,
+              z: proxy.position.z,
+            },
+            rotation: {
+              x: proxy.rotation.x * RAD2DEG,
+              y: proxy.rotation.y * RAD2DEG,
+              z: proxy.rotation.z * RAD2DEG,
+            },
+            scale: {
+              x: proxy.scale.x,
+              y: proxy.scale.y,
+              z: proxy.scale.z,
+            },
           },
-          true,
-        );
-      } else if (transformMode === "scale") {
-        store.setScale(
-          singleSelectedId,
-          { x: proxy.scale.x, y: proxy.scale.y, z: proxy.scale.z },
-          true,
+          true, // skipUndo
         );
       }
     };
@@ -133,9 +195,9 @@ export function TransformGizmo({
     return () => {
       controls.removeEventListener("objectChange", onObjectChange);
     };
-  }, [proxy, singleSelectedId, transformMode]);
+  }, [proxy, singleSelectedId, selectedPart, selectedInstance, transformMode]);
 
-  if (!selectedPart) return null;
+  if (!hasTransformableSelection) return null;
 
   const snapProps = gridSnap
     ? {

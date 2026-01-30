@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   Cube,
   Cylinder,
@@ -10,6 +11,9 @@ import {
   ArrowsOut,
   PencilSimple,
   Command,
+  Package,
+  PlusSquare,
+  LinkSimple,
 } from "@phosphor-icons/react";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -20,6 +24,7 @@ import {
 } from "@vcad/core";
 import type { PrimitiveKind, BooleanType } from "@vcad/core";
 import { cn } from "@/lib/utils";
+import { InsertInstanceDialog, AddJointDialog } from "@/components/dialogs";
 
 const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] =
   [
@@ -115,6 +120,8 @@ function StatusSection() {
 export function BottomToolbar() {
   const addPrimitive = useDocumentStore((s) => s.addPrimitive);
   const applyBoolean = useDocumentStore((s) => s.applyBoolean);
+  const createPartDef = useDocumentStore((s) => s.createPartDef);
+  const document = useDocumentStore((s) => s.document);
 
   const select = useUiStore((s) => s.select);
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
@@ -130,8 +137,36 @@ export function BottomToolbar() {
   const faceSelectionMode = useSketchStore((s) => s.faceSelectionMode);
   const parts = useDocumentStore((s) => s.parts);
 
+  const [insertDialogOpen, setInsertDialogOpen] = useState(false);
+  const [jointDialogOpen, setJointDialogOpen] = useState(false);
+
+  // Listen for insert-instance event from command palette
+  useEffect(() => {
+    function handleInsertInstance() {
+      setInsertDialogOpen(true);
+    }
+    window.addEventListener("vcad:insert-instance", handleInsertInstance);
+    return () =>
+      window.removeEventListener("vcad:insert-instance", handleInsertInstance);
+  }, []);
+
   const hasSelection = selectedPartIds.size > 0;
   const hasTwoSelected = selectedPartIds.size === 2;
+
+  // Assembly mode detection
+  const hasPartDefs = document.partDefs && Object.keys(document.partDefs).length > 0;
+  const hasInstances = document.instances && document.instances.length > 0;
+  const isAssemblyMode = hasPartDefs || hasInstances;
+
+  // Check if we have one part selected (for create part def)
+  const hasOnePartSelected = selectedPartIds.size === 1 &&
+    parts.some((p) => selectedPartIds.has(p.id));
+
+  // Check if we have two instances selected (for add joint)
+  const selectedInstanceIds = Array.from(selectedPartIds).filter((id) =>
+    document.instances?.some((i) => i.id === id)
+  );
+  const hasTwoInstancesSelected = selectedInstanceIds.length === 2;
 
   function handleAddPrimitive(kind: PrimitiveKind) {
     const partId = addPrimitive(kind);
@@ -146,7 +181,29 @@ export function BottomToolbar() {
     if (newId) select(newId);
   }
 
+  function handleCreatePartDef() {
+    if (!hasOnePartSelected) return;
+    const partId = Array.from(selectedPartIds)[0]!;
+    const partDefId = createPartDef(partId);
+    if (partDefId) {
+      // Select the newly created instance
+      const instance = document.instances?.find((i) => i.partDefId === partDefId);
+      if (instance) {
+        select(instance.id);
+      }
+    }
+  }
+
   return (
+    <>
+      <InsertInstanceDialog
+        open={insertDialogOpen}
+        onOpenChange={setInsertDialogOpen}
+      />
+      <AddJointDialog
+        open={jointDialogOpen}
+        onOpenChange={setJointDialogOpen}
+      />
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
       <div
         className={cn(
@@ -200,6 +257,35 @@ export function BottomToolbar() {
 
         <Divider />
 
+        {/* Assembly operations */}
+        <ToolbarButton
+          tooltip="Create Part Definition"
+          disabled={!hasOnePartSelected || sketchActive}
+          onClick={handleCreatePartDef}
+        >
+          <Package size={20} />
+        </ToolbarButton>
+        {isAssemblyMode && (
+          <>
+            <ToolbarButton
+              tooltip="Insert Instance"
+              disabled={!hasPartDefs || sketchActive}
+              onClick={() => setInsertDialogOpen(true)}
+            >
+              <PlusSquare size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip="Add Joint"
+              disabled={!hasTwoInstancesSelected || sketchActive}
+              onClick={() => setJointDialogOpen(true)}
+            >
+              <LinkSimple size={20} />
+            </ToolbarButton>
+          </>
+        )}
+
+        <Divider />
+
         {/* Transform mode */}
         <ToolbarButton
           tooltip="Move (M)"
@@ -244,5 +330,6 @@ export function BottomToolbar() {
         </ToolbarButton>
       </div>
     </div>
+    </>
   );
 }

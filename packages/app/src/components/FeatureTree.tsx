@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import {
   Cube,
   Cylinder,
@@ -15,6 +16,8 @@ import {
   Package,
   LinkSimple,
   Anchor,
+  Copy,
+  PencilSimple,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -243,18 +246,46 @@ function getJointIcon(kind: JointKind): typeof LinkSimple {
   }
 }
 
+/** Context menu item for assembly tree */
+function AssemblyMenuItem({
+  icon: Icon,
+  label,
+  disabled,
+  onClick,
+}: {
+  icon: typeof Copy;
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <RadixContextMenu.Item
+      className="group flex items-center gap-2 px-2 py-1.5 text-xs text-text outline-none cursor-pointer data-[disabled]:opacity-40 data-[disabled]:cursor-default data-[highlighted]:bg-accent/20 data-[highlighted]:text-accent"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon size={14} className="shrink-0" />
+      <span className="flex-1">{label}</span>
+    </RadixContextMenu.Item>
+  );
+}
+
 interface InstanceNodeProps {
   instance: PartInstance;
   joint?: Joint;
   isGround: boolean;
+  onRename: (instanceId: string) => void;
 }
 
-function InstanceNode({ instance, joint, isGround }: InstanceNodeProps) {
+function InstanceNode({ instance, joint, isGround, onRename }: InstanceNodeProps) {
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const hoveredPartId = useUiStore((s) => s.hoveredPartId);
   const setHoveredPartId = useUiStore((s) => s.setHoveredPartId);
   const select = useUiStore((s) => s.select);
   const toggleSelect = useUiStore((s) => s.toggleSelect);
+  const deleteInstance = useDocumentStore((s) => s.deleteInstance);
+  const setGroundInstance = useDocumentStore((s) => s.setGroundInstance);
+  const clearSelection = useUiStore((s) => s.clearSelection);
 
   const isSelected = selectedPartIds.has(instance.id);
   const isHovered = hoveredPartId === instance.id;
@@ -266,33 +297,70 @@ function InstanceNode({ instance, joint, isGround }: InstanceNodeProps) {
     ? " (grounded)"
     : "";
 
+  function handleDelete() {
+    deleteInstance(instance.id);
+    if (isSelected) clearSelection();
+  }
+
+  function handleSetGround() {
+    setGroundInstance(instance.id);
+  }
+
   return (
-    <div
-      className={cn(
-        "group flex items-center gap-1 px-2 py-1.5 text-xs cursor-pointer",
-        isSelected
-          ? "bg-accent/20 text-accent"
-          : isHovered
-          ? "bg-hover text-text"
-          : "text-text-muted hover:bg-hover hover:text-text",
-      )}
-      style={{ paddingLeft: "24px" }}
-      onClick={(e) => {
-        if (e.shiftKey) {
-          toggleSelect(instance.id);
-        } else {
-          select(instance.id);
-        }
-      }}
-      onMouseEnter={() => setHoveredPartId(instance.id)}
-      onMouseLeave={() => setHoveredPartId(null)}
-    >
-      <Package size={14} className="shrink-0" />
-      <span className="flex-1 truncate">
-        {displayName}
-        <span className="text-text-muted/70">{jointSuffix}</span>
-      </span>
-    </div>
+    <RadixContextMenu.Root>
+      <RadixContextMenu.Trigger asChild>
+        <div
+          className={cn(
+            "group flex items-center gap-1 px-2 py-1.5 text-xs cursor-pointer",
+            isSelected
+              ? "bg-accent/20 text-accent"
+              : isHovered
+              ? "bg-hover text-text"
+              : "text-text-muted hover:bg-hover hover:text-text",
+          )}
+          style={{ paddingLeft: "24px" }}
+          onClick={(e) => {
+            if (e.shiftKey) {
+              toggleSelect(instance.id);
+            } else {
+              select(instance.id);
+            }
+          }}
+          onMouseEnter={() => setHoveredPartId(instance.id)}
+          onMouseLeave={() => setHoveredPartId(null)}
+        >
+          <Package size={14} className="shrink-0" />
+          <span className="flex-1 truncate">
+            {displayName}
+            <span className="text-text-muted/70">{jointSuffix}</span>
+          </span>
+          {isGround && (
+            <Anchor size={12} className="shrink-0 text-text-muted/50" />
+          )}
+        </div>
+      </RadixContextMenu.Trigger>
+      <RadixContextMenu.Portal>
+        <RadixContextMenu.Content className="z-50 min-w-[160px] border border-border bg-card p-1 shadow-xl">
+          <AssemblyMenuItem
+            icon={PencilSimple}
+            label="Rename"
+            onClick={() => onRename(instance.id)}
+          />
+          <AssemblyMenuItem
+            icon={Anchor}
+            label="Set as Ground"
+            disabled={isGround}
+            onClick={handleSetGround}
+          />
+          <RadixContextMenu.Separator className="my-1 h-px bg-border" />
+          <AssemblyMenuItem
+            icon={Trash}
+            label="Delete Instance"
+            onClick={handleDelete}
+          />
+        </RadixContextMenu.Content>
+      </RadixContextMenu.Portal>
+    </RadixContextMenu.Root>
   );
 }
 
@@ -307,6 +375,8 @@ function JointNode({ joint, instancesById }: JointNodeProps) {
   const setHoveredPartId = useUiStore((s) => s.setHoveredPartId);
   const select = useUiStore((s) => s.select);
   const toggleSelect = useUiStore((s) => s.toggleSelect);
+  const deleteJoint = useDocumentStore((s) => s.deleteJoint);
+  const clearSelection = useUiStore((s) => s.clearSelection);
 
   // Use joint.id prefixed with "joint:" to distinguish from instances
   const jointSelectionId = `joint:${joint.id}`;
@@ -329,36 +399,54 @@ function JointNode({ joint, instancesById }: JointNodeProps) {
     stateDisplay = ` ${joint.state.toFixed(1)}mm`;
   }
 
+  function handleDelete() {
+    deleteJoint(joint.id);
+    if (isSelected) clearSelection();
+  }
+
   return (
-    <div
-      className={cn(
-        "group flex items-center gap-1 px-2 py-1.5 text-xs cursor-pointer",
-        isSelected
-          ? "bg-accent/20 text-accent"
-          : isHovered
-          ? "bg-hover text-text"
-          : "text-text-muted hover:bg-hover hover:text-text",
-      )}
-      style={{ paddingLeft: "24px" }}
-      onClick={(e) => {
-        if (e.shiftKey) {
-          toggleSelect(jointSelectionId);
-        } else {
-          select(jointSelectionId);
-        }
-      }}
-      onMouseEnter={() => setHoveredPartId(jointSelectionId)}
-      onMouseLeave={() => setHoveredPartId(null)}
-    >
-      <Icon size={14} className="shrink-0" />
-      <span className="flex-1 truncate">
-        {displayName}
-        <span className="text-text-muted/70">{stateDisplay}</span>
-      </span>
-      <Tooltip content={`${parentName} → ${childName}`} side="right">
-        <LinkSimple size={12} className="shrink-0 text-text-muted/50" />
-      </Tooltip>
-    </div>
+    <RadixContextMenu.Root>
+      <RadixContextMenu.Trigger asChild>
+        <div
+          className={cn(
+            "group flex items-center gap-1 px-2 py-1.5 text-xs cursor-pointer",
+            isSelected
+              ? "bg-accent/20 text-accent"
+              : isHovered
+              ? "bg-hover text-text"
+              : "text-text-muted hover:bg-hover hover:text-text",
+          )}
+          style={{ paddingLeft: "24px" }}
+          onClick={(e) => {
+            if (e.shiftKey) {
+              toggleSelect(jointSelectionId);
+            } else {
+              select(jointSelectionId);
+            }
+          }}
+          onMouseEnter={() => setHoveredPartId(jointSelectionId)}
+          onMouseLeave={() => setHoveredPartId(null)}
+        >
+          <Icon size={14} className="shrink-0" />
+          <span className="flex-1 truncate">
+            {displayName}
+            <span className="text-text-muted/70">{stateDisplay}</span>
+          </span>
+          <Tooltip content={`${parentName} → ${childName}`} side="right">
+            <LinkSimple size={12} className="shrink-0 text-text-muted/50" />
+          </Tooltip>
+        </div>
+      </RadixContextMenu.Trigger>
+      <RadixContextMenu.Portal>
+        <RadixContextMenu.Content className="z-50 min-w-[160px] border border-border bg-card p-1 shadow-xl">
+          <AssemblyMenuItem
+            icon={Trash}
+            label="Delete Joint"
+            onClick={handleDelete}
+          />
+        </RadixContextMenu.Content>
+      </RadixContextMenu.Portal>
+    </RadixContextMenu.Root>
   );
 }
 
@@ -373,6 +461,8 @@ function AssemblyTree({
   joints,
   groundInstanceId,
 }: AssemblyTreeProps) {
+  const renameInstance = useDocumentStore((s) => s.renameInstance);
+
   const instancesById = useMemo(
     () => new Map(instances.map((i) => [i.id, i])),
     [instances],
@@ -390,14 +480,31 @@ function AssemblyTree({
       <div className="text-[10px] font-medium uppercase tracking-wider text-text-muted px-2 pt-2">
         Instances
       </div>
-      {instances.map((instance) => (
-        <InstanceNode
-          key={instance.id}
-          instance={instance}
-          joint={jointByChild.get(instance.id)}
-          isGround={instance.id === groundInstanceId}
-        />
-      ))}
+      {instances.length === 0 ? (
+        <div className="px-2 py-2 text-center text-xs text-text-muted">
+          No instances yet.
+          <br />
+          Select a part and run "Create Part Definition" to start.
+        </div>
+      ) : (
+        instances.map((instance) => (
+          <InstanceNode
+            key={instance.id}
+            instance={instance}
+            joint={jointByChild.get(instance.id)}
+            isGround={instance.id === groundInstanceId}
+            onRename={(id) => {
+              const inst = instances.find((i) => i.id === id);
+              if (inst) {
+                const newName = prompt("Rename instance:", inst.name ?? inst.partDefId);
+                if (newName && newName.trim()) {
+                  renameInstance(id, newName.trim());
+                }
+              }
+            }}
+          />
+        ))
+      )}
 
       {/* Section header: Joints (if any) */}
       {joints.length > 0 && (

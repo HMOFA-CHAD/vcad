@@ -24,6 +24,10 @@ import {
   Copy,
   X,
   MagnifyingGlass,
+  Package,
+  PlusSquare,
+  Anchor,
+  ArrowsHorizontal,
 } from "@phosphor-icons/react";
 import type { Command } from "@vcad/core";
 import { createCommandRegistry, useUiStore, useDocumentStore, useEngineStore, exportStlBlob, exportGltfBlob } from "@vcad/core";
@@ -52,6 +56,11 @@ const ICONS: Record<string, typeof Cube> = {
   Trash,
   Copy,
   X,
+  Package,
+  PlusSquare,
+  Anchor,
+  ArrowsClockwise: ArrowClockwise,
+  ArrowsHorizontal,
 };
 
 function highlightMatch(text: string, query: string): React.ReactNode {
@@ -90,6 +99,10 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
   const undoStack = useDocumentStore((s) => s.undoStack);
   const redoStack = useDocumentStore((s) => s.redoStack);
   const parts = useDocumentStore((s) => s.parts);
+  const document = useDocumentStore((s) => s.document);
+  const createPartDef = useDocumentStore((s) => s.createPartDef);
+  const addJoint = useDocumentStore((s) => s.addJoint);
+  const setGroundInstance = useDocumentStore((s) => s.setGroundInstance);
 
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const select = useUiStore((s) => s.select);
@@ -192,15 +205,74 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
       hasParts: () => parts.length > 0,
       canUndo: () => undoStack.length > 0,
       canRedo: () => redoStack.length > 0,
+      // Assembly actions
+      createPartDef: () => {
+        const partId = Array.from(selectedPartIds)[0];
+        if (partId && parts.some((p) => p.id === partId)) {
+          const defId = createPartDef(partId);
+          if (defId) {
+            const instance = document.instances?.find((i) => i.partDefId === defId);
+            if (instance) select(instance.id);
+          }
+        }
+        onOpenChange(false);
+      },
+      insertInstance: () => {
+        // Dispatch event to open the insert instance dialog
+        window.dispatchEvent(new CustomEvent("vcad:insert-instance"));
+        onOpenChange(false);
+      },
+      addJoint: (kind) => {
+        const instanceIds = Array.from(selectedPartIds).filter((id) =>
+          document.instances?.some((i) => i.id === id)
+        );
+        if (instanceIds.length === 2) {
+          const jointId = addJoint({
+            parentInstanceId: instanceIds[0]!,
+            childInstanceId: instanceIds[1]!,
+            parentAnchor: { x: 0, y: 0, z: 0 },
+            childAnchor: { x: 0, y: 0, z: 0 },
+            kind,
+          });
+          select(`joint:${jointId}`);
+        }
+        onOpenChange(false);
+      },
+      setGroundInstance: () => {
+        const instanceId = Array.from(selectedPartIds)[0];
+        if (instanceId && document.instances?.some((i) => i.id === instanceId)) {
+          setGroundInstance(instanceId);
+        }
+        onOpenChange(false);
+      },
+      hasOnePartSelected: () =>
+        selectedPartIds.size === 1 && parts.some((p) => selectedPartIds.has(p.id)),
+      hasPartDefs: () =>
+        document.partDefs !== undefined && Object.keys(document.partDefs).length > 0,
+      hasTwoInstancesSelected: () => {
+        const instanceIds = Array.from(selectedPartIds).filter((id) =>
+          document.instances?.some((i) => i.id === id)
+        );
+        return instanceIds.length === 2;
+      },
+      hasOneInstanceSelected: () => {
+        const instanceIds = Array.from(selectedPartIds).filter((id) =>
+          document.instances?.some((i) => i.id === id)
+        );
+        return instanceIds.length === 1;
+      },
     });
   }, [
+    addJoint,
     addPrimitive,
     applyBoolean,
     clearSelection,
+    createPartDef,
+    document,
     duplicateParts,
     onAboutOpen,
     onOpenChange,
-    parts.length,
+    parts,
     redo,
     redoStack.length,
     removePart,
@@ -208,6 +280,7 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
     select,
     selectMultiple,
     selectedPartIds,
+    setGroundInstance,
     setTransformMode,
     toggleFeatureTree,
     toggleGridSnap,

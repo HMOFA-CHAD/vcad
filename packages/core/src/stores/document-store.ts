@@ -9,6 +9,10 @@ import type {
   PathCurve,
   Transform3D,
   SweepOp,
+  JointKind,
+  Instance,
+  Joint,
+  PartDef,
 } from "@vcad/ir";
 import { createDocument, identityTransform } from "@vcad/ir";
 import type {
@@ -129,6 +133,24 @@ export interface DocumentState {
   ) => void;
   setInstanceMaterial: (instanceId: string, materialKey: string) => void;
   setJointState: (jointId: string, state: number, skipUndo?: boolean) => void;
+  createPartDef: (partId: string, name?: string) => string | null;
+  createInstance: (
+    partDefId: string,
+    name?: string,
+    transform?: Transform3D,
+  ) => string;
+  addJoint: (config: {
+    parentInstanceId: string | null;
+    childInstanceId: string;
+    parentAnchor: Vec3;
+    childAnchor: Vec3;
+    kind: JointKind;
+    name?: string;
+  }) => string;
+  deleteInstance: (instanceId: string) => void;
+  deleteJoint: (jointId: string) => void;
+  setGroundInstance: (instanceId: string) => void;
+  renameInstance: (instanceId: string, name: string) => void;
 }
 
 function makeNode(id: NodeId, name: string | null, op: CsgOp): Node {
@@ -1202,6 +1224,202 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const newDoc = structuredClone(state.document);
     const joint = newDoc.joints![idx]!;
     newDoc.joints![idx] = { ...joint, state: newState };
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  createPartDef: (partId, name) => {
+    const state = get();
+    const part = state.parts.find((p) => p.id === partId);
+    if (!part) return null;
+
+    const undoState = pushUndo(state, "Create Part Definition");
+    const newDoc = structuredClone(state.document);
+
+    // Initialize partDefs if needed
+    if (!newDoc.partDefs) {
+      newDoc.partDefs = {};
+    }
+
+    // Generate unique ID
+    const existingCount = Object.keys(newDoc.partDefs).length;
+    const partDefId = `partdef-${existingCount + 1}`;
+    const defName = name ?? `${part.name} Def`;
+
+    // Create part definition pointing to this part's root node
+    const partDef: PartDef = {
+      id: partDefId,
+      name: defName,
+      root: part.translateNodeId,
+    };
+
+    newDoc.partDefs[partDefId] = partDef;
+
+    // Initialize instances array if needed
+    if (!newDoc.instances) {
+      newDoc.instances = [];
+    }
+
+    // Create first instance of this part definition
+    const instanceId = `instance-${newDoc.instances.length + 1}`;
+    const instance: Instance = {
+      id: instanceId,
+      partDefId,
+      name: part.name,
+      transform: identityTransform(),
+    };
+    newDoc.instances.push(instance);
+
+    // Remove this part from roots (it's now managed via instances)
+    newDoc.roots = newDoc.roots.filter((r) => r.root !== part.translateNodeId);
+
+    // If this is the first instance, make it the ground
+    if (newDoc.instances.length === 1) {
+      newDoc.groundInstanceId = instanceId;
+    }
+
+    // Remove from parts list since it's now a partDef
+    const newParts = state.parts.filter((p) => p.id !== partId);
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return partDefId;
+  },
+
+  createInstance: (partDefId, name, transform) => {
+    const state = get();
+    const undoState = pushUndo(state, "Insert Instance");
+    const newDoc = structuredClone(state.document);
+
+    if (!newDoc.instances) {
+      newDoc.instances = [];
+    }
+
+    const partDef = newDoc.partDefs?.[partDefId];
+    const instanceNum = newDoc.instances.length + 1;
+    const instanceId = `instance-${instanceNum}`;
+
+    // Default transform: offset slightly from origin
+    const defaultTransform = transform ?? {
+      translation: { x: instanceNum * 30, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+    };
+
+    const instance: Instance = {
+      id: instanceId,
+      partDefId,
+      name: name ?? partDef?.name ?? `Instance ${instanceNum}`,
+      transform: defaultTransform,
+    };
+
+    newDoc.instances.push(instance);
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+    return instanceId;
+  },
+
+  addJoint: (config) => {
+    const state = get();
+    const undoState = pushUndo(state, "Add Joint");
+    const newDoc = structuredClone(state.document);
+
+    if (!newDoc.joints) {
+      newDoc.joints = [];
+    }
+
+    const jointNum = newDoc.joints.length + 1;
+    const jointId = `joint-${jointNum}`;
+
+    const joint: Joint = {
+      id: jointId,
+      name: config.name,
+      parentInstanceId: config.parentInstanceId,
+      childInstanceId: config.childInstanceId,
+      parentAnchor: config.parentAnchor,
+      childAnchor: config.childAnchor,
+      kind: config.kind,
+      state: 0,
+    };
+
+    newDoc.joints.push(joint);
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+    return jointId;
+  },
+
+  deleteInstance: (instanceId) => {
+    const state = get();
+    if (!state.document.instances) return;
+
+    const instance = state.document.instances.find((i) => i.id === instanceId);
+    if (!instance) return;
+
+    const undoState = pushUndo(state, "Delete Instance");
+    const newDoc = structuredClone(state.document);
+
+    // Remove the instance
+    newDoc.instances = newDoc.instances!.filter((i) => i.id !== instanceId);
+
+    // Remove any joints that reference this instance
+    if (newDoc.joints) {
+      newDoc.joints = newDoc.joints.filter(
+        (j) =>
+          j.parentInstanceId !== instanceId && j.childInstanceId !== instanceId,
+      );
+    }
+
+    // If this was the ground instance, clear it or assign to another
+    if (newDoc.groundInstanceId === instanceId) {
+      newDoc.groundInstanceId =
+        newDoc.instances.length > 0 ? newDoc.instances[0]!.id : undefined;
+    }
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  deleteJoint: (jointId) => {
+    const state = get();
+    if (!state.document.joints) return;
+
+    const undoState = pushUndo(state, "Delete Joint");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.joints = newDoc.joints!.filter((j) => j.id !== jointId);
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  setGroundInstance: (instanceId) => {
+    const state = get();
+    if (!state.document.instances) return;
+
+    const exists = state.document.instances.some((i) => i.id === instanceId);
+    if (!exists) return;
+
+    const undoState = pushUndo(state, "Set Ground");
+    const newDoc = structuredClone(state.document);
+    newDoc.groundInstanceId = instanceId;
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  renameInstance: (instanceId, name) => {
+    const state = get();
+    if (!state.document.instances) return;
+
+    const idx = state.document.instances.findIndex((i) => i.id === instanceId);
+    if (idx === -1) return;
+
+    const undoState = pushUndo(state, "Rename Instance");
+    const newDoc = structuredClone(state.document);
+    const instance = newDoc.instances![idx]!;
+    newDoc.instances![idx] = { ...instance, name };
 
     set({ document: newDoc, isDirty: true, ...undoState });
   },

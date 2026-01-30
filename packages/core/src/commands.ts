@@ -1,4 +1,5 @@
 import type { PrimitiveKind, BooleanType, TransformMode } from "./types.js";
+import type { JointKind } from "@vcad/ir";
 
 export interface Command {
   id: string;
@@ -34,6 +35,15 @@ export interface CommandActions {
   hasParts: () => boolean;
   canUndo: () => boolean;
   canRedo: () => boolean;
+  // Assembly actions
+  createPartDef: () => void;
+  insertInstance: () => void;
+  addJoint: (kind: JointKind) => void;
+  setGroundInstance: () => void;
+  hasOnePartSelected: () => boolean;
+  hasPartDefs: () => boolean;
+  hasTwoInstancesSelected: () => boolean;
+  hasOneInstanceSelected: () => boolean;
 }
 
 export function createCommandRegistry(actions: CommandActions): CommandRegistry {
@@ -228,6 +238,64 @@ export function createCommandRegistry(actions: CommandActions): CommandRegistry 
       icon: "Info",
       keywords: ["about", "help", "info", "version"],
       action: actions.openAbout,
+    },
+
+    // Assembly commands
+    {
+      id: "create-part-def",
+      label: "Create Part Definition",
+      icon: "Package",
+      keywords: ["part", "definition", "assembly", "create", "convert"],
+      action: actions.createPartDef,
+      enabled: actions.hasOnePartSelected,
+    },
+    {
+      id: "insert-instance",
+      label: "Insert Instance",
+      icon: "PlusSquare",
+      keywords: ["insert", "instance", "assembly", "add", "part"],
+      action: actions.insertInstance,
+      enabled: actions.hasPartDefs,
+    },
+    {
+      id: "add-fixed-joint",
+      label: "Add Fixed Joint",
+      icon: "Anchor",
+      keywords: ["joint", "fixed", "assembly", "connect", "weld"],
+      action: () => actions.addJoint({ type: "Fixed" }),
+      enabled: actions.hasTwoInstancesSelected,
+    },
+    {
+      id: "add-revolute-joint",
+      label: "Add Revolute Joint",
+      icon: "ArrowsClockwise",
+      keywords: ["joint", "revolute", "hinge", "assembly", "rotate"],
+      action: () =>
+        actions.addJoint({
+          type: "Revolute",
+          axis: { x: 0, y: 0, z: 1 },
+        }),
+      enabled: actions.hasTwoInstancesSelected,
+    },
+    {
+      id: "add-slider-joint",
+      label: "Add Slider Joint",
+      icon: "ArrowsHorizontal",
+      keywords: ["joint", "slider", "prismatic", "assembly", "slide"],
+      action: () =>
+        actions.addJoint({
+          type: "Slider",
+          axis: { x: 0, y: 0, z: 1 },
+        }),
+      enabled: actions.hasTwoInstancesSelected,
+    },
+    {
+      id: "set-ground",
+      label: "Set as Ground",
+      icon: "Anchor",
+      keywords: ["ground", "fix", "base", "assembly", "anchor"],
+      action: actions.setGroundInstance,
+      enabled: actions.hasOneInstanceSelected,
     },
   ];
 }
