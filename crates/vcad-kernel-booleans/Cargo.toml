@@ -12,3 +12,11 @@ vcad-kernel-topo = { path = "../vcad-kernel-topo" }
 vcad-kernel-geom = { path = "../vcad-kernel-geom" }
 vcad-kernel-primitives = { path = "../vcad-kernel-primitives" }
 vcad-kernel-tessellate = { path = "../vcad-kernel-tessellate" }
+rayon = "1.10"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "boolean_ops"
+harness = false

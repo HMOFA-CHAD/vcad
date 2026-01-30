@@ -170,7 +170,65 @@ fn brep_boolean(
     let pairs = bbox::find_candidate_face_pairs(&a, &b);
 
     // 2. For each face pair, compute SSI and collect splits for both A and B
+    // This is the hot path - parallelize with rayon
+    use rayon::prelude::*;
     use std::collections::HashMap;
+
+    // Process face pairs in parallel, collecting split data
+    let split_results: Vec<_> = pairs
+        .par_iter()
+        .filter_map(|(face_a, face_b)| {
+            // Get face data with bounds checking to avoid panics
+            let face_data_a = a.topology.faces.get(*face_a)?;
+            let face_data_b = b.topology.faces.get(*face_b)?;
+            let surf_a = a.geometry.surfaces.get(face_data_a.surface_index)?;
+            let surf_b = b.geometry.surfaces.get(face_data_b.surface_index)?;
+
+            let curve = ssi::intersect_surfaces(surf_a.as_ref(), surf_b.as_ref());
+
+            if matches!(curve, ssi::IntersectionCurve::Empty) {
+                return None;
+            }
+
+            let mut results_a = Vec::new();
+            let mut results_b = Vec::new();
+
+            // For circle curves on planar faces, we don't need to trim
+            if let ssi::IntersectionCurve::Circle(circle) = &curve {
+                if split::is_planar_face(&a, *face_a) {
+                    results_a.push((curve.clone(), circle.center, circle.center));
+                }
+                if split::is_cylindrical_face(&b, *face_b) {
+                    results_b.push((curve.clone(), circle.center, circle.center));
+                }
+                return Some((*face_a, results_a, *face_b, results_b));
+            }
+
+            // Trim curve to A's face boundary (for non-circle curves)
+            let segs_a = trim::trim_curve_to_face(&curve, *face_a, &a, 64);
+            for seg in &segs_a {
+                let entry = evaluate_curve(&curve, seg.t_start);
+                let exit = evaluate_curve(&curve, seg.t_end);
+                if (exit - entry).norm() > 1e-6 {
+                    results_a.push((curve.clone(), entry, exit));
+                }
+            }
+
+            // Trim curve to B's face boundary (for non-circle curves)
+            let segs_b = trim::trim_curve_to_face(&curve, *face_b, &b, 64);
+            for seg in &segs_b {
+                let entry = evaluate_curve(&curve, seg.t_start);
+                let exit = evaluate_curve(&curve, seg.t_end);
+                if (exit - entry).norm() > 1e-6 {
+                    results_b.push((curve.clone(), entry, exit));
+                }
+            }
+
+            Some((*face_a, results_a, *face_b, results_b))
+        })
+        .collect();
+
+    // Merge parallel results into HashMaps
     let mut splits_a: HashMap<
         vcad_kernel_topo::FaceId,
         Vec<(ssi::IntersectionCurve, Point3, Point3)>,
@@ -180,71 +238,12 @@ fn brep_boolean(
         Vec<(ssi::IntersectionCurve, Point3, Point3)>,
     > = HashMap::new();
 
-    for (face_a, face_b) in &pairs {
-        // Get face data with bounds checking to avoid panics
-        let Some(face_data_a) = a.topology.faces.get(*face_a) else {
-            continue;
-        };
-        let Some(face_data_b) = b.topology.faces.get(*face_b) else {
-            continue;
-        };
-        let Some(surf_a) = a.geometry.surfaces.get(face_data_a.surface_index) else {
-            continue;
-        };
-        let Some(surf_b) = b.geometry.surfaces.get(face_data_b.surface_index) else {
-            continue;
-        };
-
-        let curve = ssi::intersect_surfaces(surf_a.as_ref(), surf_b.as_ref());
-
-        if matches!(curve, ssi::IntersectionCurve::Empty) {
-            continue;
+    for (face_a, results_a, face_b, results_b) in split_results {
+        if !results_a.is_empty() {
+            splits_a.entry(face_a).or_default().extend(results_a);
         }
-
-        // For circle curves on planar faces, we don't need to trim - just check if circle is inside
-        if let ssi::IntersectionCurve::Circle(circle) = &curve {
-            // For face A (planar): if circle center is inside face, add to splits
-            if split::is_planar_face(&a, *face_a) {
-                splits_a
-                    .entry(*face_a)
-                    .or_default()
-                    .push((curve.clone(), circle.center, circle.center));
-            }
-
-            // For face B (cylinder): use normal trimming
-            if split::is_cylindrical_face(&b, *face_b) {
-                splits_b
-                    .entry(*face_b)
-                    .or_default()
-                    .push((curve.clone(), circle.center, circle.center));
-            }
-            continue;
-        }
-
-        // Trim curve to A's face boundary (for non-circle curves)
-        let segs_a = trim::trim_curve_to_face(&curve, *face_a, &a, 64);
-        for seg in &segs_a {
-            let entry = evaluate_curve(&curve, seg.t_start);
-            let exit = evaluate_curve(&curve, seg.t_end);
-            if (exit - entry).norm() > 1e-6 {
-                splits_a
-                    .entry(*face_a)
-                    .or_default()
-                    .push((curve.clone(), entry, exit));
-            }
-        }
-
-        // Trim curve to B's face boundary (for non-circle curves)
-        let segs_b = trim::trim_curve_to_face(&curve, *face_b, &b, 64);
-        for seg in &segs_b {
-            let entry = evaluate_curve(&curve, seg.t_start);
-            let exit = evaluate_curve(&curve, seg.t_end);
-            if (exit - entry).norm() > 1e-6 {
-                splits_b
-                    .entry(*face_b)
-                    .or_default()
-                    .push((curve.clone(), entry, exit));
-            }
+        if !results_b.is_empty() {
+            splits_b.entry(face_b).or_default().extend(results_b);
         }
     }
 
@@ -270,7 +269,14 @@ fn brep_boolean(
                     // Check if this is a planar face with a circle curve - use specialized split
                     if split::is_planar_face(&a, fid) {
                         if let ssi::IntersectionCurve::Circle(_) = &curve {
-                            let result = split::split_planar_face(&mut a, fid, &curve, &Point3::origin(), &Point3::origin(), segments);
+                            let result = split::split_planar_face(
+                                &mut a,
+                                fid,
+                                &curve,
+                                &Point3::origin(),
+                                &Point3::origin(),
+                                segments,
+                            );
                             if result.sub_faces.len() >= 2 {
                                 new_faces.extend(result.sub_faces);
                             } else {
@@ -331,7 +337,14 @@ fn brep_boolean(
                     // Check if this is a planar face with a circle curve - use specialized split
                     if split::is_planar_face(&b, fid) {
                         if let ssi::IntersectionCurve::Circle(_) = &curve {
-                            let result = split::split_planar_face(&mut b, fid, &curve, &Point3::origin(), &Point3::origin(), segments);
+                            let result = split::split_planar_face(
+                                &mut b,
+                                fid,
+                                &curve,
+                                &Point3::origin(),
+                                &Point3::origin(),
+                                segments,
+                            );
                             if result.sub_faces.len() >= 2 {
                                 new_faces.extend(result.sub_faces);
                             } else {
@@ -1720,14 +1733,21 @@ mod tests {
 
             if !matches!(curve, ssi::IntersectionCurve::Empty) {
                 let curve_type = match &curve {
-                    ssi::IntersectionCurve::Circle(c) => format!("Circle center=({:.1},{:.1},{:.1}) r={:.1}",
-                        c.center.x, c.center.y, c.center.z, c.radius),
-                    ssi::IntersectionCurve::Line(l) => format!("Line origin=({:.1},{:.1},{:.1})",
-                        l.origin.x, l.origin.y, l.origin.z),
+                    ssi::IntersectionCurve::Circle(c) => format!(
+                        "Circle center=({:.1},{:.1},{:.1}) r={:.1}",
+                        c.center.x, c.center.y, c.center.z, c.radius
+                    ),
+                    ssi::IntersectionCurve::Line(l) => format!(
+                        "Line origin=({:.1},{:.1},{:.1})",
+                        l.origin.x, l.origin.y, l.origin.z
+                    ),
                     ssi::IntersectionCurve::Sampled(pts) => format!("Sampled {} pts", pts.len()),
                     _ => format!("{:?}", curve),
                 };
-                println!("  {:?}({:?}) x {:?}({:?}): {}", fa, surf_a_type, fb, surf_b_type, curve_type);
+                println!(
+                    "  {:?}({:?}) x {:?}({:?}): {}",
+                    fa, surf_a_type, fb, surf_b_type, curve_type
+                );
             }
         }
 
@@ -1742,11 +1762,20 @@ mod tests {
                 println!("  is_cylindrical_face: {}", is_cyl);
 
                 // Get the cylinder surface
-                if let Some(cyl_surf) = surf.as_any().downcast_ref::<vcad_kernel_geom::CylinderSurface>() {
-                    println!("  Cylinder center: ({:.1}, {:.1}, {:.1})",
-                        cyl_surf.center.x, cyl_surf.center.y, cyl_surf.center.z);
-                    println!("  Cylinder axis: ({:.3}, {:.3}, {:.3})",
-                        cyl_surf.axis.as_ref().x, cyl_surf.axis.as_ref().y, cyl_surf.axis.as_ref().z);
+                if let Some(cyl_surf) = surf
+                    .as_any()
+                    .downcast_ref::<vcad_kernel_geom::CylinderSurface>()
+                {
+                    println!(
+                        "  Cylinder center: ({:.1}, {:.1}, {:.1})",
+                        cyl_surf.center.x, cyl_surf.center.y, cyl_surf.center.z
+                    );
+                    println!(
+                        "  Cylinder axis: ({:.3}, {:.3}, {:.3})",
+                        cyl_surf.axis.as_ref().x,
+                        cyl_surf.axis.as_ref().y,
+                        cyl_surf.axis.as_ref().z
+                    );
                     println!("  Cylinder radius: {:.1}", cyl_surf.radius);
                 }
             }
@@ -1767,10 +1796,16 @@ mod tests {
             .collect();
 
         // Find the lateral face
-        let lat_face = cyl2.topology.faces.iter().find(|(fid, _)| {
-            let surf = &cyl2.geometry.surfaces[cyl2.topology.faces[*fid].surface_index];
-            surf.surface_type() == vcad_kernel_geom::SurfaceKind::Cylinder
-        }).map(|(fid, _)| fid).unwrap();
+        let lat_face = cyl2
+            .topology
+            .faces
+            .iter()
+            .find(|(fid, _)| {
+                let surf = &cyl2.geometry.surfaces[cyl2.topology.faces[*fid].surface_index];
+                surf.surface_type() == vcad_kernel_geom::SurfaceKind::Cylinder
+            })
+            .map(|(fid, _)| fid)
+            .unwrap();
 
         println!("Lateral face before split: {:?}", lat_face);
         println!("  Face count before: {}", cyl2.topology.faces.len());
@@ -1782,13 +1817,20 @@ mod tests {
             vcad_kernel_math::Vec3::z(),
         );
         let result = split::split_cylindrical_face_by_circle(&mut cyl2, lat_face, &circle_z0);
-        println!("Split at z=0 produced {} sub-faces: {:?}", result.sub_faces.len(), result.sub_faces);
+        println!(
+            "Split at z=0 produced {} sub-faces: {:?}",
+            result.sub_faces.len(),
+            result.sub_faces
+        );
         println!("  Face count after: {}", cyl2.topology.faces.len());
 
         // Check what the sub-faces look like
         for &sf in &result.sub_faces {
             if cyl2.topology.faces.contains_key(sf) {
-                let loop_hes: Vec<_> = cyl2.topology.loop_half_edges(cyl2.topology.faces[sf].outer_loop).collect();
+                let loop_hes: Vec<_> = cyl2
+                    .topology
+                    .loop_half_edges(cyl2.topology.faces[sf].outer_loop)
+                    .collect();
                 println!("  Sub-face {:?}: {} half-edges", sf, loop_hes.len());
                 for &he in &loop_hes {
                     let v = cyl2.topology.vertices[cyl2.topology.half_edges[he].origin].point;
@@ -1800,7 +1842,11 @@ mod tests {
         // Now try tessellating the split cylinder
         println!("\n=== Tessellating split cylinder ===");
         let mesh = tessellate_brep(&cyl2, 32);
-        println!("Mesh: {} triangles, {} vertices", mesh.num_triangles(), mesh.num_vertices());
+        println!(
+            "Mesh: {} triangles, {} vertices",
+            mesh.num_triangles(),
+            mesh.num_vertices()
+        );
 
         // Check volume (should be same as original cylinder)
         let orig_vol = std::f64::consts::PI * 25.0 * 30.0; // π×5²×30
@@ -1831,8 +1877,10 @@ mod tests {
 
         // Collect splits
         use std::collections::HashMap;
-        let mut splits_a: HashMap<vcad_kernel_topo::FaceId, Vec<ssi::IntersectionCurve>> = HashMap::new();
-        let mut splits_b: HashMap<vcad_kernel_topo::FaceId, Vec<ssi::IntersectionCurve>> = HashMap::new();
+        let mut splits_a: HashMap<vcad_kernel_topo::FaceId, Vec<ssi::IntersectionCurve>> =
+            HashMap::new();
+        let mut splits_b: HashMap<vcad_kernel_topo::FaceId, Vec<ssi::IntersectionCurve>> =
+            HashMap::new();
 
         for (face_a, face_b) in &pairs {
             let surf_a = &a.geometry.surfaces[a.topology.faces[*face_a].surface_index];
@@ -1845,7 +1893,14 @@ mod tests {
                     ssi::IntersectionCurve::Line(_) => "Line",
                     _ => "Other",
                 };
-                println!("  {:?}({:?}) x {:?}({:?}) = {}", face_a, surf_a.surface_type(), face_b, surf_b.surface_type(), curve_type);
+                println!(
+                    "  {:?}({:?}) x {:?}({:?}) = {}",
+                    face_a,
+                    surf_a.surface_type(),
+                    face_b,
+                    surf_b.surface_type(),
+                    curve_type
+                );
                 splits_a.entry(*face_a).or_default().push(curve.clone());
                 splits_b.entry(*face_b).or_default().push(curve);
             }
@@ -1859,14 +1914,22 @@ mod tests {
 
         // Apply splits to cylinder (correctly tracking sub-faces)
         for (face_id, curves) in splits_b {
-            println!("  Splitting cylinder face {:?} with {} curves", face_id, curves.len());
+            println!(
+                "  Splitting cylinder face {:?} with {} curves",
+                face_id,
+                curves.len()
+            );
             let mut current_faces = vec![face_id];
             for curve in curves {
                 let mut new_faces = Vec::new();
                 for &fid in &current_faces {
                     if b.topology.faces.contains_key(fid) && split::is_cylindrical_face(&b, fid) {
                         let result = split::split_cylindrical_face(&mut b, fid, &curve);
-                        println!("    Split {:?} produced {} sub-faces", fid, result.sub_faces.len());
+                        println!(
+                            "    Split {:?} produced {} sub-faces",
+                            fid,
+                            result.sub_faces.len()
+                        );
                         if result.sub_faces.len() >= 2 {
                             new_faces.extend(result.sub_faces);
                         } else {
@@ -1886,7 +1949,9 @@ mod tests {
         for (fid, _face) in &b.topology.faces {
             let surf = &b.geometry.surfaces[b.topology.faces[fid].surface_index];
             let stype = surf.surface_type();
-            let verts: Vec<_> = b.topology.loop_half_edges(b.topology.faces[fid].outer_loop)
+            let verts: Vec<_> = b
+                .topology
+                .loop_half_edges(b.topology.faces[fid].outer_loop)
                 .map(|he| b.topology.vertices[b.topology.half_edges[he].origin].point)
                 .collect();
             let z_min = verts.iter().map(|v| v.z).fold(f64::INFINITY, f64::min);
@@ -1911,7 +1976,8 @@ mod tests {
         }
 
         // Select faces for difference
-        let (keep_a, keep_b, reverse_b) = classify::select_faces(BooleanOp::Difference, &classes_a, &classes_b);
+        let (keep_a, keep_b, reverse_b) =
+            classify::select_faces(BooleanOp::Difference, &classes_a, &classes_b);
         println!("\nSelected faces for A - B:");
         println!("  Keep from A: {} faces: {:?}", keep_a.len(), keep_a);
         println!("  Keep from B: {} faces: {:?}", keep_b.len(), keep_b);
@@ -2072,12 +2138,17 @@ mod tests {
 
         println!("\n=== Rotated Cylinder Test ===");
         println!("Plate: 80x6x60");
-        println!("Cylinder: radius 6, height 20, rotated -90° around X, translated to (40, -7, 30)");
+        println!(
+            "Cylinder: radius 6, height 20, rotated -90° around X, translated to (40, -7, 30)"
+        );
 
         // Check the cylinder surface after transform
         for surf in &rotated_cyl.geometry.surfaces {
             if surf.surface_type() == SurfaceKind::Cylinder {
-                if let Some(cyl_surf) = surf.as_any().downcast_ref::<vcad_kernel_geom::CylinderSurface>() {
+                if let Some(cyl_surf) = surf
+                    .as_any()
+                    .downcast_ref::<vcad_kernel_geom::CylinderSurface>()
+                {
                     println!("Rotated cylinder surface:");
                     println!("  center: {:?}", cyl_surf.center);
                     println!("  axis: {:?}", cyl_surf.axis.as_ref());
@@ -2090,7 +2161,11 @@ mod tests {
         let result = boolean_op(&plate, &rotated_cyl, BooleanOp::Difference, 32);
         let mesh = result.to_mesh(32);
 
-        println!("Result mesh: {} triangles, {} vertices", mesh.num_triangles(), mesh.num_vertices());
+        println!(
+            "Result mesh: {} triangles, {} vertices",
+            mesh.num_triangles(),
+            mesh.num_vertices()
+        );
 
         // Check for problematic triangles near the hole
         // Hole is at X≈40, Z≈30, Y=0 to 6
@@ -2105,10 +2180,26 @@ mod tests {
         let hole_radius = 6.0;
 
         for tri in indices.chunks(3) {
-            let (i0, i1, i2) = (tri[0] as usize * 3, tri[1] as usize * 3, tri[2] as usize * 3);
-            let v0 = [positions[i0] as f64, positions[i0 + 1] as f64, positions[i0 + 2] as f64];
-            let v1 = [positions[i1] as f64, positions[i1 + 1] as f64, positions[i1 + 2] as f64];
-            let v2 = [positions[i2] as f64, positions[i2 + 1] as f64, positions[i2 + 2] as f64];
+            let (i0, i1, i2) = (
+                tri[0] as usize * 3,
+                tri[1] as usize * 3,
+                tri[2] as usize * 3,
+            );
+            let v0 = [
+                positions[i0] as f64,
+                positions[i0 + 1] as f64,
+                positions[i0 + 2] as f64,
+            ];
+            let v1 = [
+                positions[i1] as f64,
+                positions[i1 + 1] as f64,
+                positions[i1 + 2] as f64,
+            ];
+            let v2 = [
+                positions[i2] as f64,
+                positions[i2 + 1] as f64,
+                positions[i2 + 2] as f64,
+            ];
 
             // Check if any vertex is near the hole (on top or bottom face)
             let near_hole = |v: &[f64; 3]| -> bool {
@@ -2121,23 +2212,39 @@ mod tests {
             if near_hole(&v0) || near_hole(&v1) || near_hole(&v2) {
                 hole_triangle_count += 1;
 
-                let edge0 = ((v1[0] - v0[0]).powi(2) + (v1[1] - v0[1]).powi(2) + (v1[2] - v0[2]).powi(2)).sqrt();
-                let edge1 = ((v2[0] - v1[0]).powi(2) + (v2[1] - v1[1]).powi(2) + (v2[2] - v1[2]).powi(2)).sqrt();
-                let edge2 = ((v0[0] - v2[0]).powi(2) + (v0[1] - v2[1]).powi(2) + (v0[2] - v2[2]).powi(2)).sqrt();
+                let edge0 =
+                    ((v1[0] - v0[0]).powi(2) + (v1[1] - v0[1]).powi(2) + (v1[2] - v0[2]).powi(2))
+                        .sqrt();
+                let edge1 =
+                    ((v2[0] - v1[0]).powi(2) + (v2[1] - v1[1]).powi(2) + (v2[2] - v1[2]).powi(2))
+                        .sqrt();
+                let edge2 =
+                    ((v0[0] - v2[0]).powi(2) + (v0[1] - v2[1]).powi(2) + (v0[2] - v2[2]).powi(2))
+                        .sqrt();
 
                 // Problematic: very long edges or very high aspect ratio
                 // With ring-based triangulation, aspect ratios up to ~20 are acceptable
                 // for hole-to-ring triangles. Only flag truly degenerate triangles.
                 let max_edge = edge0.max(edge1).max(edge2);
                 let min_edge = edge0.min(edge1).min(edge2);
-                let aspect_ratio = if min_edge > 0.001 { max_edge / min_edge } else { 1000.0 };
+                let aspect_ratio = if min_edge > 0.001 {
+                    max_edge / min_edge
+                } else {
+                    1000.0
+                };
 
                 // Flag triangles with edge > 30mm (half the face dimension) or aspect > 25
                 if max_edge > 30.0 || aspect_ratio > 25.0 {
                     problematic_count += 1;
                     if problematic_count <= 10 {
-                        println!("Problematic hole triangle: v0={:?}, v1={:?}, v2={:?}", v0, v1, v2);
-                        println!("  edges: {:.2}, {:.2}, {:.2}, aspect: {:.1}", edge0, edge1, edge2, aspect_ratio);
+                        println!(
+                            "Problematic hole triangle: v0={:?}, v1={:?}, v2={:?}",
+                            v0, v1, v2
+                        );
+                        println!(
+                            "  edges: {:.2}, {:.2}, {:.2}, aspect: {:.1}",
+                            edge0, edge1, edge2, aspect_ratio
+                        );
                     }
                 }
             }
