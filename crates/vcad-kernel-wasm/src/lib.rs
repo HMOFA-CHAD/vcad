@@ -1451,6 +1451,15 @@ pub async fn decimate_mesh_gpu(
 pub struct RayTracer {
     pipeline: vcad_kernel_raytrace::gpu::RayTracePipeline,
     scene: Option<vcad_kernel_raytrace::gpu::GpuScene>,
+    /// Current frame index for progressive rendering (1-based).
+    frame_index: u32,
+    /// Accumulation texture for progressive anti-aliasing.
+    accum_texture: Option<wgpu::Texture>,
+    /// Last camera state for detecting camera changes.
+    last_camera_hash: u64,
+    /// Last render dimensions.
+    last_width: u32,
+    last_height: u32,
 }
 
 #[cfg(feature = "raytrace")]
@@ -1474,7 +1483,25 @@ impl RayTracer {
         Ok(RayTracer {
             pipeline,
             scene: None,
+            frame_index: 0,
+            accum_texture: None,
+            last_camera_hash: 0,
+            last_width: 0,
+            last_height: 0,
         })
+    }
+
+    /// Reset the progressive accumulation (call when camera moves).
+    #[wasm_bindgen(js_name = resetAccumulation)]
+    pub fn reset_accumulation(&mut self) {
+        self.frame_index = 0;
+        self.accum_texture = None;
+    }
+
+    /// Get the current frame index for progressive rendering.
+    #[wasm_bindgen(js_name = getFrameIndex)]
+    pub fn get_frame_index(&self) -> u32 {
+        self.frame_index
     }
 
     /// Upload a solid's BRep representation for ray tracing.
@@ -1546,7 +1573,10 @@ impl RayTracer {
         Ok(())
     }
 
-    /// Render the scene to an RGBA image.
+    /// Render the scene to an RGBA image with progressive anti-aliasing.
+    ///
+    /// Each call accumulates another sample. Call `resetAccumulation()` when the
+    /// camera moves to restart the accumulation.
     ///
     /// # Arguments
     /// * `camera` - Camera position [x, y, z]
@@ -1563,7 +1593,7 @@ impl RayTracer {
     /// This function is async to support WASM's single-threaded environment.
     /// In JavaScript, it returns a Promise<Uint8Array>.
     pub async fn render(
-        &self,
+        &mut self,
         camera: Vec<f64>,
         target: Vec<f64>,
         up: Vec<f64>,
@@ -1572,6 +1602,8 @@ impl RayTracer {
         fov: f32,
     ) -> Result<Vec<u8>, JsError> {
         use vcad_kernel_raytrace::gpu::GpuCamera;
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
 
         if camera.len() != 3 || target.len() != 3 || up.len() != 3 {
             return Err(JsError::new("camera, target, and up must each have 3 components"));
@@ -1580,12 +1612,34 @@ impl RayTracer {
         let scene = self.scene.as_ref()
             .ok_or_else(|| JsError::new("No solid uploaded. Call uploadSolid() first."))?;
 
-        web_sys::console::log_1(&format!(
-            "[WASM] render() camera=[{:.2},{:.2},{:.2}] target=[{:.2},{:.2},{:.2}] fov={:.2}rad ({:.1}deg)",
-            camera[0], camera[1], camera[2],
-            target[0], target[1], target[2],
-            fov, fov * 180.0 / std::f32::consts::PI
-        ).into());
+        // Compute camera hash to detect changes
+        let mut hasher = DefaultHasher::new();
+        for v in &camera { v.to_bits().hash(&mut hasher); }
+        for v in &target { v.to_bits().hash(&mut hasher); }
+        fov.to_bits().hash(&mut hasher);
+        let camera_hash = hasher.finish();
+
+        // Reset accumulation if camera changed or dimensions changed
+        if camera_hash != self.last_camera_hash || width != self.last_width || height != self.last_height {
+            self.frame_index = 0;
+            self.accum_texture = None;
+            self.last_camera_hash = camera_hash;
+            self.last_width = width;
+            self.last_height = height;
+        }
+
+        // Increment frame index (capped at 256 for convergence)
+        self.frame_index = (self.frame_index + 1).min(256);
+
+        // Log progress occasionally
+        if self.frame_index == 1 || self.frame_index % 16 == 0 {
+            web_sys::console::log_1(&format!(
+                "[WASM] render() frame={} camera=[{:.2},{:.2},{:.2}] target=[{:.2},{:.2},{:.2}]",
+                self.frame_index,
+                camera[0], camera[1], camera[2],
+                target[0], target[1], target[2],
+            ).into());
+        }
 
         let gpu_camera = GpuCamera::new(
             [camera[0] as f32, camera[1] as f32, camera[2] as f32],
@@ -1599,9 +1653,20 @@ impl RayTracer {
         let ctx = vcad_kernel_gpu::GpuContext::get()
             .ok_or_else(|| JsError::new("GPU context lost"))?;
 
-        let pixels = self.pipeline.render(&ctx, scene, &gpu_camera, width, height)
+        let (pixels, new_accum) = self.pipeline.render_progressive(
+            &ctx,
+            scene,
+            &gpu_camera,
+            width,
+            height,
+            self.frame_index,
+            self.accum_texture.take(),
+        )
             .await
             .map_err(|e| JsError::new(&format!("Render failed: {}", e)))?;
+
+        // Store accumulation texture for next frame
+        self.accum_texture = Some(new_accum);
 
         Ok(pixels)
     }

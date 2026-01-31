@@ -158,6 +158,61 @@ impl GpuSurface {
     }
 }
 
+/// GPU-compatible material representation (PBR).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct GpuMaterial {
+    /// Base color (linear RGB + alpha).
+    pub color: [f32; 4],
+    /// Metallic factor (0 = dielectric, 1 = metal).
+    pub metallic: f32,
+    /// Roughness factor (0 = smooth, 1 = rough).
+    pub roughness: f32,
+    /// Padding for 16-byte alignment.
+    pub _pad: [f32; 2],
+}
+
+impl Default for GpuMaterial {
+    fn default() -> Self {
+        Self {
+            color: [0.7, 0.7, 0.7, 1.0], // Neutral gray
+            metallic: 0.0,
+            roughness: 0.5,
+            _pad: [0.0; 2],
+        }
+    }
+}
+
+impl GpuMaterial {
+    /// Create a new material with the given color.
+    pub fn with_color(r: f32, g: f32, b: f32) -> Self {
+        Self {
+            color: [r, g, b, 1.0],
+            ..Default::default()
+        }
+    }
+
+    /// Create a metallic material.
+    pub fn metal(r: f32, g: f32, b: f32, roughness: f32) -> Self {
+        Self {
+            color: [r, g, b, 1.0],
+            metallic: 1.0,
+            roughness,
+            _pad: [0.0; 2],
+        }
+    }
+
+    /// Create a plastic material.
+    pub fn plastic(r: f32, g: f32, b: f32, roughness: f32) -> Self {
+        Self {
+            color: [r, g, b, 1.0],
+            metallic: 0.0,
+            roughness,
+            _pad: [0.0; 2],
+        }
+    }
+}
+
 /// GPU-compatible face representation.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -182,6 +237,10 @@ pub struct GpuFace {
     pub inner_loop_count: u32,
     /// Start index in inner_loop_descs for this face's inner loop sizes.
     pub inner_desc_start: u32,
+    /// Index into material array.
+    pub material_idx: u32,
+    /// Padding for 16-byte alignment.
+    pub _pad2: [u32; 3],
 }
 
 /// GPU-compatible BVH node.
@@ -232,6 +291,69 @@ pub struct GpuCamera {
     pub _pad: u32,
 }
 
+/// Render state for progressive rendering.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct GpuRenderState {
+    /// Current frame index for accumulation (1-based).
+    pub frame_index: u32,
+    /// Jitter X offset for anti-aliasing (-0.5 to 0.5).
+    pub jitter_x: f32,
+    /// Jitter Y offset for anti-aliasing (-0.5 to 0.5).
+    pub jitter_y: f32,
+    /// Enable edge rendering (0 = disabled, 1 = enabled).
+    pub enable_edges: u32,
+    /// Edge detection threshold for depth discontinuity.
+    pub edge_depth_threshold: f32,
+    /// Edge detection threshold for normal discontinuity (degrees).
+    pub edge_normal_threshold: f32,
+    /// Padding for 16-byte alignment.
+    pub _pad: [f32; 2],
+}
+
+impl GpuRenderState {
+    /// Create a new render state for the given frame.
+    pub fn new(frame_index: u32) -> Self {
+        let (jitter_x, jitter_y) = halton_2_3(frame_index);
+        Self {
+            frame_index,
+            jitter_x,
+            jitter_y,
+            enable_edges: 1, // Enabled by default
+            edge_depth_threshold: 0.1,
+            edge_normal_threshold: 30.0, // degrees
+            _pad: [0.0; 2],
+        }
+    }
+
+    /// Create a render state with edge detection disabled.
+    #[allow(dead_code)]
+    pub fn without_edges(frame_index: u32) -> Self {
+        let mut state = Self::new(frame_index);
+        state.enable_edges = 0;
+        state
+    }
+}
+
+/// Generate Halton sequence sample for bases 2 and 3.
+/// Returns values in range [-0.5, 0.5] for sub-pixel jittering.
+fn halton_2_3(index: u32) -> (f32, f32) {
+    (halton(index, 2) - 0.5, halton(index, 3) - 0.5)
+}
+
+/// Halton sequence generator for a given base.
+fn halton(mut index: u32, base: u32) -> f32 {
+    let mut f = 1.0f32;
+    let mut r = 0.0f32;
+    let base_f = base as f32;
+    while index > 0 {
+        f /= base_f;
+        r += f * (index % base) as f32;
+        index /= base;
+    }
+    r
+}
+
 impl GpuCamera {
     /// Create a new camera for rendering.
     pub fn new(
@@ -255,6 +377,7 @@ impl GpuCamera {
 }
 
 /// Maximum inner loop descriptors.
+#[allow(dead_code)]
 pub const MAX_INNER_LOOPS: usize = 8192;
 
 /// Scene data prepared for GPU upload.
@@ -263,6 +386,8 @@ pub struct GpuScene {
     pub surfaces: Vec<GpuSurface>,
     /// Faces.
     pub faces: Vec<GpuFace>,
+    /// Materials.
+    pub materials: Vec<GpuMaterial>,
     /// BVH nodes.
     pub bvh_nodes: Vec<GpuBvhNode>,
     /// Trim loop vertices (UV coordinates) - outer and inner loops.
@@ -341,6 +466,7 @@ impl GpuScene {
                     );
                 }
             }
+            let _ = idx; // Silence unused warning in non-WASM builds
             surfaces.push(gpu_surface);
         }
         if surfaces.len() > MAX_SURFACES {
@@ -406,6 +532,7 @@ impl GpuScene {
                     )
                     .into(),
                 );
+                let _ = loop_idx; // Silence unused warning in non-WASM builds
                 // Store the vertex count for this inner loop
                 inner_loop_descs.push(inner_uvs.len() as u32);
                 for uv in inner_uvs {
@@ -432,6 +559,8 @@ impl GpuScene {
                 inner_count,
                 inner_loop_count,
                 inner_desc_start,
+                material_idx: 0, // Default material
+                _pad2: [0; 3],
             });
         }
 
@@ -483,9 +612,13 @@ impl GpuScene {
             inner_loop_descs.push(0);
         }
 
+        // Create default material (neutral gray)
+        let materials = vec![GpuMaterial::default()];
+
         Ok(Self {
             surfaces,
             faces,
+            materials,
             bvh_nodes,
             trim_verts,
             inner_loop_descs,

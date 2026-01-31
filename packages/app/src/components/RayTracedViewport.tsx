@@ -112,6 +112,9 @@ export function RayTracedViewportSync() {
  * This component renders an HTML canvas that overlays the Three.js scene,
  * providing pixel-perfect silhouettes for CAD geometry.
  *
+ * Supports progressive anti-aliasing: when camera stops, continues rendering
+ * to accumulate samples for smoother edges.
+ *
  * Must be placed OUTSIDE the R3F Canvas (as a sibling).
  */
 export function RayTracedViewportOverlay() {
@@ -123,6 +126,10 @@ export function RayTracedViewportOverlay() {
   const renderInProgressRef = useRef(false);
   const needsRenderRef = useRef(true);
   const lastCameraStateRef = useRef<CameraState | null>(null);
+
+  // Progressive rendering state
+  const progressiveTimerRef = useRef<number | null>(null);
+  const maxSamples = raytraceQuality === "draft" ? 16 : raytraceQuality === "high" ? 256 : 64;
 
   // Quality multiplier for render resolution
   const qualityScale =
@@ -166,9 +173,36 @@ export function RayTracedViewportOverlay() {
     [qualityScale]
   );
 
-  // Render function
-  const doRender = useCallback(
-    (state: CameraState) => {
+  // Schedule progressive refinement renders
+  const scheduleProgressiveRender = useCallback(
+    (_state: CameraState) => {
+      // Cancel any pending progressive render
+      if (progressiveTimerRef.current !== null) {
+        cancelAnimationFrame(progressiveTimerRef.current);
+        progressiveTimerRef.current = null;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      const currentFrame = (rayTracer?.getFrameIndex?.() as number) ?? 0;
+      if (currentFrame >= maxSamples) {
+        return; // Already converged
+      }
+
+      // Schedule next frame after a short delay (16ms = ~60fps)
+      progressiveTimerRef.current = requestAnimationFrame(() => {
+        progressiveTimerRef.current = null;
+        if (lastCameraStateRef.current) {
+          doRenderInternal(lastCameraStateRef.current, true);
+        }
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rayTracer, maxSamples]
+  );
+
+  // Internal render function
+  const doRenderInternal = useCallback(
+    (state: CameraState, isProgressive: boolean) => {
       if (!rayTracer || !canvasRef.current || renderInProgressRef.current) return;
 
       const canvas = canvasRef.current;
@@ -183,13 +217,28 @@ export function RayTracedViewportOverlay() {
 
       frameCountRef.current++;
 
-      // Calculate render dimensions, capped to prevent long renders
-      const MAX_PIXELS = 640 * 480;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      const currentFrame = (rayTracer?.getFrameIndex?.() as number) ?? 0;
+
+      // Quality-based resolution limits
+      // During interaction (first few frames), use lower resolution
+      // As samples accumulate, allow higher resolution
+      const MAX_PIXELS_BY_QUALITY = {
+        draft: 640 * 480,       // 307k pixels
+        standard: 1280 * 720,   // 921k pixels
+        high: 1920 * 1080,      // 2M pixels
+      } as const;
+
+      // During first frame (camera moving), use draft quality for responsiveness
+      const isInteracting = currentFrame <= 1;
+      const effectiveQuality = isInteracting ? "draft" : raytraceQuality;
+      const maxPixels = MAX_PIXELS_BY_QUALITY[effectiveQuality as keyof typeof MAX_PIXELS_BY_QUALITY] ?? MAX_PIXELS_BY_QUALITY.standard;
+
       let renderWidth = Math.floor(state.width * qualityScale);
       let renderHeight = Math.floor(state.height * qualityScale);
       const totalPixels = renderWidth * renderHeight;
-      if (totalPixels > MAX_PIXELS) {
-        const scale = Math.sqrt(MAX_PIXELS / totalPixels);
+      if (totalPixels > maxPixels) {
+        const scale = Math.sqrt(maxPixels / totalPixels);
         renderWidth = Math.floor(renderWidth * scale);
         renderHeight = Math.floor(renderHeight * scale);
       }
@@ -222,26 +271,22 @@ export function RayTracedViewportOverlay() {
               drawPixels(drawCtx, pixels, w, h, cw, ch);
 
               // Log stats occasionally
-              if (frameCountRef.current % 60 === 0) {
-                let opaquePixels = 0;
-                for (let i = 3; i < pixels.length; i += 4) {
-                  if ((pixels[i] ?? 0) > 0) opaquePixels++;
-                }
-                console.log("[RayTracedViewport] Render stats:", {
-                  width: w,
-                  height: h,
-                  opaquePixels,
-                  totalPixels: w * h,
-                });
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+              const currentFrame = (rayTracer?.getFrameIndex?.() as number) ?? 0;
+              if (currentFrame === 1 || currentFrame % 32 === 0) {
+                console.log("[RayTracedViewport] Progressive sample:", currentFrame, "/", maxSamples);
               }
             }
           }
           renderInProgressRef.current = false;
 
-          // If camera moved while rendering, render again
+          // If camera moved while rendering, render again (resets accumulation)
           if (needsRenderRef.current && lastCameraStateRef.current) {
             needsRenderRef.current = false;
-            doRender(lastCameraStateRef.current);
+            doRenderInternal(lastCameraStateRef.current, false);
+          } else if (isProgressive && lastCameraStateRef.current) {
+            // Continue progressive refinement
+            scheduleProgressiveRender(lastCameraStateRef.current);
           }
         })
         .catch((e: Error) => {
@@ -249,7 +294,20 @@ export function RayTracedViewportOverlay() {
           renderInProgressRef.current = false;
         });
     },
-    [rayTracer, qualityScale, drawPixels]
+    [rayTracer, qualityScale, drawPixels, maxSamples, scheduleProgressiveRender]
+  );
+
+  // Public render function that starts fresh
+  const doRender = useCallback(
+    (state: CameraState) => {
+      // Cancel any pending progressive render
+      if (progressiveTimerRef.current !== null) {
+        cancelAnimationFrame(progressiveTimerRef.current);
+        progressiveTimerRef.current = null;
+      }
+      doRenderInternal(state, true);
+    },
+    [doRenderInternal]
   );
 
   // Register callback for camera updates
@@ -265,6 +323,11 @@ export function RayTracedViewportOverlay() {
 
     return () => {
       setCameraStateCallback(null);
+      // Clean up progressive timer
+      if (progressiveTimerRef.current !== null) {
+        cancelAnimationFrame(progressiveTimerRef.current);
+        progressiveTimerRef.current = null;
+      }
     };
   }, [doRender]);
 

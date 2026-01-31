@@ -7,7 +7,7 @@ use vcad_kernel_gpu::{GpuContext, GpuError};
 use bytemuck::Zeroable;
 
 #[cfg(feature = "gpu")]
-use super::buffers::{GpuCamera, GpuScene};
+use super::buffers::{GpuCamera, GpuRenderState, GpuScene};
 
 #[cfg(not(feature = "gpu"))]
 use super::buffers::GpuCamera;
@@ -110,6 +110,50 @@ impl RayTracePipeline {
                     },
                     count: None,
                 },
+                // Render state uniform (for progressive rendering)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Accumulation texture (for progressive rendering)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::ReadWrite,
+                        format: wgpu::TextureFormat::Rgba32Float,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                // Materials storage
+                wgpu::BindGroupLayoutEntry {
+                    binding: 9,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Depth/normal texture (for edge detection)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 10,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::ReadWrite,
+                        format: wgpu::TextureFormat::Rgba32Float,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -134,25 +178,48 @@ impl RayTracePipeline {
         })
     }
 
-    /// Render a scene to an output texture.
+    /// Render a scene to an output texture with progressive accumulation.
     ///
     /// This function is async to support WASM's single-threaded environment where
     /// blocking GPU buffer readback causes deadlocks. The async wrapper allows
     /// wasm-bindgen-futures to yield control back to the browser event loop.
-    pub async fn render(
+    ///
+    /// # Arguments
+    /// * `ctx` - GPU context
+    /// * `scene` - Scene data to render
+    /// * `camera` - Camera parameters
+    /// * `width` - Output width in pixels
+    /// * `height` - Output height in pixels
+    /// * `frame_index` - Frame number for progressive accumulation (1 = first frame/reset)
+    /// * `accum_texture` - Optional accumulation texture from previous frames
+    ///
+    /// # Returns
+    /// A tuple of (pixels, accumulation_texture) for progressive rendering.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn render_progressive(
         &self,
         ctx: &GpuContext,
         scene: &GpuScene,
         camera: &GpuCamera,
         width: u32,
         height: u32,
-    ) -> Result<Vec<u8>, GpuError> {
+        frame_index: u32,
+        accum_texture: Option<wgpu::Texture>,
+    ) -> Result<(Vec<u8>, wgpu::Texture), GpuError> {
         use wgpu::util::DeviceExt;
 
         // Create camera buffer
         let camera_buffer = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::bytes_of(camera),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        // Create render state buffer
+        let render_state = GpuRenderState::new(frame_index);
+        let render_state_buffer = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Render State Buffer"),
+            contents: bytemuck::bytes_of(&render_state),
             usage: wgpu::BufferUsages::UNIFORM,
         });
 
@@ -212,6 +279,17 @@ impl RayTracePipeline {
             usage: wgpu::BufferUsages::STORAGE,
         });
 
+        let materials = if scene.materials.is_empty() {
+            vec![super::buffers::GpuMaterial::default()]
+        } else {
+            scene.materials.clone()
+        };
+        let materials_buffer = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Materials Buffer"),
+            contents: bytemuck::cast_slice(&materials),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
         // Create output texture
         let output_texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Output Texture"),
@@ -228,6 +306,42 @@ impl RayTracePipeline {
             view_formats: &[],
         });
         let output_view = output_texture.create_view(&Default::default());
+
+        // Create or reuse accumulation texture
+        let accum = accum_texture.unwrap_or_else(|| {
+            ctx.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Accumulation Texture"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba32Float,
+                usage: wgpu::TextureUsages::STORAGE_BINDING,
+                view_formats: &[],
+            })
+        });
+        let accum_view = accum.create_view(&Default::default());
+
+        // Create depth/normal texture for edge detection
+        let depth_normal_texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Depth Normal Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::STORAGE_BINDING,
+            view_formats: &[],
+        });
+        let depth_normal_view = depth_normal_texture.create_view(&Default::default());
 
         // Create readback buffer
         let output_size = (width * height * 4) as u64;
@@ -271,6 +385,22 @@ impl RayTracePipeline {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: wgpu::BindingResource::TextureView(&output_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: render_state_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::TextureView(&accum_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: materials_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::TextureView(&depth_normal_view),
                 },
             ],
         });
@@ -421,7 +551,24 @@ impl RayTracePipeline {
         drop(data);
         readback_buffer.unmap();
 
-        Ok(result)
+        Ok((result, accum))
+    }
+
+    /// Render a scene to an output texture (single-frame, non-progressive).
+    ///
+    /// This is a convenience wrapper around render_progressive for backward compatibility.
+    pub async fn render(
+        &self,
+        ctx: &GpuContext,
+        scene: &GpuScene,
+        camera: &GpuCamera,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, GpuError> {
+        let (pixels, _accum) = self
+            .render_progressive(ctx, scene, camera, width, height, 1, None)
+            .await?;
+        Ok(pixels)
     }
 }
 
