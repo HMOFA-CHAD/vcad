@@ -34,6 +34,7 @@ import {
 import { useEngine } from "@/hooks/useEngine";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { saveDocument } from "@/lib/save-load";
+import { mergeMeshes } from "@/lib/mesh-utils";
 import { useToastStore } from "@/stores/toast-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 
@@ -134,20 +135,36 @@ export function App() {
           return;
         }
 
+        console.log("[STEP] Starting import...");
         const buffer = await file.arrayBuffer();
-        const meshes = engine.importStep(buffer);
+        console.log("[STEP] Buffer size:", buffer.byteLength);
 
-        if (meshes.length === 0) {
+        console.log("[STEP] Calling engine.importStep...");
+        const rawMeshes = engine.importStep(buffer);
+        console.log("[STEP] Got meshes:", rawMeshes.length);
+
+        if (rawMeshes.length === 0) {
           useToastStore.getState().addToast("No geometry found in STEP file", "error");
           return;
         }
 
-        // Create an evaluated scene directly from the meshes
+        // Log mesh sizes
+        let totalTris = 0;
+        rawMeshes.forEach((m, i) => {
+          const tris = m.indices.length / 3;
+          totalTris += tris;
+          console.log(`[STEP] Mesh ${i}: ${tris} triangles`);
+        });
+        console.log(`[STEP] Total: ${totalTris} triangles`);
+
+        // Merge all meshes into one for better GPU performance (1 draw call instead of N)
+        console.log("[STEP] Merging meshes...");
+        const mergedMesh = mergeMeshes(rawMeshes);
+        console.log(`[STEP] Merged into 1 mesh with ${mergedMesh.indices.length / 3} triangles`);
+
+        // Create an evaluated scene with the merged mesh
         const scene = {
-          parts: meshes.map((mesh) => ({
-            mesh,
-            material: "default",
-          })),
+          parts: [{ mesh: mergedMesh, material: "default" }],
           clashes: [],
         };
 
@@ -162,7 +179,7 @@ export function App() {
         useUiStore.getState().clearSelection();
 
         useToastStore.getState().addToast(
-          `Imported ${meshes.length} solid${meshes.length > 1 ? "s" : ""} from STEP`,
+          `Imported ${rawMeshes.length} solid${rawMeshes.length > 1 ? "s" : ""} from STEP (${totalTris.toLocaleString()} triangles)`,
           "success"
         );
       } catch (err) {
