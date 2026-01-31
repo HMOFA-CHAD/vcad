@@ -32,7 +32,7 @@ export interface SketchStore extends SketchState {
   setHoveredFace: (face: FaceInfo | null) => void;
   selectFace: (face: FaceInfo) => void;
   cancelFaceSelection: () => void;
-  enterSketchMode: (plane: SketchPlane, origin?: Vec3) => void;
+  enterSketchMode: (plane: SketchPlane, origin?: Vec3, flipped?: boolean) => void;
   exitSketchMode: () => SketchExitStatus;
   requestExit: () => boolean; // Returns true if immediate exit, false if needs confirmation
   confirmExit: () => SketchExitStatus;
@@ -201,7 +201,7 @@ export const useSketchStore = create<SketchStore>((set, get) => ({
     });
   },
 
-  enterSketchMode: (plane, origin) => {
+  enterSketchMode: (plane, origin, flipped) => {
     const planeOrigin = origin ?? (typeof plane === "string" ? { x: 0, y: 0, z: 0 } : plane.origin);
     set({
       active: true,
@@ -226,9 +226,13 @@ export const useSketchStore = create<SketchStore>((set, get) => ({
     // Dispatch event to trigger camera swing to face the plane
     if (typeof window !== "undefined") {
       const { normal } = getSketchPlaneDirections(plane);
+      // If flipped (clicked back face), negate the normal so camera swings to opposite side
+      const effectiveNormal = flipped
+        ? { x: -normal.x, y: -normal.y, z: -normal.z }
+        : normal;
       window.dispatchEvent(
         new CustomEvent("vcad:face-selected", {
-          detail: { normal, centroid: planeOrigin },
+          detail: { normal: effectiveNormal, centroid: planeOrigin },
         })
       );
     }

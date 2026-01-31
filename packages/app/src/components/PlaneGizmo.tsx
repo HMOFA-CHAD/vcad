@@ -30,7 +30,19 @@ function GizmoPlane({ plane, rotation, position }: PlaneProps) {
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     if (sketchActive) return;
-    enterSketchMode(plane);
+
+    // Detect which side of the plane was clicked
+    // Face normal in local space transformed to world space
+    let flipped = false;
+    if (e.face?.normal && meshRef.current) {
+      const worldNormal = e.face.normal
+        .clone()
+        .transformDirection(meshRef.current.matrixWorld);
+      // Ray direction points into the scene; if dot product > 0, we clicked the back face
+      flipped = worldNormal.dot(e.ray.direction) > 0;
+    }
+
+    enterSketchMode(plane, undefined, flipped);
   };
 
   // Animate opacity on hover
