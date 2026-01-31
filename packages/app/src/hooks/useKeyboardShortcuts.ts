@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useUiStore, useDocumentStore, useSketchStore } from "@vcad/core";
 import { useToastStore } from "../stores/toast-store";
+import { useLogStore } from "../stores/log-store";
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
@@ -37,10 +38,18 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Toggle feature tree: backtick or Cmd+1
-      if (e.key === "`" || (mod && e.key === "1")) {
+
+      // Toggle feature tree: Cmd+1
+      if (mod && e.key === "1") {
         e.preventDefault();
         toggleFeatureTree();
+        return;
+      }
+
+      // Log viewer: ~ (backtick)
+      if (e.key === "`") {
+        e.preventDefault();
+        useLogStore.getState().togglePanel();
         return;
       }
 

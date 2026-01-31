@@ -79,3 +79,12 @@ export type {
   DetailView,
   DetailViewParams,
 } from "@vcad/engine";
+
+// Logger
+export { logger, LogLevel, LogSource } from "./logger.js";
+export type {
+  LogEntry,
+  LogLevelName,
+  LogSourceName,
+  LogSubscriber,
+} from "./logger.js";

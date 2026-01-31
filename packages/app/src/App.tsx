@@ -22,6 +22,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { SketchToolbar } from "@/components/SketchToolbar";
 import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
 import { QuotePanel } from "@/components/QuotePanel";
+import { LogViewer } from "@/components/LogViewer";
 import { DocumentPicker } from "@/components/DocumentPicker";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import {
@@ -489,6 +490,9 @@ export function App() {
 
           {/* Quote panel (slides in from right when Make It Real clicked) */}
           <QuotePanel />
+
+          {/* Log viewer (Cmd+J to toggle) */}
+          <LogViewer />
 
           {/* Drag overlay */}
           {isDragging && (
