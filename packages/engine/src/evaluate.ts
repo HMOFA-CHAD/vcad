@@ -56,9 +56,42 @@ interface KernelModule {
 /** Extract a TriangleMesh from a Solid. */
 function solidToMesh(solid: Solid): TriangleMesh {
   const meshData = solid.getMesh();
+  const positions = new Float32Array(meshData.positions);
+  const indices = new Uint32Array(meshData.indices);
+
+  // Validate indices - check for out-of-bounds references
+  const numVertices = positions.length / 3;
+  let hasInvalidIndices = false;
+  for (let i = 0; i < indices.length; i++) {
+    if (indices[i] >= numVertices) {
+      hasInvalidIndices = true;
+      console.warn(`[MESH] Invalid index ${indices[i]} at position ${i}, max vertex is ${numVertices - 1}`);
+      break;
+    }
+  }
+
+  if (hasInvalidIndices) {
+    // Filter out invalid triangles
+    const validIndices: number[] = [];
+    for (let i = 0; i < indices.length; i += 3) {
+      const i0 = indices[i];
+      const i1 = indices[i + 1];
+      const i2 = indices[i + 2];
+      if (i0 < numVertices && i1 < numVertices && i2 < numVertices) {
+        validIndices.push(i0, i1, i2);
+      }
+    }
+    console.warn(`[MESH] Filtered ${(indices.length - validIndices.length) / 3} invalid triangles, ${validIndices.length / 3} remaining`);
+    return {
+      positions,
+      indices: new Uint32Array(validIndices),
+      normals: meshData.normals ? new Float32Array(meshData.normals) : undefined,
+    };
+  }
+
   return {
-    positions: new Float32Array(meshData.positions),
-    indices: new Uint32Array(meshData.indices),
+    positions,
+    indices,
     normals: meshData.normals ? new Float32Array(meshData.normals) : undefined,
   };
 }
@@ -230,6 +263,8 @@ export function evaluateDocument(
     return {
       mesh,
       material: entry.material,
+      // Include solid for ray tracing (if it has BRep data)
+      solid: solid,
     };
   });
 
