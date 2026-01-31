@@ -72,11 +72,11 @@ Product management source of truth for vcad features. See [CONTRIBUTING.md](./CO
 
 ## Foundation (Critical)
 
-Technical debt and infrastructure that must be addressed before major features.
+Technical debt and infrastructure for major features.
 
 | Feature | Status | Priority | Effort | Spec |
 |---------|--------|----------|--------|------|
-| [Technical Debt Cleanup](./technical-debt.md) | `in-progress` | p0 | s | Safety fixes, module refactoring |
+| [Technical Debt Cleanup](./technical-debt.md) | `shipped` | p0 | s | Safety fixes, module refactoring |
 | [Compact IR Format](./compact-ir.md) | `proposed` | p0 | xs | Terse text format for AI/compression |
 
 ---
@@ -150,15 +150,18 @@ Make vcad's feature tree legendary — better than SolidWorks, Fusion, Onshape.
 
 ## Implementation Priority
 
-### Now (Week 1-2)
+### Now
 
-1. **[Technical Debt Cleanup](./technical-debt.md)** — Safety fixes, boolean refactor (BLOCKING)
-2. **[Compact IR Format](./compact-ir.md)** — Parser/serializer for cad0 (2-3 days)
+1. **[Compact IR Format](./compact-ir.md)** — Parser/serializer for cad0 (2-3 days)
+2. **[URDF Import/Export](./urdf-support.md)** — Opens robotics market (1 week)
 
-### Next (Week 3-9)
+### Next (7 weeks)
 
-3. **[URDF Import/Export](./urdf-support.md)** — Opens robotics market (1 week)
-4. **[Text-to-CAD (cad0)](./text-to-cad.md)** — THE hero feature (7 weeks)
+3. **[Text-to-CAD (cad0)](./text-to-cad.md)** — THE hero feature
+
+### Done
+
+- ~~[Technical Debt Cleanup](./technical-debt.md)~~ — ✅ Shipped
 
 ### Later (After cad0)
 
@@ -178,19 +181,19 @@ See [ROADMAP.md](./ROADMAP.md) for:
 
 ## Quick Stats
 
-| Category | Shipped | In Progress | Proposed | Planned |
-|----------|---------|-------------|----------|---------|
-| Core Modeling | 5 | 0 | 0 | 0 |
-| Sketch System | 2 | 0 | 0 | 0 |
-| Surface Ops | 0 | 0 | 1 | 0 |
-| Assembly | 1 | 0 | 0 | 0 |
-| Drafting | 1 | 0 | 0 | 0 |
-| Import/Export | 2 | 0 | 0 | 0 |
-| Visualization | 3 | 0 | 0 | 0 |
-| UI/Interaction | 3 | 0 | 0 | 0 |
-| Data/Storage | 1 | 0 | 0 | 0 |
-| Foundation | 0 | 1 | 1 | 0 |
-| AI-Native | 0 | 0 | 1 | 0 |
-| Feature Tree UX | 0 | 0 | 10 | 0 |
-| Robotics | 0 | 0 | 1 | 1 |
-| **Total** | **18** | **1** | **14** | **1** |
+| Category | Shipped | Proposed | Planned |
+|----------|---------|----------|---------|
+| Core Modeling | 5 | 0 | 0 |
+| Sketch System | 2 | 0 | 0 |
+| Surface Ops | 0 | 1 | 0 |
+| Assembly | 1 | 0 | 0 |
+| Drafting | 1 | 0 | 0 |
+| Import/Export | 2 | 0 | 0 |
+| Visualization | 3 | 0 | 0 |
+| UI/Interaction | 3 | 0 | 0 |
+| Data/Storage | 1 | 0 | 0 |
+| Foundation | 1 | 1 | 0 |
+| AI-Native | 0 | 1 | 0 |
+| Feature Tree UX | 0 | 10 | 0 |
+| Robotics | 0 | 1 | 1 |
+| **Total** | **19** | **14** | **1** |

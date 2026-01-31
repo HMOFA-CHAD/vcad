@@ -6,11 +6,11 @@ Safety fixes, module refactoring, and performance optimization to reduce risk an
 
 | Field | Value |
 |-------|-------|
-| State | `in-progress` |
-| Owner | `unassigned` |
+| State | `shipped` |
+| Owner | — |
 | Priority | `p0` |
 | Effort | `s` |
-| Target | Blocks cad0 and robotics work |
+| Shipped | 2025-01 |
 
 ## Problem
 
@@ -172,49 +172,49 @@ const newDoc = {
 
 ### Phase 1: Safety Fixes (Critical)
 
-- [ ] Replace unsafe pointer cast in tessellate.rs:1227 (`xs`)
-- [ ] Fix partial_cmp().unwrap() in vcad-kernel-booleans (5 instances) (`xs`)
-- [ ] Fix partial_cmp().unwrap() in vcad-kernel-fillet (1 instance) (`xs`)
-- [ ] Fix partial_cmp().unwrap() in vcad-kernel-tessellate (1 instance) (`xs`)
-- [ ] Fix partial_cmp().unwrap() in vcad-kernel-raytrace (7 instances) (`xs`)
-- [ ] Convert STEP writer downcasts to return Result (`s`)
-- [ ] Run full test suite to verify no regressions (`xs`)
+- [x] Replace unsafe pointer cast in tessellate.rs:1227 (`xs`)
+- [x] Fix partial_cmp().unwrap() in vcad-kernel-booleans (5 instances) (`xs`)
+- [x] Fix partial_cmp().unwrap() in vcad-kernel-fillet (1 instance) (`xs`)
+- [x] Fix partial_cmp().unwrap() in vcad-kernel-tessellate (1 instance) (`xs`)
+- [x] Fix partial_cmp().unwrap() in vcad-kernel-raytrace (7 instances) (`xs`)
+- [x] Convert STEP writer downcasts to return Result (`s`)
+- [x] Run full test suite to verify no regressions (`xs`)
 
 ### Phase 2: Boolean Module Refactoring
 
-- [ ] Create api.rs with public BooleanOp enum and functions (`s`)
-- [ ] Create pipeline.rs for 4-stage orchestration (`s`)
-- [ ] Extract mesh intersection to mesh/ directory (`m`)
-- [ ] Extract surface-surface intersection to ssi/ directory (`m`)
-- [ ] Extract face splitting to split/ directory (`m`)
-- [ ] Reduce lib.rs to re-exports only (`xs`)
-- [ ] Update documentation and module-level docs (`s`)
+- [x] Create api.rs with public BooleanOp enum and functions (`s`)
+- [x] Create pipeline.rs for 4-stage orchestration (`s`)
+- [x] Extract mesh intersection to mesh/ directory (`m`)
+- [x] Extract surface-surface intersection to ssi/ directory (`m`)
+- [x] Extract face splitting to split/ directory (`m`)
+- [x] Reduce lib.rs to re-exports only (`xs`)
+- [x] Update documentation and module-level docs (`s`)
 
 ### Phase 3: Document Store Optimization
 
-- [ ] Add nodeIndex Map for O(1) node lookups (`s`)
-- [ ] Add partIndex Map for O(1) part lookups (`s`)
-- [ ] Implement shallow clone for transform-only mutations (`s`)
-- [ ] Add index maintenance to addNode/removeNode/etc (`s`)
-- [ ] Benchmark before/after for large documents (`xs`)
+- [x] Add nodeIndex Map for O(1) node lookups (`s`)
+- [x] Add partIndex Map for O(1) part lookups (`s`)
+- [x] Implement shallow clone for transform-only mutations (`s`)
+- [x] Add index maintenance to addNode/removeNode/etc (`s`)
+- [x] Benchmark before/after for large documents (`xs`)
 
 ### Phase 4: Cleanup
 
-- [ ] Audit STEP crate for unreachable code paths (`s`)
-- [ ] Add tests for split edge cases (degenerate geometry) (`m`)
-- [ ] Add tests for trim edge cases (tangent intersections) (`m`)
-- [ ] Document safety invariants for any remaining unsafe blocks (`xs`)
+- [x] Audit STEP crate for unreachable code paths (`s`)
+- [x] Add tests for split edge cases (degenerate geometry) (`m`)
+- [x] Add tests for trim edge cases (tangent intersections) (`m`)
+- [x] Document safety invariants for any remaining unsafe blocks (`xs`)
 
 ## Acceptance Criteria
 
-- [ ] `cargo clippy --workspace -- -D warnings` passes clean
-- [ ] No `unsafe` blocks outside explicitly documented sections
-- [ ] All tests pass: `cargo test --workspace`
-- [ ] No `partial_cmp().unwrap()` calls remain (grep returns empty)
-- [ ] No `downcast_ref().unwrap()` in STEP writer (use Result)
-- [ ] Boolean module lib.rs under 500 lines
-- [ ] Document store node lookups are O(1)
-- [ ] Transform mutations use shallow clone (verified via benchmark)
+- [x] `cargo clippy --workspace -- -D warnings` passes clean
+- [x] No `unsafe` blocks outside explicitly documented sections
+- [x] All tests pass: `cargo test --workspace`
+- [x] No `partial_cmp().unwrap()` calls remain (grep returns empty)
+- [x] No `downcast_ref().unwrap()` in STEP writer (use Result)
+- [x] Boolean module lib.rs under 500 lines
+- [x] Document store node lookups are O(1)
+- [x] Transform mutations use shallow clone (verified via benchmark)
 
 ## Future Enhancements
 
