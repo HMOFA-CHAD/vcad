@@ -1014,7 +1014,7 @@ fn tessellate_cylindrical_face(
             u_max = 2.0 * PI;
         } else if unique_angles.len() == 2 {
             // Partial cylinder with two distinct angles
-            unique_angles.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            unique_angles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let a0 = unique_angles[0];
             let a1 = unique_angles[1];
 
@@ -1212,7 +1212,7 @@ fn tessellate_spherical_cap(
     loop_verts: &[Point3],
     reversed: bool,
 ) -> TriangleMesh {
-    use vcad_kernel_geom::{SphereSurface, SurfaceKind};
+    use vcad_kernel_geom::SphereSurface;
 
     let mesh = TriangleMesh::new();
 
@@ -1221,10 +1221,7 @@ fn tessellate_spherical_cap(
     }
 
     // Get sphere center and radius
-    let (center, radius) = if surface.surface_type() == SurfaceKind::Sphere {
-        // Try to downcast to get sphere parameters
-        let sphere =
-            unsafe { &*(surface as *const dyn vcad_kernel_geom::Surface as *const SphereSurface) };
+    let (center, radius) = if let Some(sphere) = surface.as_any().downcast_ref::<SphereSurface>() {
         (sphere.center, sphere.radius)
     } else {
         // Fallback: estimate center from boundary
