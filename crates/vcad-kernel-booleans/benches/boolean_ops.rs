@@ -8,7 +8,8 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use vcad_kernel_booleans::{bbox, boolean_op, classify, point_in_mesh, ssi, trim, BooleanOp};
 use vcad_kernel_geom::{CylinderSurface, Line3d, Plane};
-use vcad_kernel_math::{Point3, Transform, Vec3};
+use vcad_kernel_math::predicates::{incircle, insphere, orient2d, orient3d};
+use vcad_kernel_math::{Point2, Point3, Transform, Vec3};
 use vcad_kernel_primitives::{make_cube, make_cylinder, BRepSolid};
 use vcad_kernel_tessellate::tessellate_brep;
 
@@ -59,6 +60,85 @@ fn make_overlapping_cubes(size: f64) -> (BRepSolid, BRepSolid) {
     let mut b = make_cube(size, size, size);
     translate_brep(&mut b, size / 2.0, size / 2.0, size / 2.0);
     (a, b)
+}
+
+// =============================================================================
+// Predicate micro-benchmarks
+// =============================================================================
+
+fn bench_predicates(c: &mut Criterion) {
+    let mut group = c.benchmark_group("predicates");
+
+    // 2D predicates
+    let a2 = Point2::new(0.0, 0.0);
+    let b2 = Point2::new(1.0, 0.0);
+    let c2 = Point2::new(0.5, 1.0);
+    let d2 = Point2::new(0.5, 0.3);
+
+    group.bench_function("orient2d", |bencher| {
+        bencher.iter(|| orient2d(black_box(&a2), black_box(&b2), black_box(&c2)))
+    });
+
+    group.bench_function("incircle", |bencher| {
+        bencher.iter(|| {
+            incircle(
+                black_box(&a2),
+                black_box(&b2),
+                black_box(&c2),
+                black_box(&d2),
+            )
+        })
+    });
+
+    // 3D predicates
+    let a3 = Point3::new(0.0, 0.0, 0.0);
+    let b3 = Point3::new(1.0, 0.0, 0.0);
+    let c3 = Point3::new(0.0, 1.0, 0.0);
+    let d3 = Point3::new(0.0, 0.0, 1.0);
+    let e3 = Point3::new(0.3, 0.3, 0.3);
+
+    group.bench_function("orient3d", |bencher| {
+        bencher.iter(|| {
+            orient3d(
+                black_box(&a3),
+                black_box(&b3),
+                black_box(&c3),
+                black_box(&d3),
+            )
+        })
+    });
+
+    group.bench_function("insphere", |bencher| {
+        bencher.iter(|| {
+            insphere(
+                black_box(&a3),
+                black_box(&b3),
+                black_box(&c3),
+                black_box(&d3),
+                black_box(&e3),
+            )
+        })
+    });
+
+    // Near-degenerate cases (where exact arithmetic matters)
+    let near_collinear_c = Point2::new(0.5, 1e-15);
+    group.bench_function("orient2d_near_degenerate", |bencher| {
+        bencher.iter(|| orient2d(black_box(&a2), black_box(&b2), black_box(&near_collinear_c)))
+    });
+
+    let near_coplanar_d = Point3::new(0.5, 0.5, 1e-15);
+    group.bench_function("orient3d_near_degenerate", |bencher| {
+        bencher.iter(|| {
+            orient3d(
+                black_box(&a3),
+                black_box(&b3),
+                black_box(&c3),
+                black_box(&near_coplanar_d),
+            )
+        })
+    });
+
+    group.finish();
 }
 
 // =============================================================================
@@ -319,6 +399,7 @@ fn bench_multi_hole_count(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_predicates,
     bench_aabb_overlap,
     bench_ssi,
     bench_trim_curve_to_face,

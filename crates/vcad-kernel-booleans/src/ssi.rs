@@ -140,9 +140,13 @@ fn downcast_torus(s: &dyn Surface) -> Option<&TorusSurface> {
 /// Intersection of two planes.
 ///
 /// - Parallel + distinct → Empty
-/// - Parallel + coincident → TODO: return coincident marker
+/// - Parallel + coincident → Empty (coincident faces handled in classification)
 /// - Non-parallel → Line along the cross product of normals
+///
+/// Uses exact orient3d predicate to robustly detect coincident planes.
 fn plane_plane(a: &Plane, b: &Plane) -> IntersectionCurve {
+    use vcad_kernel_math::predicates::{orient3d, Sign};
+
     let n1 = a.normal_dir;
     let n2 = b.normal_dir;
 
@@ -151,13 +155,22 @@ fn plane_plane(a: &Plane, b: &Plane) -> IntersectionCurve {
     let dir_len = dir.norm();
 
     if dir_len < 1e-12 {
-        // Planes are parallel
-        let dist = a.signed_distance(&b.origin).abs();
-        if dist < 1e-9 {
+        // Planes are parallel - use exact predicate to check if coincident
+        // Generate points on each plane and test coplanarity
+        let p1 = a.origin;
+        let p2 = a.origin + a.x_dir.into_inner();
+        let p3 = a.origin + a.y_dir.into_inner();
+        let p4 = b.origin;
+
+        // If all 4 points are coplanar (orient3d returns zero), planes are coincident
+        let sign = orient3d(&p1, &p2, &p3, &p4);
+        if sign == Sign::Zero {
             // Coincident — treat as empty for boolean purposes
             // (coincident faces are handled in classification, not SSI)
             return IntersectionCurve::Empty;
         }
+
+        // Parallel but distinct
         return IntersectionCurve::Empty;
     }
 

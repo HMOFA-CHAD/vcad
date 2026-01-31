@@ -5,6 +5,12 @@
 //! Thin wrappers around nalgebra providing domain-specific types
 //! for 3D CAD geometry: points, vectors, directions, transforms,
 //! and tolerance constants.
+//!
+//! This crate also provides exact geometric predicates via the
+//! [`predicates`] module, which use adaptive-precision arithmetic
+//! for robust geometric computations.
+
+pub mod predicates;
 
 use nalgebra::{Matrix4, Unit, Vector2, Vector3, Vector4};
 

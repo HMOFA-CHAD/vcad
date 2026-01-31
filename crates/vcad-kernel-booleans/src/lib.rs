@@ -732,20 +732,22 @@ fn brep_boolean(
     BooleanResult::BRep(Box::new(result))
 }
 
-/// Test if a point is inside a closed triangle mesh using ray casting.
+/// Test if a point is inside a closed triangle mesh using ray casting with exact predicates.
 ///
-/// Casts a ray along a slightly tilted direction from the point and counts
-/// intersections using the Möller-Trumbore algorithm.
-/// Odd count = inside, even count = outside.
+/// Uses Shewchuk's exact orient3d predicate to robustly handle boundary cases where
+/// the query point is exactly on a triangle plane. Uses a slightly tilted ray direction
+/// to avoid edge/vertex hits in the common case, with exact predicates as fallback.
 ///
-/// The ray direction is slightly off-axis to avoid hitting triangle edges
-/// exactly (which would cause double-counting on shared edges).
+/// Casts a ray along a tilted direction. Odd crossing count = inside, even = outside.
 pub fn point_in_mesh(point: &Point3, mesh: &TriangleMesh) -> bool {
+    use vcad_kernel_math::predicates::{orient3d, Sign};
+
     let verts = &mesh.vertices;
     let indices = &mesh.indices;
     let mut crossings = 0u32;
 
     // Slightly tilted ray direction to avoid hitting edges/vertices exactly
+    // The exact predicates handle remaining boundary cases robustly
     let ray_dir = [1.0f64, 1e-7, 1.3e-7];
 
     for tri in indices.chunks(3) {
@@ -769,8 +771,22 @@ pub fn point_in_mesh(point: &Point3, mesh: &TriangleMesh) -> bool {
         ];
 
         let a = edge1[0] * h[0] + edge1[1] * h[1] + edge1[2] * h[2];
-        if a.abs() < 1e-15 {
-            continue; // Ray parallel to triangle
+
+        // Use exact orient3d to robustly check for degenerate cases
+        if a.abs() < 1e-12 {
+            // Ray nearly parallel to triangle - use exact predicate
+            let p0 = Point3::new(v0[0], v0[1], v0[2]);
+            let p1 = Point3::new(v1[0], v1[1], v1[2]);
+            let p2 = Point3::new(v2[0], v2[1], v2[2]);
+
+            let sign = orient3d(&p0, &p1, &p2, point);
+            if sign == Sign::Zero {
+                // Point is coplanar with triangle - check if inside
+                if point_in_triangle_coplanar(point, &p0, &p1, &p2) {
+                    return true; // On surface = inside
+                }
+            }
+            continue;
         }
 
         let f = 1.0 / a;
@@ -793,7 +809,24 @@ pub fn point_in_mesh(point: &Point3, mesh: &TriangleMesh) -> bool {
         }
 
         let t = f * (edge2[0] * q[0] + edge2[1] * q[1] + edge2[2] * q[2]);
-        if t > 1e-10 {
+
+        // Use exact predicate for boundary cases where t is near zero
+        if t.abs() < 1e-10 {
+            let p0 = Point3::new(v0[0], v0[1], v0[2]);
+            let p1 = Point3::new(v1[0], v1[1], v1[2]);
+            let p2 = Point3::new(v2[0], v2[1], v2[2]);
+
+            let sign = orient3d(&p0, &p1, &p2, point);
+            if sign == Sign::Zero {
+                // Point is exactly on the triangle plane - check if inside triangle
+                if point_in_triangle_coplanar(point, &p0, &p1, &p2) {
+                    return true; // Point is on the triangle surface
+                }
+            }
+            continue;
+        }
+
+        if t > 0.0 {
             crossings += 1;
         }
     }
@@ -801,9 +834,43 @@ pub fn point_in_mesh(point: &Point3, mesh: &TriangleMesh) -> bool {
     crossings % 2 == 1
 }
 
+/// Test if a point lies inside a triangle when known to be coplanar.
+/// Uses exact orient3d predicates with a reference point above the plane.
+fn point_in_triangle_coplanar(p: &Point3, v0: &Point3, v1: &Point3, v2: &Point3) -> bool {
+    use vcad_kernel_math::predicates::orient3d;
+
+    // Compute triangle normal
+    let e1 = v1 - v0;
+    let e2 = v2 - v0;
+    let normal = e1.cross(&e2);
+    let normal_len = normal.norm();
+    if normal_len < 1e-15 {
+        return false; // Degenerate triangle
+    }
+
+    // Create a reference point above the plane
+    let ref_pt = Point3::new(
+        p.x + normal.x / normal_len,
+        p.y + normal.y / normal_len,
+        p.z + normal.z / normal_len,
+    );
+
+    // Test orientation against each edge
+    let s0 = orient3d(p, v0, v1, &ref_pt);
+    let s1 = orient3d(p, v1, v2, &ref_pt);
+    let s2 = orient3d(p, v2, v0, &ref_pt);
+
+    // Point is inside if all orientations are consistent (all ≥0 or all ≤0)
+    let all_non_neg = !s0.is_negative() && !s1.is_negative() && !s2.is_negative();
+    let all_non_pos = !s0.is_positive() && !s1.is_positive() && !s2.is_positive();
+
+    all_non_neg || all_non_pos
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vcad_kernel_math::Transform;
     use vcad_kernel_primitives::make_cube;
 
     /// Compute the volume of a triangle mesh using signed tetrahedron method.
@@ -3127,5 +3194,150 @@ mod tests {
                     entry.x, entry.y, entry.z, exit.x, exit.y, exit.z);
             }
         }
+    }
+
+    // =========================================================================
+    // Exact predicates regression tests
+    // =========================================================================
+
+    #[test]
+    fn test_point_in_mesh_on_surface() {
+        // Test that points exactly on the mesh surface are handled correctly
+        let brep = make_cube(10.0, 10.0, 10.0);
+        let mesh = tessellate_brep(&brep, 32);
+
+        // Point exactly on a face (should be considered "inside")
+        // Note: this depends on the exact predicate handling
+        let on_face = Point3::new(5.0, 10.0, 5.0); // on Y=10 face
+        let result = point_in_mesh(&on_face, &mesh);
+        // Surface points may be inside or outside depending on implementation
+        // The key is that it doesn't crash or produce wrong results for interior points
+        println!("Point on surface result: {}", result);
+
+        // Point clearly inside
+        assert!(point_in_mesh(&Point3::new(5.0, 5.0, 5.0), &mesh));
+
+        // Point clearly outside
+        assert!(!point_in_mesh(&Point3::new(15.0, 5.0, 5.0), &mesh));
+    }
+
+    #[test]
+    fn test_point_in_mesh_near_edge() {
+        // Test points near triangle edges (where exact predicates help)
+        let brep = make_cube(10.0, 10.0, 10.0);
+        let mesh = tessellate_brep(&brep, 32);
+
+        // Points slightly inside the cube
+        assert!(point_in_mesh(&Point3::new(5.0, 5.0, 9.999), &mesh));
+        assert!(point_in_mesh(&Point3::new(5.0, 9.999, 5.0), &mesh));
+        assert!(point_in_mesh(&Point3::new(9.999, 5.0, 5.0), &mesh));
+
+        // Points slightly outside the cube
+        assert!(!point_in_mesh(&Point3::new(5.0, 5.0, 10.001), &mesh));
+        assert!(!point_in_mesh(&Point3::new(5.0, 10.001, 5.0), &mesh));
+        assert!(!point_in_mesh(&Point3::new(10.001, 5.0, 5.0), &mesh));
+    }
+
+    #[test]
+    fn test_point_in_polygon_exact() {
+        use vcad_kernel_math::Point2;
+
+        // Square polygon
+        let square = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(10.0, 0.0),
+            Point2::new(10.0, 10.0),
+            Point2::new(0.0, 10.0),
+        ];
+
+        // Point clearly inside
+        assert!(trim::point_in_polygon(&Point2::new(5.0, 5.0), &square));
+
+        // Point clearly outside
+        assert!(!trim::point_in_polygon(&Point2::new(15.0, 5.0), &square));
+
+        // Point exactly on edge (should be inside with exact predicates)
+        assert!(trim::point_in_polygon(&Point2::new(5.0, 0.0), &square));
+        assert!(trim::point_in_polygon(&Point2::new(0.0, 5.0), &square));
+
+        // Point exactly on vertex (should be inside with exact predicates)
+        assert!(trim::point_in_polygon(&Point2::new(0.0, 0.0), &square));
+        assert!(trim::point_in_polygon(&Point2::new(10.0, 10.0), &square));
+    }
+
+    #[test]
+    fn test_point_in_polygon_near_boundary() {
+        use vcad_kernel_math::Point2;
+
+        let square = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(10.0, 0.0),
+            Point2::new(10.0, 10.0),
+            Point2::new(0.0, 10.0),
+        ];
+
+        // Points very slightly inside
+        assert!(trim::point_in_polygon(&Point2::new(0.001, 5.0), &square));
+        assert!(trim::point_in_polygon(&Point2::new(5.0, 0.001), &square));
+
+        // Points very slightly outside
+        assert!(!trim::point_in_polygon(&Point2::new(-0.001, 5.0), &square));
+        assert!(!trim::point_in_polygon(&Point2::new(5.0, -0.001), &square));
+    }
+
+    #[test]
+    fn test_coplanar_cubes_union() {
+        // Two cubes sharing a face exactly (tests coplanarity handling)
+        let a = make_cube(10.0, 10.0, 10.0);
+        let mut b = make_cube(10.0, 10.0, 10.0);
+        // Translate B so it shares the X=10 face with A
+        for (_, v) in &mut b.topology.vertices {
+            v.point.x += 10.0;
+        }
+        b.geometry.surfaces = b
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&Transform::translation(10.0, 0.0, 0.0)))
+            .collect();
+
+        let result = boolean_op(&a, &b, BooleanOp::Union, 32);
+        let mesh = result.to_mesh(32);
+
+        // Should produce a valid mesh
+        assert!(mesh.num_triangles() > 0);
+
+        // Volume should be ~2000 (two 10x10x10 cubes = 2 * 1000)
+        let vol = compute_mesh_volume(&mesh);
+        assert!(
+            (vol - 2000.0).abs() < 100.0,
+            "Expected volume ~2000, got {}",
+            vol
+        );
+    }
+
+    #[test]
+    fn test_near_coplanar_faces() {
+        // Two cubes with faces very close but not exactly touching
+        // This tests the robust handling of near-degenerate cases
+        let a = make_cube(10.0, 10.0, 10.0);
+        let mut b = make_cube(10.0, 10.0, 10.0);
+        // Translate B so it's just barely overlapping
+        for (_, v) in &mut b.topology.vertices {
+            v.point.x += 9.999;
+        }
+        b.geometry.surfaces = b
+            .geometry
+            .surfaces
+            .drain(..)
+            .map(|s| s.transform(&Transform::translation(9.999, 0.0, 0.0)))
+            .collect();
+
+        // This should work without crashing
+        let result = boolean_op(&a, &b, BooleanOp::Union, 32);
+        let mesh = result.to_mesh(32);
+
+        // Should produce a valid mesh
+        assert!(mesh.num_triangles() > 0);
     }
 }

@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 nalgebra = { workspace = true }
+robust = "1.1"

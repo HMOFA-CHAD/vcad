@@ -7,7 +7,7 @@
 //! For Phase 2, we focus on planar face splitting by lines/segments.
 //! Curved face splitting extends naturally once the planar case works.
 
-use vcad_kernel_math::Point3;
+use vcad_kernel_math::{Point2, Point3};
 use vcad_kernel_primitives::BRepSolid;
 use vcad_kernel_topo::{FaceId, Orientation};
 
@@ -287,10 +287,14 @@ fn point_to_segment_dist(p: &Point3, a: &Point3, b: &Point3) -> f64 {
 ///
 /// The polygon vertices must be coplanar. Returns the crossing points
 /// in order along the line direction.
+///
+/// Uses exact orient2d predicates for robust line-segment intersection detection.
 fn find_line_polygon_crossings(
     polygon: &[Point3],
     line: &vcad_kernel_geom::Line3d,
 ) -> Vec<Point3> {
+    use vcad_kernel_math::predicates::{orient2d, Sign};
+
     let n = polygon.len();
     if n < 3 {
         return Vec::new();
@@ -311,15 +315,15 @@ fn find_line_polygon_crossings(
     let y_axis = plane_normal.cross(&x_axis);
 
     // Project polygon vertices and line to 2D
-    let project_to_2d = |p: &Point3| -> (f64, f64) {
+    let project_to_2d = |p: &Point3| -> Point2 {
         let d = *p - polygon[0];
-        (d.dot(&x_axis), d.dot(&y_axis))
+        Point2::new(d.dot(&x_axis), d.dot(&y_axis))
     };
 
-    let poly_2d: Vec<(f64, f64)> = polygon.iter().map(&project_to_2d).collect();
+    let poly_2d: Vec<Point2> = polygon.iter().map(&project_to_2d).collect();
 
     // Project line origin and direction
-    let (ox, oy) = project_to_2d(&line.origin);
+    let line_origin_2d = project_to_2d(&line.origin);
     let dx = line.direction.dot(&x_axis);
     let dy = line.direction.dot(&y_axis);
     let dir_2d_len = (dx * dx + dy * dy).sqrt();
@@ -329,39 +333,58 @@ fn find_line_polygon_crossings(
         return Vec::new();
     }
 
+    // Create two points on the line for orient2d tests
+    let line_pt1 = line_origin_2d;
+    let line_pt2 = Point2::new(line_origin_2d.x + dx, line_origin_2d.y + dy);
+
     let mut crossings = Vec::new();
-    let tol = 1e-9;
 
     for i in 0..n {
         let j = (i + 1) % n;
-        let (ax, ay) = poly_2d[i];
-        let (bx, by) = poly_2d[j];
+        let a = &poly_2d[i];
+        let b = &poly_2d[j];
 
-        // Segment direction in 2D
-        let sx = bx - ax;
-        let sy = by - ay;
-        let seg_len = (sx * sx + sy * sy).sqrt();
-        if seg_len < tol {
+        // Skip degenerate segments
+        let seg_len = ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt();
+        if seg_len < 1e-12 {
             continue;
         }
 
-        // Solve: (ox + t * dx, oy + t * dy) = (ax + s * sx, ay + s * sy)
-        // Matrix form: det = sx * dy - dx * sy
+        // Use orient2d to determine if segment endpoints are on opposite sides of the line
+        let sign_a = orient2d(&line_pt1, &line_pt2, a);
+        let sign_b = orient2d(&line_pt1, &line_pt2, b);
+
+        // If both endpoints are on the same side (and neither is on the line), no crossing
+        if sign_a == sign_b && sign_a != Sign::Zero {
+            continue;
+        }
+
+        // Handle special cases
+        if sign_a == Sign::Zero && sign_b == Sign::Zero {
+            // Segment lies on the line - no single crossing point
+            continue;
+        }
+
+        // Compute intersection parameter using Cramer's rule
+        // This is only for finding the intersection point location, not for detection
+        let sx = b.x - a.x;
+        let sy = b.y - a.y;
         let det = sx * dy - dx * sy;
-        if det.abs() < tol {
-            // Lines are parallel
+
+        if det.abs() < 1e-15 {
+            // Lines are parallel (orient2d should have caught this, but be safe)
             continue;
         }
 
-        let rhs_x = ax - ox;
-        let rhs_y = ay - oy;
+        let rhs_x = a.x - line_origin_2d.x;
+        let rhs_y = a.y - line_origin_2d.y;
 
-        // Cramer's rule
         let t = (sx * rhs_y - sy * rhs_x) / det;
         let s = (dx * rhs_y - dy * rhs_x) / det;
 
         // s is the parameter along the segment [0, 1]
-        if s < -tol || s > 1.0 + tol {
+        // Use a small tolerance for numerical stability
+        if !(-1e-9..=1.0 + 1e-9).contains(&s) {
             continue;
         }
 

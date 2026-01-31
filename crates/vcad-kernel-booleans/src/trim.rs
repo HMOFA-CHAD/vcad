@@ -56,74 +56,74 @@ pub struct TrimmedSegment {
     pub t_end: f64,
 }
 
-/// Test if a 2D point is inside a closed polygon using a robust winding method.
+/// Test if a 2D point is inside a closed polygon using exact predicates.
 ///
+/// Uses Shewchuk's exact orient2d predicate for robust crossing detection.
 /// `polygon` is a sequence of vertices forming a closed loop (last connects to first).
-/// Returns true if the point is inside or within the tolerance of the boundary.
+/// Returns true if the point is inside or on the boundary of the polygon.
 pub fn point_in_polygon(point: &Point2, polygon: &[Point2]) -> bool {
-    let tol = polygon_tolerance(polygon);
-    point_in_polygon_with_tolerance(point, polygon, tol)
-}
+    use vcad_kernel_math::predicates::{orient2d, point_on_segment_2d, Sign};
 
-/// 2D cross product: (ax, ay) × (bx, by) = ax*by - ay*bx
-fn cross_2d(ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
-    ax * by - ay * bx
-}
-
-fn point_in_polygon_with_tolerance(point: &Point2, polygon: &[Point2], tolerance: f64) -> bool {
     let n = polygon.len();
     if n < 3 {
         return false;
     }
 
-    let mut winding = 0.0f64;
+    let mut crossings = 0i32;
+
     for i in 0..n {
         let j = (i + 1) % n;
-        let a = polygon[i];
-        let b = polygon[j];
-        if point_segment_distance(point, &a, &b) <= tolerance {
-            return true;
+        let a = &polygon[i];
+        let b = &polygon[j];
+
+        // Check if point is exactly on this edge (using exact predicate)
+        if point_on_segment_2d(point, a, b) {
+            return true; // On boundary = inside
         }
-        let va = Point2::new(a.x - point.x, a.y - point.y);
-        let vb = Point2::new(b.x - point.x, b.y - point.y);
-        let cross = cross_2d(va.x, va.y, vb.x, vb.y);
-        let dot = va.x * vb.x + va.y * vb.y;
-        winding += cross.atan2(dot);
+
+        // Crossing number algorithm using orient2d:
+        // Cast a ray from point in +X direction and count crossings
+        //
+        // Edge crosses ray if:
+        // 1. One endpoint is strictly above the ray (y > point.y) and
+        //    one is at or below (y <= point.y)
+        // 2. The edge crosses to the right of the point (determined by orient2d)
+
+        let y_a = a.y;
+        let y_b = b.y;
+
+        // Check if the edge straddles the horizontal line y = point.y
+        let a_below = y_a <= point.y;
+        let b_below = y_b <= point.y;
+
+        if a_below != b_below {
+            // Edge straddles the ray - check if crossing is to the right
+            // orient2d(a, b, point):
+            //   Positive: point is to the left of line a->b
+            //   Negative: point is to the right of line a->b
+            //   Zero: point is on the line (handled above)
+            let orientation = orient2d(a, b, point);
+
+            // If a is below and b is above (upward crossing):
+            //   count if point is to the left of edge (orientation > 0)
+            // If a is above and b is below (downward crossing):
+            //   count if point is to the right of edge (orientation < 0)
+            if a_below {
+                // Upward crossing
+                if orientation == Sign::Positive {
+                    crossings += 1;
+                }
+            } else {
+                // Downward crossing
+                if orientation == Sign::Negative {
+                    crossings -= 1;
+                }
+            }
+        }
     }
 
-    winding.abs() > std::f64::consts::PI
-}
-
-fn polygon_tolerance(polygon: &[Point2]) -> f64 {
-    if polygon.len() < 2 {
-        return 1e-6;
-    }
-    let mut min = Point2::new(f64::INFINITY, f64::INFINITY);
-    let mut max = Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
-    for p in polygon {
-        min.x = min.x.min(p.x);
-        min.y = min.y.min(p.y);
-        max.x = max.x.max(p.x);
-        max.y = max.y.max(p.y);
-    }
-    let diag = ((max.x - min.x).powi(2) + (max.y - min.y).powi(2)).sqrt();
-    // Use a larger tolerance (1e-6 relative to diagonal) to handle boundary cases
-    // where intersection lines lie exactly on face edges. The previous 1e-8 was
-    // too tight and caused trim to miss valid intersection segments.
-    (diag * 1e-6).max(1e-6)
-}
-
-fn point_segment_distance(point: &Point2, a: &Point2, b: &Point2) -> f64 {
-    let ab = Point2::new(b.x - a.x, b.y - a.y);
-    let ap = Point2::new(point.x - a.x, point.y - a.y);
-    let len2 = ab.x * ab.x + ab.y * ab.y;
-    if len2 < 1e-16 {
-        return ((point.x - a.x).powi(2) + (point.y - a.y).powi(2)).sqrt();
-    }
-    let t = (ap.x * ab.x + ap.y * ab.y) / len2;
-    let t = t.clamp(0.0, 1.0);
-    let proj = Point2::new(a.x + t * ab.x, a.y + t * ab.y);
-    ((point.x - proj.x).powi(2) + (point.y - proj.y).powi(2)).sqrt()
+    // Inside if net crossings is non-zero (winding number != 0)
+    crossings != 0
 }
 
 /// Test if a 3D point on a surface lies inside a face's boundary.
