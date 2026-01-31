@@ -40,6 +40,7 @@ function getPartIcon(part: PartInfo): typeof Cube {
   if (part.kind === "revolve") return ArrowsClockwise;
   if (part.kind === "sweep") return Spiral;
   if (part.kind === "loft") return Stack;
+  if (part.kind === "imported-mesh") return Package;
   return KIND_ICONS[part.kind];
 }
 

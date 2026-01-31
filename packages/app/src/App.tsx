@@ -167,7 +167,10 @@ export function App() {
         console.log(`[STEP] Merged into 1 mesh with ${mergedMesh.indices.length / 3} triangles`);
 
         // Process geometry with GPU if available (computes creased normals)
-        let finalMesh: { positions: Float32Array; indices: Uint32Array; normals?: Float32Array } = mergedMesh;
+        let finalPositions = mergedMesh.positions;
+        let finalIndices = mergedMesh.indices;
+        let finalNormals: Float32Array | undefined;
+
         if (isGpuAvailable()) {
           try {
             console.log("[STEP] Processing geometry on GPU...");
@@ -184,11 +187,9 @@ export function App() {
             // Use GPU-processed mesh with normals
             const firstMesh = processed[0];
             if (firstMesh) {
-              finalMesh = {
-                positions: firstMesh.positions,
-                indices: firstMesh.indices,
-                normals: firstMesh.normals,
-              };
+              finalPositions = firstMesh.positions;
+              finalIndices = firstMesh.indices;
+              finalNormals = firstMesh.normals;
             }
           } catch (gpuErr) {
             console.warn("[STEP] GPU processing failed, using CPU fallback:", gpuErr);
@@ -197,20 +198,20 @@ export function App() {
           console.log("[STEP] GPU not available, using CPU processing");
         }
 
-        // Create an evaluated scene with the processed mesh
-        const scene = {
-          parts: [{ mesh: finalMesh, material: "default" }],
-          clashes: [],
-        };
-
-        // Clear document and set imported scene
+        // Add as a proper document part (not just a scene mesh)
+        // This makes it selectable, deletable, and transformable
         useDocumentStore.getState().loadDocument({
           document: { version: "1", nodes: {}, roots: [], materials: {}, part_materials: {} },
           parts: [],
           nextNodeId: 1,
           nextPartNum: 1,
         });
-        useEngineStore.getState().setScene(scene);
+        useDocumentStore.getState().addImportedMesh(
+          finalPositions,
+          finalIndices,
+          finalNormals,
+          file.name,
+        );
         useUiStore.getState().clearSelection();
 
         useToastStore.getState().addToast(

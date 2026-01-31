@@ -271,6 +271,22 @@ export interface ShellOp {
   thickness: number;
 }
 
+/**
+ * An imported mesh (e.g., from STEP file).
+ * Stores pre-tessellated geometry that can be transformed but not used in booleans.
+ */
+export interface ImportedMeshOp {
+  type: "ImportedMesh";
+  /** Flat array of vertex positions (x, y, z, x, y, z, ...) */
+  positions: number[];
+  /** Triangle indices */
+  indices: number[];
+  /** Optional vertex normals (nx, ny, nz, ...) */
+  normals?: number[];
+  /** Source filename for display purposes */
+  source?: string;
+}
+
 // --- Path curves for sweep operations ---
 
 /** A straight line path from start to end. */
@@ -331,7 +347,8 @@ export type CsgOp =
   | CircularPatternOp
   | ShellOp
   | SweepOp
-  | LoftOp;
+  | LoftOp
+  | ImportedMeshOp;
 
 /** A node in the IR graph. */
 export interface Node {

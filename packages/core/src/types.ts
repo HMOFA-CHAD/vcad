@@ -92,7 +92,19 @@ export interface LoftPartInfo {
   translateNodeId: NodeId;
 }
 
-export type PartInfo = PrimitivePartInfo | BooleanPartInfo | ExtrudePartInfo | RevolvePartInfo | SweepPartInfo | LoftPartInfo;
+export interface ImportedMeshPartInfo {
+  id: string;
+  name: string;
+  kind: "imported-mesh";
+  meshNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+  /** Source filename for display */
+  source?: string;
+}
+
+export type PartInfo = PrimitivePartInfo | BooleanPartInfo | ExtrudePartInfo | RevolvePartInfo | SweepPartInfo | LoftPartInfo | ImportedMeshPartInfo;
 
 export function isPrimitivePart(part: PartInfo): part is PrimitivePartInfo {
   return part.kind === "cube" || part.kind === "cylinder" || part.kind === "sphere";
@@ -116,6 +128,10 @@ export function isSweepPart(part: PartInfo): part is SweepPartInfo {
 
 export function isLoftPart(part: PartInfo): part is LoftPartInfo {
   return part.kind === "loft";
+}
+
+export function isImportedMeshPart(part: PartInfo): part is ImportedMeshPartInfo {
+  return part.kind === "imported-mesh";
 }
 
 export type ToolMode = "select" | "primitive";

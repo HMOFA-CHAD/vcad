@@ -24,6 +24,7 @@ import type {
   RevolvePartInfo,
   SweepPartInfo,
   LoftPartInfo,
+  ImportedMeshPartInfo,
   SketchPlane,
 } from "../types.js";
 import {
@@ -33,6 +34,7 @@ import {
   isRevolvePart,
   isSweepPart,
   isLoftPart,
+  isImportedMeshPart,
   getSketchPlaneDirections,
 } from "../types.js";
 
@@ -151,6 +153,12 @@ export interface DocumentState {
   deleteJoint: (jointId: string) => void;
   setGroundInstance: (instanceId: string) => void;
   renameInstance: (instanceId: string, name: string) => void;
+  addImportedMesh: (
+    positions: Float32Array,
+    indices: Uint32Array,
+    normals?: Float32Array,
+    source?: string,
+  ) => string;
 }
 
 function makeNode(id: NodeId, name: string | null, op: CsgOp): Node {
@@ -318,6 +326,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         delete newDoc.nodes[String(sketchId)];
       }
       delete newDoc.nodes[String(part.loftNodeId)];
+    } else if (isImportedMeshPart(part)) {
+      delete newDoc.nodes[String(part.meshNodeId)];
     }
     delete newDoc.nodes[String(part.scaleNodeId)];
     delete newDoc.nodes[String(part.rotateNodeId)];
@@ -1091,6 +1101,86 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       scaleNodeId: scaleId,
       rotateNodeId: rotateId,
       translateNodeId: translateId,
+    };
+
+    set({
+      document: newDoc,
+      parts: [...state.parts, partInfo],
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return partId;
+  },
+
+  addImportedMesh: (positions, indices, normals, source) => {
+    const state = get();
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    const meshId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    const meshOp: CsgOp = {
+      type: "ImportedMesh",
+      positions: Array.from(positions),
+      indices: Array.from(indices),
+      normals: normals ? Array.from(normals) : undefined,
+      source,
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: meshId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    // Extract filename from source for display name
+    const filename = source?.split(/[/\\]/).pop()?.replace(/\.(step|stp)$/i, "") ?? "Import";
+    const partId = `part-${partNum}`;
+    const name = `${filename} ${partNum}`;
+
+    const undoState = pushUndo(state, "Import STEP");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(meshId)] = makeNode(meshId, null, meshOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    if (!newDoc.materials["default"]) {
+      newDoc.materials["default"] = {
+        name: "Default",
+        color: [0.55, 0.55, 0.55],
+        metallic: 0.0,
+        roughness: 0.7,
+      };
+    }
+
+    const partInfo: ImportedMeshPartInfo = {
+      id: partId,
+      name,
+      kind: "imported-mesh",
+      meshNodeId: meshId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+      source,
     };
 
     set({

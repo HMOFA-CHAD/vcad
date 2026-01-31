@@ -8,6 +8,7 @@ import type {
   SweepOp,
   LoftOp,
   Transform3D,
+  ImportedMeshOp,
 } from "@vcad/ir";
 import type {
   EvaluatedScene,
@@ -62,6 +63,119 @@ function solidToMesh(solid: Solid): TriangleMesh {
   };
 }
 
+/** Transform info extracted from node chain */
+interface TransformInfo {
+  translate: { x: number; y: number; z: number };
+  rotate: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
+}
+
+/**
+ * Find an ImportedMesh in the node chain and extract transforms.
+ * Returns null if the chain doesn't contain an ImportedMesh.
+ */
+function findImportedMesh(
+  rootId: NodeId,
+  nodes: Record<string, Node>,
+): { mesh: ImportedMeshOp; transform: TransformInfo } | null {
+  const transform: TransformInfo = {
+    translate: { x: 0, y: 0, z: 0 },
+    rotate: { x: 0, y: 0, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+  };
+
+  let current = rootId;
+  while (true) {
+    const node = nodes[String(current)];
+    if (!node) return null;
+
+    if (node.op.type === "ImportedMesh") {
+      return { mesh: node.op, transform };
+    }
+
+    // Extract transforms and follow child
+    if (node.op.type === "Translate") {
+      transform.translate = node.op.offset;
+      current = node.op.child;
+    } else if (node.op.type === "Rotate") {
+      transform.rotate = node.op.angles;
+      current = node.op.child;
+    } else if (node.op.type === "Scale") {
+      transform.scale = node.op.factor;
+      current = node.op.child;
+    } else {
+      return null;
+    }
+  }
+}
+
+/**
+ * Apply a transform to mesh positions.
+ * Order: scale → rotate → translate (matching typical CAD order)
+ */
+function transformMesh(
+  mesh: TriangleMesh,
+  transform: TransformInfo,
+): TriangleMesh {
+  const { translate, rotate, scale } = transform;
+  const positions = new Float32Array(mesh.positions.length);
+
+  // Convert rotation from degrees to radians
+  const rx = (rotate.x * Math.PI) / 180;
+  const ry = (rotate.y * Math.PI) / 180;
+  const rz = (rotate.z * Math.PI) / 180;
+
+  // Precompute trig values
+  const cx = Math.cos(rx), sx = Math.sin(rx);
+  const cy = Math.cos(ry), sy = Math.sin(ry);
+  const cz = Math.cos(rz), sz = Math.sin(rz);
+
+  // Rotation matrix (Z * Y * X order)
+  const m00 = cy * cz;
+  const m01 = sx * sy * cz - cx * sz;
+  const m02 = cx * sy * cz + sx * sz;
+  const m10 = cy * sz;
+  const m11 = sx * sy * sz + cx * cz;
+  const m12 = cx * sy * sz - sx * cz;
+  const m20 = -sy;
+  const m21 = sx * cy;
+  const m22 = cx * cy;
+
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    // Scale
+    let x = mesh.positions[i] * scale.x;
+    let y = mesh.positions[i + 1] * scale.y;
+    let z = mesh.positions[i + 2] * scale.z;
+
+    // Rotate
+    const rx = m00 * x + m01 * y + m02 * z;
+    const ry = m10 * x + m11 * y + m12 * z;
+    const rz = m20 * x + m21 * y + m22 * z;
+
+    // Translate
+    positions[i] = rx + translate.x;
+    positions[i + 1] = ry + translate.y;
+    positions[i + 2] = rz + translate.z;
+  }
+
+  // Transform normals if present (rotation only, no translation)
+  let normals = mesh.normals;
+  if (mesh.normals) {
+    normals = new Float32Array(mesh.normals.length);
+    for (let i = 0; i < mesh.normals.length; i += 3) {
+      const nx = mesh.normals[i];
+      const ny = mesh.normals[i + 1];
+      const nz = mesh.normals[i + 2];
+
+      normals[i] = m00 * nx + m01 * ny + m02 * nz;
+      normals[i + 1] = m10 * nx + m11 * ny + m12 * nz;
+      normals[i + 2] = m20 * nx + m21 * ny + m22 * nz;
+    }
+  }
+
+  return { positions, indices: mesh.indices, normals };
+}
+
 /**
  * Evaluate a vcad IR Document into an EvaluatedScene using vcad-kernel-wasm.
  *
@@ -89,6 +203,25 @@ export function evaluateDocument(
     const node = doc.nodes[String(entry.root)];
     console.group(`[ENGINE] Evaluating root[${idx}] nodeId=${entry.root}`);
     console.log("Node:", JSON.stringify(node, null, 2));
+
+    // Check if this is an imported mesh (doesn't go through Solid pipeline)
+    const imported = findImportedMesh(entry.root, doc.nodes);
+    if (imported) {
+      console.log("Found ImportedMesh with", imported.mesh.positions.length / 3, "vertices");
+      const baseMesh: TriangleMesh = {
+        positions: new Float32Array(imported.mesh.positions),
+        indices: new Uint32Array(imported.mesh.indices),
+        normals: imported.mesh.normals ? new Float32Array(imported.mesh.normals) : undefined,
+      };
+      const mesh = transformMesh(baseMesh, imported.transform);
+      console.log("Result mesh - triangles:", mesh.indices.length / 3, "vertices:", mesh.positions.length / 3);
+      console.groupEnd();
+      // Push empty solid for clash detection (imported meshes don't participate)
+      solids.push(Solid.empty());
+      return { mesh, material: entry.material };
+    }
+
+    // Normal solid-based evaluation
     const solid = evaluateNode(entry.root, doc.nodes, Solid, cache, 0);
     const mesh = solidToMesh(solid);
     console.log("Result mesh - triangles:", mesh.indices.length / 3, "vertices:", mesh.positions.length / 3);
@@ -435,5 +568,11 @@ function evaluateOp(
       });
       return Solid.loft(profiles, op.closed);
     }
+
+    case "ImportedMesh":
+      // ImportedMesh is handled specially in evaluateDocument, not through Solid
+      // Return empty solid as fallback
+      console.log(`${indent}  -> ImportedMesh (handled at document level)`);
+      return Solid.empty();
   }
 }
