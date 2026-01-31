@@ -51,6 +51,14 @@ export class RayTracer {
         return RayTracer.__wrap(ret[0]);
     }
     /**
+     * Get the current frame index for progressive rendering.
+     * @returns {number}
+     */
+    getFrameIndex() {
+        const ret = wasm.raytracer_getFrameIndex(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * Check if the ray tracer has a scene loaded.
      * @returns {boolean}
      */
@@ -92,7 +100,10 @@ export class RayTracer {
         return ret[0];
     }
     /**
-     * Render the scene to an RGBA image.
+     * Render the scene to an RGBA image with progressive anti-aliasing.
+     *
+     * Each call accumulates another sample. Call `resetAccumulation()` when the
+     * camera moves to restart the accumulation.
      *
      * # Arguments
      * * `camera` - Camera position [x, y, z]
@@ -125,6 +136,12 @@ export class RayTracer {
         const len2 = WASM_VECTOR_LEN;
         const ret = wasm.raytracer_render(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, width, height, fov);
         return ret;
+    }
+    /**
+     * Reset the progressive accumulation (call when camera moves).
+     */
+    resetAccumulation() {
+        wasm.raytracer_resetAccumulation(this.__wbg_ptr);
     }
     /**
      * Upload a solid's BRep representation for ray tracing.

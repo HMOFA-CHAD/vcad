@@ -25,6 +25,10 @@ export class RayTracer {
      */
     static create(): RayTracer;
     /**
+     * Get the current frame index for progressive rendering.
+     */
+    getFrameIndex(): number;
+    /**
      * Check if the ray tracer has a scene loaded.
      */
     hasScene(): boolean;
@@ -41,7 +45,10 @@ export class RayTracer {
      */
     pick(camera: Float64Array, target: Float64Array, up: Float64Array, width: number, height: number, fov: number, pixel_x: number, pixel_y: number): number;
     /**
-     * Render the scene to an RGBA image.
+     * Render the scene to an RGBA image with progressive anti-aliasing.
+     *
+     * Each call accumulates another sample. Call `resetAccumulation()` when the
+     * camera moves to restart the accumulation.
      *
      * # Arguments
      * * `camera` - Camera position [x, y, z]
@@ -59,6 +66,10 @@ export class RayTracer {
      * In JavaScript, it returns a Promise<Uint8Array>.
      */
     render(camera: Float64Array, target: Float64Array, up: Float64Array, width: number, height: number, fov: number): Promise<Uint8Array>;
+    /**
+     * Reset the progressive accumulation (call when camera moves).
+     */
+    resetAccumulation(): void;
     /**
      * Upload a solid's BRep representation for ray tracing.
      *
@@ -495,9 +506,11 @@ export interface InitOutput {
     readonly projectMesh: (a: any, b: number, c: number) => any;
     readonly raytracer_canRaytrace: (a: number) => number;
     readonly raytracer_create: () => [number, number, number];
+    readonly raytracer_getFrameIndex: (a: number) => number;
     readonly raytracer_hasScene: (a: number) => number;
     readonly raytracer_pick: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number];
     readonly raytracer_render: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => any;
+    readonly raytracer_resetAccumulation: (a: number) => void;
     readonly raytracer_uploadSolid: (a: number, b: number) => [number, number];
     readonly sectionMesh: (a: any, b: number, c: number, d: number, e: number) => any;
     readonly solid_boundingBox: (a: number) => [number, number];

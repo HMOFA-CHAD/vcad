@@ -1475,7 +1475,7 @@ impl RayTracer {
         let ctx = vcad_kernel_gpu::GpuContext::get()
             .ok_or_else(|| JsError::new("GPU not initialized. Call initGpu() first."))?;
 
-        let pipeline = vcad_kernel_raytrace::gpu::RayTracePipeline::new(&ctx)
+        let pipeline = vcad_kernel_raytrace::gpu::RayTracePipeline::new(ctx)
             .map_err(|e| JsError::new(&format!("Failed to create ray trace pipeline: {}", e)))?;
 
         web_sys::console::log_1(&"[WASM] RayTracer created".into());
@@ -1613,10 +1613,12 @@ impl RayTracer {
             .ok_or_else(|| JsError::new("No solid uploaded. Call uploadSolid() first."))?;
 
         // Compute camera hash to detect changes
+        // Round to 3 decimal places to avoid floating-point precision issues
+        // causing spurious resets (e.g., 29.659999999 vs 29.660000001)
         let mut hasher = DefaultHasher::new();
-        for v in &camera { v.to_bits().hash(&mut hasher); }
-        for v in &target { v.to_bits().hash(&mut hasher); }
-        fov.to_bits().hash(&mut hasher);
+        for v in &camera { ((v * 1000.0).round() as i64).hash(&mut hasher); }
+        for v in &target { ((v * 1000.0).round() as i64).hash(&mut hasher); }
+        ((fov * 1000.0).round() as i32).hash(&mut hasher);
         let camera_hash = hasher.finish();
 
         // Reset accumulation if camera changed or dimensions changed
@@ -1632,7 +1634,7 @@ impl RayTracer {
         self.frame_index = (self.frame_index + 1).min(256);
 
         // Log progress occasionally
-        if self.frame_index == 1 || self.frame_index % 16 == 0 {
+        if self.frame_index == 1 || self.frame_index.is_multiple_of(16) {
             web_sys::console::log_1(&format!(
                 "[WASM] render() frame={} camera=[{:.2},{:.2},{:.2}] target=[{:.2},{:.2},{:.2}]",
                 self.frame_index,
@@ -1654,7 +1656,7 @@ impl RayTracer {
             .ok_or_else(|| JsError::new("GPU context lost"))?;
 
         let (pixels, new_accum) = self.pipeline.render_progressive(
-            &ctx,
+            ctx,
             scene,
             &gpu_camera,
             width,
