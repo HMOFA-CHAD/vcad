@@ -61,6 +61,7 @@ export function ViewportContent() {
 
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const isDraggingGizmo = useUiStore((s) => s.isDraggingGizmo);
+  const setOrbiting = useUiStore((s) => s.setOrbiting);
   const sketchActive = useSketchStore((s) => s.active);
   const orbitRef = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
@@ -259,6 +260,17 @@ export function ViewportContent() {
     const dampingFactor = 0.15; // fraction of velocity applied per frame
     const friction = 0.92; // velocity decay per frame
 
+    // Batch wheel events to avoid multiple renders per frame
+    let pendingUpdate = false;
+    const scheduleUpdate = () => {
+      if (pendingUpdate) return;
+      pendingUpdate = true;
+      requestAnimationFrame(() => {
+        pendingUpdate = false;
+        controls.update();
+      });
+    };
+
     const animate = () => {
       // Check if momentum is enabled
       if (!orbitMomentum) {
@@ -334,7 +346,7 @@ export function ViewportContent() {
 
       offset.normalize().multiplyScalar(newDistance);
       camera.position.copy(target).add(offset);
-      controls.update();
+      scheduleUpdate();
     };
 
     // Pan implementation
@@ -359,7 +371,7 @@ export function ViewportContent() {
       // Move both camera and target by the same amount
       camera.position.add(panOffset);
       target.add(panOffset);
-      controls.update();
+      scheduleUpdate();
     };
 
     // Orbit implementation
@@ -390,7 +402,7 @@ export function ViewportContent() {
         offset.setFromSpherical(spherical);
         camera.position.copy(target).add(offset);
         camera.lookAt(target);
-        controls.update();
+        scheduleUpdate();
       }
     };
 
@@ -437,6 +449,23 @@ export function ViewportContent() {
     domElement.addEventListener("wheel", handleWheel, { passive: false });
     return () => domElement.removeEventListener("wheel", handleWheel);
   }, [camera, controlScheme, effectiveDevice, zoomBehavior, orbitMomentum]);
+
+  // Disable raycasting during orbit for performance (large meshes)
+  useEffect(() => {
+    const controls = orbitRef.current;
+    if (!controls) return;
+
+    const handleStart = () => setOrbiting(true);
+    const handleEnd = () => setOrbiting(false);
+
+    controls.addEventListener("start", handleStart);
+    controls.addEventListener("end", handleEnd);
+
+    return () => {
+      controls.removeEventListener("start", handleStart);
+      controls.removeEventListener("end", handleEnd);
+    };
+  }, [setOrbiting]);
 
   // Double-click on empty canvas resets camera to initial position
   useEffect(() => {

@@ -15,6 +15,7 @@ export interface UiState {
   featureTreeOpen: boolean;
   theme: Theme;
   isDraggingGizmo: boolean;
+  isOrbiting: boolean;
   showWireframe: boolean;
   gridSnap: boolean;
   pointSnap: boolean;
@@ -44,6 +45,7 @@ export interface UiState {
   togglePointSnap: () => void;
   setSnapIncrement: (value: number) => void;
   setDraggingGizmo: (dragging: boolean) => void;
+  setOrbiting: (orbiting: boolean) => void;
   copyToClipboard: (partIds: string[]) => void;
   showDeleteConfirm: (partIds: string[]) => void;
   hideDeleteConfirm: () => void;
@@ -81,6 +83,7 @@ export const useUiStore = create<UiState>((set) => ({
   featureTreeOpen: true,
   theme: "system",
   isDraggingGizmo: false,
+  isOrbiting: false,
   showWireframe: false,
   gridSnap: true,
   pointSnap: true,
@@ -146,6 +149,8 @@ export const useUiStore = create<UiState>((set) => ({
     set({ snapIncrement: value, gridSnap: true }),
 
   setDraggingGizmo: (dragging) => set({ isDraggingGizmo: dragging }),
+
+  setOrbiting: (orbiting) => set({ isOrbiting: orbiting }),
 
   copyToClipboard: (partIds) => set({ clipboard: partIds }),
 

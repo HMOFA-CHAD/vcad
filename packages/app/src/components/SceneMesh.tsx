@@ -182,7 +182,9 @@ interface ImportedMeshProps {
 
 export function ImportedMesh({ mesh, materialKey }: ImportedMeshProps) {
   const geoRef = useRef<THREE.BufferGeometry>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
   const showWireframe = useUiStore((s) => s.showWireframe);
+  const isOrbiting = useUiStore((s) => s.isOrbiting);
   const document = useDocumentStore((s) => s.document);
 
   // Resolve material from document
@@ -235,8 +237,25 @@ export function ImportedMesh({ mesh, materialKey }: ImportedMeshProps) {
     };
   }, [mesh]);
 
+  // Disable raycasting during orbit for performance
+  const originalRaycastRef = useRef<THREE.Mesh["raycast"] | null>(null);
+  useEffect(() => {
+    const m = meshRef.current;
+    if (!m) return;
+
+    if (!originalRaycastRef.current) {
+      originalRaycastRef.current = m.raycast.bind(m);
+    }
+
+    if (isOrbiting) {
+      m.raycast = () => {};
+    } else {
+      m.raycast = originalRaycastRef.current;
+    }
+  }, [isOrbiting]);
+
   return (
-    <mesh castShadow receiveShadow>
+    <mesh ref={meshRef} castShadow receiveShadow>
       <bufferGeometry ref={geoRef} />
       <meshStandardMaterial
         color={materialColor}
@@ -274,6 +293,9 @@ export function SceneMesh({
   const hoveredFace = useSketchStore((s) => s.hoveredFace);
   const setHoveredFace = useSketchStore((s) => s.setHoveredFace);
   const selectFace = useSketchStore((s) => s.selectFace);
+
+  // Disable raycasting during orbit for performance
+  const isOrbiting = useUiStore((s) => s.isOrbiting);
 
   // Use selectionId if provided, otherwise fall back to partInfo.id
   const effectiveSelectionId = selectionId ?? partInfo.id;
@@ -528,6 +550,8 @@ export function SceneMesh({
 
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      // Skip during orbit for performance
+      if (isOrbiting) return;
       if (faceSelectionMode && e.faceIndex != null) {
         e.stopPropagation();
         const faceInfo = computeFaceInfo(
@@ -539,26 +563,50 @@ export function SceneMesh({
         setHoveredFace(faceInfo);
       }
     },
-    [faceSelectionMode, mesh, partInfo.id, setHoveredFace],
+    [isOrbiting, faceSelectionMode, mesh, partInfo.id, setHoveredFace],
   );
 
   const handlePointerOver = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      // Skip during orbit for performance
+      if (isOrbiting) return;
       e.stopPropagation();
       if (!faceSelectionMode) {
         setHoveredPartId(partInfo.id);
       }
     },
-    [faceSelectionMode, partInfo.id, setHoveredPartId],
+    [isOrbiting, faceSelectionMode, partInfo.id, setHoveredPartId],
   );
 
   const handlePointerOut = useCallback(() => {
+    // Skip during orbit for performance
+    if (isOrbiting) return;
     if (faceSelectionMode) {
       setHoveredFace(null);
     } else {
       setHoveredPartId(null);
     }
-  }, [faceSelectionMode, setHoveredFace, setHoveredPartId]);
+  }, [isOrbiting, faceSelectionMode, setHoveredFace, setHoveredPartId]);
+
+  // Store original raycast function and disable during orbit for performance
+  const originalRaycastRef = useRef<THREE.Mesh["raycast"] | null>(null);
+  useEffect(() => {
+    const m = meshRef.current;
+    if (!m) return;
+
+    // Store original raycast function on first mount
+    if (!originalRaycastRef.current) {
+      originalRaycastRef.current = m.raycast.bind(m);
+    }
+
+    if (isOrbiting) {
+      // Disable raycasting during orbit
+      m.raycast = () => {};
+    } else {
+      // Restore original raycast
+      m.raycast = originalRaycastRef.current;
+    }
+  }, [isOrbiting]);
 
   return (
     <mesh
