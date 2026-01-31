@@ -32,6 +32,7 @@ import {
   useUiStore,
   parseVcadFile,
   parseStl,
+  logger,
   type VcadFile,
 } from "@vcad/core";
 import { useEngine } from "@/hooks/useEngine";
@@ -137,13 +138,13 @@ export function App() {
           return;
         }
 
-        console.log("[STEP] Starting import...");
+        logger.info("step", "Starting import...");
         const buffer = await file.arrayBuffer();
-        console.log("[STEP] Buffer size:", buffer.byteLength);
+        logger.info("step", `Buffer size: ${buffer.byteLength}`);
 
-        console.log("[STEP] Calling engine.importStep...");
+        logger.info("step", "Calling engine.importStep...");
         const rawMeshes = engine.importStep(buffer);
-        console.log("[STEP] Got meshes:", rawMeshes.length);
+        logger.info("step", `Got meshes: ${rawMeshes.length}`);
 
         if (rawMeshes.length === 0) {
           useToastStore.getState().addToast("No geometry found in STEP file", "error");
@@ -155,14 +156,14 @@ export function App() {
         rawMeshes.forEach((m, i) => {
           const tris = m.indices.length / 3;
           totalTris += tris;
-          console.log(`[STEP] Mesh ${i}: ${tris} triangles`);
+          logger.debug("step", `Mesh ${i}: ${tris} triangles`);
         });
-        console.log(`[STEP] Total: ${totalTris} triangles`);
+        logger.info("step", `Total: ${totalTris} triangles`);
 
         // Merge all meshes into one for better GPU performance (1 draw call instead of N)
-        console.log("[STEP] Merging meshes...");
+        logger.info("step", "Merging meshes...");
         const mergedMesh = mergeMeshes(rawMeshes);
-        console.log(`[STEP] Merged into 1 mesh with ${mergedMesh.indices.length / 3} triangles`);
+        logger.info("step", `Merged into 1 mesh with ${mergedMesh.indices.length / 3} triangles`);
 
         // Process geometry with GPU if available (computes creased normals)
         let finalPositions = mergedMesh.positions;
@@ -171,7 +172,7 @@ export function App() {
 
         if (isGpuAvailable()) {
           try {
-            console.log("[STEP] Processing geometry on GPU...");
+            logger.info("step", "Processing geometry on GPU...");
             const startTime = performance.now();
             const processed = await processGeometryGpu(
               mergedMesh.positions,
@@ -180,7 +181,7 @@ export function App() {
               false // don't generate LOD for now
             );
             const gpuTime = performance.now() - startTime;
-            console.log(`[STEP] GPU processing complete in ${gpuTime.toFixed(0)}ms`);
+            logger.info("step", `GPU processing complete in ${gpuTime.toFixed(0)}ms`);
 
             // Use GPU-processed mesh with normals
             const firstMesh = processed[0];
@@ -190,10 +191,10 @@ export function App() {
               finalNormals = firstMesh.normals;
             }
           } catch (gpuErr) {
-            console.warn("[STEP] GPU processing failed, using CPU fallback:", gpuErr);
+            logger.warn("step", `GPU processing failed, using CPU fallback: ${gpuErr}`);
           }
         } else {
-          console.log("[STEP] GPU not available, using CPU processing");
+          logger.info("step", "GPU not available, using CPU processing");
         }
 
         // Add as a proper document part (not just a scene mesh)

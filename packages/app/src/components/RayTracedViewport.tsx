@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
-import { useEngineStore, useUiStore } from "@vcad/core";
+import { useEngineStore, useUiStore, logger } from "@vcad/core";
 import { getRayTracer } from "@vcad/engine";
 import type { PerspectiveCamera } from "three";
 
@@ -274,7 +274,7 @@ export function RayTracedViewportOverlay() {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
               const currentFrame = (rayTracer?.getFrameIndex?.() as number) ?? 0;
               if (currentFrame === 1 || currentFrame % 32 === 0) {
-                console.log("[RayTracedViewport] Progressive sample:", currentFrame, "/", maxSamples);
+                logger.debug("gpu", `Progressive sample: ${currentFrame} / ${maxSamples}`);
               }
             }
           }
@@ -290,7 +290,7 @@ export function RayTracedViewportOverlay() {
           }
         })
         .catch((e: Error) => {
-          console.debug("[RayTracedViewport] Render failed:", e);
+          logger.debug("gpu", `Render failed: ${e}`);
           renderInProgressRef.current = false;
         });
     },

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Engine, useDocumentStore, useEngineStore, useUiStore } from "@vcad/core";
+import { Engine, useDocumentStore, useEngineStore, useUiStore, logger } from "@vcad/core";
 import { initializeGpu, initializeRayTracer } from "@vcad/engine";
 
 // Module-level engine instance to survive HMR
@@ -64,7 +64,7 @@ export function useEngine() {
             useUiStore.getState().setRaytraceAvailable(raytraceAvailable);
           })
           .catch((e) => {
-            console.warn("[GPU] Failed to initialize:", e);
+            logger.warn("gpu", `Failed to initialize: ${e}`);
           });
 
         // Evaluate initial document
