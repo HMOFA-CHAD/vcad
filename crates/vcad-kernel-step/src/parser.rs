@@ -225,28 +225,81 @@ impl Parser {
                 self.advance();
                 self.expect_token(&Token::Equals)?;
 
-                // Get type name
-                let type_name = match self.peek().map(|t| t.token.clone()) {
-                    Some(Token::Keyword(name)) => {
-                        self.advance();
-                        name
-                    }
-                    other => {
-                        return Err(StepError::parser(
-                            Some(id),
-                            format!("expected type name, got {other:?}"),
-                        ));
-                    }
-                };
+                // Check for complex entity: #id = (TYPE1(args) TYPE2(args) ...);
+                if self.peek().map(|t| &t.token) == Some(&Token::LParen) {
+                    // Complex entity - parse all typed components
+                    self.advance(); // consume '('
+                    let mut components = Vec::new();
 
-                let args = self.parse_args()?;
-                self.expect_token(&Token::Semicolon)?;
+                    while self.peek().map(|t| &t.token) != Some(&Token::RParen) {
+                        // Each component is TYPE_NAME(args)
+                        let comp_type = match self.peek().map(|t| t.token.clone()) {
+                            Some(Token::Keyword(name)) => {
+                                self.advance();
+                                name
+                            }
+                            other => {
+                                return Err(StepError::parser(
+                                    Some(id),
+                                    format!(
+                                        "expected type name in complex entity, got {other:?}"
+                                    ),
+                                ));
+                            }
+                        };
+                        let comp_args = self.parse_args()?;
+                        components.push(StepValue::Typed {
+                            type_name: comp_type,
+                            args: comp_args,
+                        });
+                    }
 
-                entities.push(StepEntity {
-                    id,
-                    type_name,
-                    args,
-                });
+                    self.expect_token(&Token::RParen)?;
+                    self.expect_token(&Token::Semicolon)?;
+
+                    // Use first type as the entity type, store others in args
+                    let (type_name, args) = if let Some(StepValue::Typed {
+                        type_name: first_type,
+                        args: first_args,
+                    }) = components.first().cloned()
+                    {
+                        let mut args = first_args;
+                        // Append remaining types as Typed values
+                        args.extend(components.into_iter().skip(1));
+                        (first_type, args)
+                    } else {
+                        ("__COMPLEX__".to_string(), components)
+                    };
+
+                    entities.push(StepEntity {
+                        id,
+                        type_name,
+                        args,
+                    });
+                } else {
+                    // Simple entity: #id = TYPE_NAME(args);
+                    let type_name = match self.peek().map(|t| t.token.clone()) {
+                        Some(Token::Keyword(name)) => {
+                            self.advance();
+                            name
+                        }
+                        other => {
+                            return Err(StepError::parser(
+                                Some(id),
+                                format!("expected type name, got {other:?}"),
+                            ));
+                        }
+                    };
+
+                    let args = self.parse_args()?;
+                    self.expect_token(&Token::Semicolon)?;
+
+                    entities.push(StepEntity {
+                        id,
+                        type_name,
+                        args,
+                    });
+                }
             } else {
                 break;
             }
@@ -476,5 +529,31 @@ END-ISO-10303-21;
         let file = Parser::parse(input.as_bytes()).unwrap();
         let points = file.entities_of_type("CARTESIAN_POINT");
         assert_eq!(points.len(), 2);
+    }
+
+    #[test]
+    fn test_complex_entity() {
+        // Complex entities combine multiple types in one definition
+        // Common for units: (NAMED_UNIT(*) LENGTH_UNIT() SI_UNIT($,.METRE.))
+        let input = r#"
+ISO-10303-21;
+HEADER;
+ENDSEC;
+DATA;
+#1 = (NAMED_UNIT(*) LENGTH_UNIT() SI_UNIT($,.METRE.));
+#2 = CARTESIAN_POINT('', (0.0, 0.0, 0.0));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let file = Parser::parse(input.as_bytes()).unwrap();
+        assert_eq!(file.entities.len(), 2);
+
+        // Complex entity uses first type as type_name
+        let unit = file.get(1).unwrap();
+        assert_eq!(unit.type_name, "NAMED_UNIT");
+
+        // Regular entity still works
+        let point = file.get(2).unwrap();
+        assert_eq!(point.type_name, "CARTESIAN_POINT");
     }
 }

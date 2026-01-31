@@ -103,24 +103,18 @@ pub fn make_cube(sx: f64, sy: f64, sz: f64) -> BRepSolid {
         HalfEdgeId,
     > = std::collections::HashMap::new();
 
-    for (verts, plane_origin, x_dir, y_dir) in &face_defs {
+    for (verts, plane_origin, x_dir, y_dir) in face_defs.iter() {
         let surface_idx = geom.add_surface(Box::new(Plane::new(*plane_origin, *x_dir, *y_dir)));
 
         let mut hes = Vec::new();
-        for i in 0..4 {
-            let he = topo.add_half_edge(verts[i]);
+        for j in 0..4 {
+            let he = topo.add_half_edge(verts[j]);
             hes.push(he);
-            he_map.insert((verts[i], verts[(i + 1) % 4]), he);
+            he_map.insert((verts[j], verts[(j + 1) % 4]), he);
         }
 
         let loop_id = topo.add_loop(&hes);
 
-        // Determine orientation: the face should have its normal pointing outward.
-        // The plane's normal (x_dir × y_dir) may need to be reversed.
-        // For the bottom face, plane normal is +Z but face normal should be -Z.
-        // We use Reversed for bottom face (index 0), left (index 4).
-        // Actually, let's compute: the face winding defines the geometric normal,
-        // and we set orientation to match.
         let face_id = topo.add_face(loop_id, surface_idx, Orientation::Forward);
         all_faces.push(face_id);
     }

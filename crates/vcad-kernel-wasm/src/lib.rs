@@ -12,6 +12,8 @@ use wasm_bindgen::prelude::*;
 pub fn init() {
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
+    // Version marker to verify correct WASM is loaded
+    web_sys::console::log_1(&"[WASM] vcad-kernel-wasm v2 loaded (boolean fix included)".into());
 }
 
 /// Triangle mesh output for rendering.
@@ -112,17 +114,30 @@ impl Solid {
     /// Create a box with corner at origin and dimensions (sx, sy, sz).
     #[wasm_bindgen(js_name = cube)]
     pub fn cube(sx: f64, sy: f64, sz: f64) -> Solid {
-        Solid {
+        let solid = Solid {
             inner: vcad_kernel::Solid::cube(sx, sy, sz),
-        }
+        };
+        let (min, max) = solid.inner.bounding_box();
+        web_sys::console::log_1(&format!(
+            "[WASM] Created cube({},{},{}): bbox=[{:.2},{:.2},{:.2}]->[{:.2},{:.2},{:.2}]",
+            sx, sy, sz, min[0], min[1], min[2], max[0], max[1], max[2]
+        ).into());
+        solid
     }
 
     /// Create a cylinder along Z axis with given radius and height.
     #[wasm_bindgen(js_name = cylinder)]
     pub fn cylinder(radius: f64, height: f64, segments: Option<u32>) -> Solid {
-        Solid {
-            inner: vcad_kernel::Solid::cylinder(radius, height, segments.unwrap_or(32)),
-        }
+        let segs = segments.unwrap_or(32);
+        let solid = Solid {
+            inner: vcad_kernel::Solid::cylinder(radius, height, segs),
+        };
+        let (min, max) = solid.inner.bounding_box();
+        web_sys::console::log_1(&format!(
+            "[WASM] Created cylinder(r={}, h={}, segs={}): bbox=[{:.2},{:.2},{:.2}]->[{:.2},{:.2},{:.2}]",
+            radius, height, segs, min[0], min[1], min[2], max[0], max[1], max[2]
+        ).into());
+        solid
     }
 
     /// Create a sphere centered at origin with given radius.
@@ -319,9 +334,117 @@ impl Solid {
     /// Boolean difference (self − other).
     #[wasm_bindgen(js_name = difference)]
     pub fn difference(&self, other: &Solid) -> Solid {
-        Solid {
+        // Log input solid info with more detail
+        let self_tris = self.inner.num_triangles();
+        let other_tris = other.inner.num_triangles();
+
+        // Get detailed info about inputs
+        let (self_min, self_max) = self.inner.bounding_box();
+        let (other_min, other_max) = other.inner.bounding_box();
+
+        web_sys::console::log_1(&format!(
+            "[WASM] Boolean difference inputs:\n  self: {} tris, bbox=[{:.2},{:.2},{:.2}]->[{:.2},{:.2},{:.2}]\n  other: {} tris, bbox=[{:.2},{:.2},{:.2}]->[{:.2},{:.2},{:.2}]",
+            self_tris, self_min[0], self_min[1], self_min[2], self_max[0], self_max[1], self_max[2],
+            other_tris, other_min[0], other_min[1], other_min[2], other_max[0], other_max[1], other_max[2]
+        ).into());
+
+        let result = Solid {
             inner: self.inner.difference(&other.inner),
+        };
+
+        let result_tris_before_mesh = result.inner.num_triangles();
+        let (result_min, result_max) = result.inner.bounding_box();
+        web_sys::console::log_1(&format!(
+            "[WASM] Difference result: {} tris, bbox=[{:.2},{:.2},{:.2}]->[{:.2},{:.2},{:.2}]",
+            result_tris_before_mesh,
+            result_min[0], result_min[1], result_min[2],
+            result_max[0], result_max[1], result_max[2]
+        ).into());
+
+        let mesh = result.inner.to_mesh(32);
+        let tris = mesh.indices.len() / 3;
+        let verts = mesh.vertices.len() / 3;
+        web_sys::console::log_1(&format!("[WASM] Difference mesh (32 segs): {} triangles, {} vertices", tris, verts).into());
+
+        // Analyze the mesh to find any problematic triangles
+        // Check for triangles with NEGATIVE x or y coordinates (the "ears")
+        let mut negative_x_tris = Vec::new();
+        let mut negative_y_tris = Vec::new();
+        // Also check triangles on z=0 plane (bottom cap)
+        let mut z0_cap_tris = Vec::new();
+
+        for i in (0..mesh.indices.len()).step_by(3) {
+            let i0 = mesh.indices[i] as usize * 3;
+            let i1 = mesh.indices[i + 1] as usize * 3;
+            let i2 = mesh.indices[i + 2] as usize * 3;
+            let v0 = [mesh.vertices[i0], mesh.vertices[i0 + 1], mesh.vertices[i0 + 2]];
+            let v1 = [mesh.vertices[i1], mesh.vertices[i1 + 1], mesh.vertices[i1 + 2]];
+            let v2 = [mesh.vertices[i2], mesh.vertices[i2 + 1], mesh.vertices[i2 + 2]];
+
+            // Check for any vertex with negative x
+            if v0[0] < -0.01 || v1[0] < -0.01 || v2[0] < -0.01 {
+                negative_x_tris.push(format!(
+                    "({:.2},{:.2},{:.2})-({:.2},{:.2},{:.2})-({:.2},{:.2},{:.2})",
+                    v0[0], v0[1], v0[2], v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]
+                ));
+            }
+
+            // Check for any vertex with negative y
+            if v0[1] < -0.01 || v1[1] < -0.01 || v2[1] < -0.01 {
+                negative_y_tris.push(format!(
+                    "({:.2},{:.2},{:.2})-({:.2},{:.2},{:.2})-({:.2},{:.2},{:.2})",
+                    v0[0], v0[1], v0[2], v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]
+                ));
+            }
+
+            // Check triangles on z=0 plane (the bottom cap where ears appear)
+            if v0[2].abs() < 0.1 && v1[2].abs() < 0.1 && v2[2].abs() < 0.1 {
+                z0_cap_tris.push(format!(
+                    "({:.2},{:.2},{:.2})-({:.2},{:.2},{:.2})-({:.2},{:.2},{:.2})",
+                    v0[0], v0[1], v0[2], v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]
+                ));
+            }
         }
+
+        web_sys::console::log_1(&format!("[WASM] Triangles with NEGATIVE x: {}", negative_x_tris.len()).into());
+        for (i, tri) in negative_x_tris.iter().take(10).enumerate() {
+            web_sys::console::log_1(&format!("[WASM]   neg_x tri {}: {}", i, tri).into());
+        }
+
+        web_sys::console::log_1(&format!("[WASM] Triangles with NEGATIVE y: {}", negative_y_tris.len()).into());
+        for (i, tri) in negative_y_tris.iter().take(10).enumerate() {
+            web_sys::console::log_1(&format!("[WASM]   neg_y tri {}: {}", i, tri).into());
+        }
+
+        web_sys::console::log_1(&format!("[WASM] Triangles on z=0 cap: {}", z0_cap_tris.len()).into());
+        for (i, tri) in z0_cap_tris.iter().enumerate() {
+            web_sys::console::log_1(&format!("[WASM]   z0_cap tri {}: {}", i, tri).into());
+        }
+
+        // Compute actual bounding box from mesh
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut min_z = f32::INFINITY;
+        let mut max_z = f32::NEG_INFINITY;
+        for i in (0..mesh.vertices.len()).step_by(3) {
+            let x = mesh.vertices[i];
+            let y = mesh.vertices[i + 1];
+            let z = mesh.vertices[i + 2];
+            min_x = min_x.min(x);
+            max_x = max_x.max(x);
+            min_y = min_y.min(y);
+            max_y = max_y.max(y);
+            min_z = min_z.min(z);
+            max_z = max_z.max(z);
+        }
+        web_sys::console::log_1(&format!(
+            "[WASM] Mesh BBox: [{:.2},{:.2},{:.2}] -> [{:.2},{:.2},{:.2}]",
+            min_x, min_y, min_z, max_x, max_y, max_z
+        ).into());
+
+        result
     }
 
     /// Boolean intersection (self ∩ other).
@@ -1102,11 +1225,11 @@ pub fn import_step_buffer(data: &[u8]) -> Result<JsValue, JsError> {
     let solids = vcad_kernel::Solid::from_step_buffer_all(data)
         .map_err(|e| JsError::new(&e.to_string()))?;
 
-    // Convert each solid to a mesh
+    // Convert each solid to a mesh (use fewer segments for imported files)
     let meshes: Vec<WasmMesh> = solids
         .iter()
         .map(|s| {
-            let mesh = s.to_mesh(32);
+            let mesh = s.to_mesh(16); // Lower resolution for faster rendering
             WasmMesh {
                 positions: mesh.vertices,
                 indices: mesh.indices,

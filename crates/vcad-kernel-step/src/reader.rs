@@ -89,21 +89,35 @@ impl<'a> StepReader<'a> {
     }
 
     fn read_solid(&mut self, solid_id: u64) -> Result<BRepSolid, StepError> {
+        use std::collections::HashSet;
+
         let mut topo = Topology::new();
         let mut geom = GeometryStore::new();
 
         let step_solid = parse_manifold_solid_brep(self.file, solid_id)?;
         let step_shell = parse_shell(self.file, step_solid.outer_shell_id)?;
 
+        // Track faces we skip due to unsupported surface types
+        let mut skipped_faces: HashSet<u64> = HashSet::new();
+
         // First pass: collect all vertices and surfaces
         for &face_id in &step_shell.face_ids {
             let step_face = parse_advanced_face(self.file, face_id)?;
 
-            // Parse and store surface
+            // Parse and store surface - skip face if surface type unsupported
             if !self.surface_map.contains_key(&step_face.surface_id) {
-                let surface = parse_surface(self.file, step_face.surface_id)?;
-                let idx = geom.add_surface(surface.into_box());
-                self.surface_map.insert(step_face.surface_id, idx);
+                match parse_surface(self.file, step_face.surface_id) {
+                    Ok(surface) => {
+                        let idx = geom.add_surface(surface.into_box());
+                        self.surface_map.insert(step_face.surface_id, idx);
+                    }
+                    Err(StepError::UnsupportedEntity(_)) => {
+                        // Skip this face - surface type not supported
+                        skipped_faces.insert(face_id);
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
             }
 
             // Parse vertices from face bounds
@@ -130,6 +144,9 @@ impl<'a> StepReader<'a> {
 
         // Second pass: create half-edges and edges
         for &face_id in &step_shell.face_ids {
+            if skipped_faces.contains(&face_id) {
+                continue;
+            }
             let step_face = parse_advanced_face(self.file, face_id)?;
 
             for bound in &step_face.bounds {
@@ -178,6 +195,9 @@ impl<'a> StepReader<'a> {
         let mut vcad_face_ids = Vec::new();
 
         for &face_id in &step_shell.face_ids {
+            if skipped_faces.contains(&face_id) {
+                continue;
+            }
             let step_face = parse_advanced_face(self.file, face_id)?;
             let surface_idx = self.surface_map[&step_face.surface_id];
 
@@ -186,6 +206,11 @@ impl<'a> StepReader<'a> {
 
             for bound in &step_face.bounds {
                 let loop_ = parse_edge_loop(self.file, bound.loop_id)?;
+
+                // Skip empty loops (VERTEX_LOOP returns empty edge list)
+                if loop_.edge_ids.is_empty() {
+                    continue;
+                }
 
                 // Collect half-edges for this loop
                 let mut loop_hes = Vec::new();
@@ -205,9 +230,11 @@ impl<'a> StepReader<'a> {
                 }
             }
 
-            // Create face
-            let outer = outer_loop
-                .ok_or_else(|| StepError::InvalidTopology("face has no outer bound".into()))?;
+            // Create face - skip if no outer bound (malformed or unsupported face)
+            let outer = match outer_loop {
+                Some(l) => l,
+                None => continue, // Skip face with no outer boundary
+            };
 
             let orientation = if step_face.same_sense {
                 Orientation::Forward

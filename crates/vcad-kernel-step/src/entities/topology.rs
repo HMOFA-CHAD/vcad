@@ -162,7 +162,10 @@ pub fn parse_oriented_edge(file: &StepFile, id: u64) -> Result<StepOrientedEdge,
     }
 }
 
-/// Parse an EDGE_LOOP entity.
+/// Parse an EDGE_LOOP entity (or return empty for VERTEX_LOOP).
+///
+/// VERTEX_LOOP represents a degenerate boundary (single point, e.g., cone apex).
+/// We return an empty edge list for these since we don't support them yet.
 pub fn parse_edge_loop(file: &StepFile, id: u64) -> Result<StepEdgeLoop, StepError> {
     let entity = file.require(id)?;
 
@@ -170,6 +173,11 @@ pub fn parse_edge_loop(file: &StepFile, id: u64) -> Result<StepEdgeLoop, StepErr
         "EDGE_LOOP" => {
             let edge_ids = entity.entity_ref_list(1)?;
             Ok(StepEdgeLoop { id, edge_ids })
+        }
+        "VERTEX_LOOP" => {
+            // Degenerate loop (single vertex) - return empty edge list
+            // This is used for cone apexes and similar degenerate boundaries
+            Ok(StepEdgeLoop { id, edge_ids: vec![] })
         }
         other => Err(StepError::type_mismatch("EDGE_LOOP", other)),
     }
