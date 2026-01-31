@@ -8,6 +8,8 @@ import { triplanarChunk } from "../chunks/triplanar.glsl";
 import type { ProceduralShaderDef } from "../types";
 
 const vertexShader = /* glsl */ `
+#include <logdepthbuf_pars_vertex>
+
 varying vec3 vWorldPosition;
 varying vec3 vWorldNormal;
 
@@ -16,10 +18,14 @@ void main() {
   vWorldPosition = worldPos.xyz;
   vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
   gl_Position = projectionMatrix * viewMatrix * worldPos;
+
+  #include <logdepthbuf_vertex>
 }
 `;
 
 const fragmentShader = /* glsl */ `
+#include <logdepthbuf_pars_fragment>
+
 ${noiseChunk}
 ${triplanarChunk}
 
@@ -90,6 +96,8 @@ void main() {
   finalColor += uEmissive * uEmissiveIntensity;
 
   gl_FragColor = vec4(finalColor, 1.0);
+
+  #include <logdepthbuf_fragment>
 }
 `;
 

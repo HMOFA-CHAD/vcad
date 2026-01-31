@@ -206,6 +206,7 @@ export function Viewport() {
         shadows
         gl={{
           antialias: true,
+          logarithmicDepthBuffer: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.0,
         }}

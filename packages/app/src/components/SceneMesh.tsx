@@ -644,8 +644,8 @@ export function SceneMesh({
             depthTest={true}
             depthWrite={false}
             polygonOffset={true}
-            polygonOffsetFactor={-1}
-            polygonOffsetUnits={-1}
+            polygonOffsetFactor={-4}
+            polygonOffsetUnits={-4}
             side={THREE.DoubleSide}
           />
         </mesh>
