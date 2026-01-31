@@ -193,8 +193,8 @@ export function getRedoActionName(state: DocumentState): string | null {
 
 const DEFAULT_SIZES: Record<PrimitiveKind, CsgOp> = {
   cube: { type: "Cube", size: { x: 20, y: 20, z: 20 } },
-  cylinder: { type: "Cylinder", radius: 10, height: 20, segments: 64 },
-  sphere: { type: "Sphere", radius: 10, segments: 64 },
+  cylinder: { type: "Cylinder", radius: 10, height: 20, segments: 32 },
+  sphere: { type: "Sphere", radius: 10, segments: 32 },
 };
 
 const KIND_LABELS: Record<PrimitiveKind, string> = {
@@ -416,13 +416,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const partB = state.parts.find((p) => p.id === partIdB);
     if (!partA || !partB) return null;
 
-    console.group("[BOOL] applyBoolean called");
-    console.log("type:", type);
-    console.log("partA:", JSON.stringify(partA, null, 2));
-    console.log("partB:", JSON.stringify(partB, null, 2));
-    console.log("state.parts:", state.parts.map(p => ({ id: p.id, name: p.name, translateNodeId: p.translateNodeId })));
-    console.log("state.document.roots BEFORE:", JSON.stringify(state.document.roots, null, 2));
-
     let nid = state.nextNodeId;
     const partNum = state.nextPartNum;
 
@@ -437,15 +430,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const rotateId = nid++;
     const translateId = nid++;
 
-    console.log("New node IDs - boolean:", booleanId, "scale:", scaleId, "rotate:", rotateId, "translate:", translateId);
-
     const boolOp: CsgOp = {
       type: BOOL_OPS[type] as "Union" | "Difference" | "Intersection",
       left: partA.translateNodeId,
       right: partB.translateNodeId,
     } as CsgOp;
-
-    console.log("boolOp:", JSON.stringify(boolOp, null, 2));
 
     const scaleOp: CsgOp = {
       type: "Scale",
@@ -485,26 +474,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     );
 
     // Remove source parts from roots (nodes stay for DAG references)
-    console.log("Filtering roots - looking for translateNodeIds:", partA.translateNodeId, "and", partB.translateNodeId);
-    console.log("Root values to compare:", newDoc.roots.map(r => ({ root: r.root, rootType: typeof r.root })));
-    console.log("partA.translateNodeId type:", typeof partA.translateNodeId);
-    console.log("partB.translateNodeId type:", typeof partB.translateNodeId);
-
-    // Log each filter decision
-    newDoc.roots.forEach((r, i) => {
-      const keepA = r.root !== partA.translateNodeId;
-      const keepB = r.root !== partB.translateNodeId;
-      console.log(`Root[${i}] root=${r.root}: keepA=${keepA} (${r.root} !== ${partA.translateNodeId}), keepB=${keepB} (${r.root} !== ${partB.translateNodeId}), KEEP=${keepA && keepB}`);
-    });
-
     newDoc.roots = newDoc.roots.filter(
       (r) =>
         r.root !== partA.translateNodeId && r.root !== partB.translateNodeId,
     );
-    console.log("roots AFTER filter:", JSON.stringify(newDoc.roots, null, 2));
     newDoc.roots.push({ root: translateId, material: "default" });
-    console.log("roots FINAL (after adding boolean):", JSON.stringify(newDoc.roots, null, 2));
-    console.groupEnd();
 
     const boolPartInfo: BooleanPartInfo = {
       id: partId,

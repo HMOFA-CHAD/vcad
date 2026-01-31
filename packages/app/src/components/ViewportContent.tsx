@@ -58,6 +58,7 @@ export function ViewportContent() {
   const previewMesh = useEngineStore((s) => s.previewMesh);
   const parts = useDocumentStore((s) => s.parts);
   const document = useDocumentStore((s) => s.document);
+
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const isDraggingGizmo = useUiStore((s) => s.isDraggingGizmo);
   const sketchActive = useSketchStore((s) => s.active);
@@ -74,22 +75,6 @@ export function ViewportContent() {
   // Raycaster for zoom-to-cursor
   const raycasterRef = useRef(new Raycaster());
   const mouseRef = useRef(new Vector2());
-
-  // Debug: log scene/parts alignment
-  useEffect(() => {
-    console.group("[VIEWPORT] Render state");
-    console.log("scene.parts count:", scene?.parts.length);
-    console.log("scene.parts details:", scene?.parts.map((p, i) => ({
-      index: i,
-      material: p.material,
-      triangles: p.mesh.indices.length / 3,
-    })));
-    console.log("store parts count:", parts.length);
-    console.log("store parts:", parts.map(p => ({ id: p.id, name: p.name, kind: p.kind, translateNodeId: p.translateNodeId })));
-    console.log("document.roots:", JSON.stringify(document.roots, null, 2));
-    console.log("ALIGNMENT CHECK: scene.parts.length === parts.length?", scene?.parts.length === parts.length);
-    console.groupEnd();
-  }, [scene, parts, document.roots]);
 
   // Reusable objects to avoid GC pressure (wheel fires at 60+ Hz)
   const sphericalRef = useRef(new Spherical());

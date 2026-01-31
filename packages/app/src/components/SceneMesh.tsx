@@ -427,28 +427,19 @@ export function SceneMesh({
     tempGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     tempGeo.setIndex(new THREE.BufferAttribute(indices, 1));
 
-    // Use toCreasedNormals for angle-based normal computation
-    // This preserves hard edges (like plate-to-cylinder transitions) while
-    // smoothing curved surfaces. Crease angle of ~30 degrees (0.5 radians).
-    const creasedGeo = toCreasedNormals(tempGeo, Math.PI / 6);
-
-    // Copy data to our geometry
-    geo.setAttribute("position", creasedGeo.getAttribute("position"));
-    geo.setAttribute("normal", creasedGeo.getAttribute("normal"));
-    if (creasedGeo.index) {
-      geo.setIndex(creasedGeo.index);
-    }
+    // Use simple vertex normals (faster than toCreasedNormals)
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    geo.computeVertexNormals();
     geo.computeBoundingSphere();
     geo.computeBoundingBox();
 
-    // Cleanup temp geometry
     tempGeo.dispose();
-    creasedGeo.dispose();
 
     return () => {
       geo.dispose();
     };
-  }, [mesh]);
+  }, [mesh, partInfo.name]);
 
   // Apply Transform3D to mesh (for assembly instances)
   useEffect(() => {

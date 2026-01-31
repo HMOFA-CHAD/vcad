@@ -118,6 +118,98 @@ describe("CSG operations", () => {
     expect(scene.parts[0].mesh.indices.length).toBeGreaterThan(36);
   });
 
+  it("evaluates corner cylinder difference - bbox should stay within cube", () => {
+    // Cube 20x20x20 at origin (corner at 0,0,0)
+    // Cylinder r=10 h=20 centered at origin (extends from -10 to +10 in x,y)
+    // Only the quarter of the cylinder in +x,+y quadrant overlaps the cube
+    // Result should have bounding box within [0,0,0] to [20,20,20]
+    const doc = singlePartDoc(
+      [
+        { id: 1, name: "cube", op: { type: "Cube", size: { x: 20, y: 20, z: 20 } } },
+        { id: 2, name: "cylinder", op: { type: "Cylinder", radius: 10, height: 20, segments: 32 } },
+        { id: 3, name: "result", op: { type: "Difference", left: 1, right: 2 } },
+      ],
+      3,
+    );
+    const scene = engine.evaluate(doc);
+    const pos = scene.parts[0].mesh.positions;
+
+    // Compute bounding box
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      minX = Math.min(minX, pos[i]);
+      minY = Math.min(minY, pos[i + 1]);
+      minZ = Math.min(minZ, pos[i + 2]);
+      maxX = Math.max(maxX, pos[i]);
+      maxY = Math.max(maxY, pos[i + 1]);
+      maxZ = Math.max(maxZ, pos[i + 2]);
+    }
+
+    console.log(`BBox: (${minX.toFixed(2)}, ${minY.toFixed(2)}, ${minZ.toFixed(2)}) to (${maxX.toFixed(2)}, ${maxY.toFixed(2)}, ${maxZ.toFixed(2)})`);
+
+    // The result should NOT extend into negative x or y
+    // (the cylinder parts outside the cube should be excluded)
+    expect(minX).toBeGreaterThanOrEqual(-0.1);
+    expect(minY).toBeGreaterThanOrEqual(-0.1);
+    expect(minZ).toBeGreaterThanOrEqual(-0.1);
+    expect(maxX).toBeLessThanOrEqual(20.1);
+    expect(maxY).toBeLessThanOrEqual(20.1);
+    expect(maxZ).toBeLessThanOrEqual(20.1);
+  });
+
+  it("evaluates corner cylinder difference with identity transforms (app structure)", () => {
+    // This mirrors how the app structures nodes: primitive -> scale -> rotate -> translate
+    // Then difference references the translate nodes
+    // App also wraps the boolean result in another scale -> rotate -> translate chain
+    const doc = singlePartDoc(
+      [
+        // Cube chain: primitive -> scale -> rotate -> translate
+        { id: 1, name: "cube", op: { type: "Cube", size: { x: 20, y: 20, z: 20 } } },
+        { id: 2, name: "cube_scale", op: { type: "Scale", child: 1, factor: { x: 1, y: 1, z: 1 } } },
+        { id: 3, name: "cube_rotate", op: { type: "Rotate", child: 2, angles: { x: 0, y: 0, z: 0 } } },
+        { id: 4, name: "cube_translate", op: { type: "Translate", child: 3, offset: { x: 0, y: 0, z: 0 } } },
+        // Cylinder chain: primitive -> scale -> rotate -> translate
+        { id: 5, name: "cylinder", op: { type: "Cylinder", radius: 10, height: 20, segments: 32 } },
+        { id: 6, name: "cyl_scale", op: { type: "Scale", child: 5, factor: { x: 1, y: 1, z: 1 } } },
+        { id: 7, name: "cyl_rotate", op: { type: "Rotate", child: 6, angles: { x: 0, y: 0, z: 0 } } },
+        { id: 8, name: "cyl_translate", op: { type: "Translate", child: 7, offset: { x: 0, y: 0, z: 0 } } },
+        // Difference references the translate nodes
+        { id: 9, name: "diff", op: { type: "Difference", left: 4, right: 8 } },
+        // App wraps boolean result in another transform chain
+        { id: 10, name: "diff_scale", op: { type: "Scale", child: 9, factor: { x: 1, y: 1, z: 1 } } },
+        { id: 11, name: "diff_rotate", op: { type: "Rotate", child: 10, angles: { x: 0, y: 0, z: 0 } } },
+        { id: 12, name: "result", op: { type: "Translate", child: 11, offset: { x: 0, y: 0, z: 0 } } },
+      ],
+      12,
+    );
+    const scene = engine.evaluate(doc);
+    const pos = scene.parts[0].mesh.positions;
+    const tris = scene.parts[0].mesh.indices.length / 3;
+
+    console.log(`Triangle count with identity transforms: ${tris}`);
+
+    // Compute bounding box
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      minX = Math.min(minX, pos[i]);
+      minY = Math.min(minY, pos[i + 1]);
+      minZ = Math.min(minZ, pos[i + 2]);
+      maxX = Math.max(maxX, pos[i]);
+      maxY = Math.max(maxY, pos[i + 1]);
+      maxZ = Math.max(maxZ, pos[i + 2]);
+    }
+
+    console.log(`BBox with transforms: (${minX.toFixed(2)}, ${minY.toFixed(2)}, ${minZ.toFixed(2)}) to (${maxX.toFixed(2)}, ${maxY.toFixed(2)}, ${maxZ.toFixed(2)})`);
+
+    // Should produce same result as without transforms
+    // Note: 228 triangles is the current output after kernel boolean fixes
+    expect(tris).toBe(228);
+    expect(minX).toBeGreaterThanOrEqual(-0.1);
+    expect(minY).toBeGreaterThanOrEqual(-0.1);
+  });
+
   it("evaluates intersection", () => {
     const doc = singlePartDoc(
       [
