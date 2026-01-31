@@ -289,6 +289,20 @@ pub fn extract_face_uv_loop(brep: &BRepSolid, face_id: FaceId) -> Vec<Point2> {
     loop_uv_coords(brep, face.outer_loop, surface.as_ref())
 }
 
+/// Extract UV coordinates for all inner loops (holes) of a face.
+///
+/// Returns a vector of inner loops, where each inner loop is a vector of UV points.
+pub fn extract_face_inner_loops(brep: &BRepSolid, face_id: FaceId) -> Vec<Vec<Point2>> {
+    let topo = &brep.topology;
+    let face = &topo.faces[face_id];
+    let surface = &brep.geometry.surfaces[face.surface_index];
+
+    face.inner_loops
+        .iter()
+        .map(|&loop_id| loop_uv_coords(brep, loop_id, surface.as_ref()))
+        .collect()
+}
+
 /// Get the face normal considering orientation.
 pub fn face_normal(brep: &BRepSolid, face_id: FaceId, uv: Point2) -> vcad_kernel_math::Dir3 {
     let face = &brep.topology.faces[face_id];

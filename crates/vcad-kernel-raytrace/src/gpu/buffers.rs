@@ -166,14 +166,22 @@ pub struct GpuFace {
     pub surface_idx: u32,
     /// Face orientation: 0=forward, 1=reversed.
     pub orientation: u32,
-    /// Start index in trim vertex array.
+    /// Start index in trim vertex array (outer loop).
     pub trim_start: u32,
-    /// Number of trim vertices.
+    /// Number of trim vertices (outer loop).
     pub trim_count: u32,
     /// AABB min.
     pub aabb_min: [f32; 4], // padded for alignment
     /// AABB max.
     pub aabb_max: [f32; 4], // padded for alignment
+    /// Start index for inner loops (holes) in trim vertex array.
+    pub inner_start: u32,
+    /// Total number of vertices in all inner loops.
+    pub inner_count: u32,
+    /// Number of inner loops (holes).
+    pub inner_loop_count: u32,
+    /// Start index in inner_loop_descs for this face's inner loop sizes.
+    pub inner_desc_start: u32,
 }
 
 /// GPU-compatible BVH node.
@@ -246,6 +254,9 @@ impl GpuCamera {
     }
 }
 
+/// Maximum inner loop descriptors.
+pub const MAX_INNER_LOOPS: usize = 8192;
+
 /// Scene data prepared for GPU upload.
 pub struct GpuScene {
     /// Surfaces.
@@ -254,8 +265,11 @@ pub struct GpuScene {
     pub faces: Vec<GpuFace>,
     /// BVH nodes.
     pub bvh_nodes: Vec<GpuBvhNode>,
-    /// Trim loop vertices (UV coordinates).
+    /// Trim loop vertices (UV coordinates) - outer and inner loops.
     pub trim_verts: Vec<GpuVec2>,
+    /// Inner loop descriptors: (start_offset, vertex_count) relative to face's inner_start.
+    /// Stored as pairs of u32: [start0, count0, start1, count1, ...]
+    pub inner_loop_descs: Vec<u32>,
     /// Mapping from FaceId to GPU face index.
     pub face_index_map: std::collections::HashMap<FaceId, u32>,
 }
@@ -293,32 +307,111 @@ impl GpuScene {
     pub fn from_brep(brep: &BRepSolid) -> Result<Self, GpuSceneError> {
         // Build surface list
         let mut surfaces = Vec::with_capacity(brep.geometry.surfaces.len());
-        for surface in &brep.geometry.surfaces {
-            surfaces.push(GpuSurface::from_surface(surface.as_ref()));
+        for (idx, surface) in brep.geometry.surfaces.iter().enumerate() {
+            let gpu_surface = GpuSurface::from_surface(surface.as_ref());
+            #[cfg(target_arch = "wasm32")]
+            {
+                let type_name = match gpu_surface.surface_type {
+                    0 => "Plane",
+                    1 => "Cylinder",
+                    2 => "Sphere",
+                    3 => "Cone",
+                    4 => "Torus",
+                    5 => "Bilinear",
+                    _ => "Unknown",
+                };
+                // Log surface params for debugging
+                if gpu_surface.surface_type == 0 {
+                    // Plane: origin, x_dir, y_dir, normal
+                    web_sys::console::log_1(
+                        &format!(
+                            "[RT] Surface {}: Plane origin=({:.2}, {:.2}, {:.2}) normal=({:.2}, {:.2}, {:.2})",
+                            idx,
+                            gpu_surface.params[0], gpu_surface.params[1], gpu_surface.params[2],
+                            gpu_surface.params[9], gpu_surface.params[10], gpu_surface.params[11],
+                        ).into(),
+                    );
+                } else {
+                    web_sys::console::log_1(
+                        &format!(
+                            "[RT] Surface {}: type={} origin=({:.2}, {:.2}, {:.2})",
+                            idx, type_name,
+                            gpu_surface.params[0], gpu_surface.params[1], gpu_surface.params[2]
+                        ).into(),
+                    );
+                }
+            }
+            surfaces.push(gpu_surface);
         }
         if surfaces.len() > MAX_SURFACES {
             return Err(GpuSceneError::TooManySurfaces(surfaces.len()));
         }
 
-        // Build face list with AABBs
-        let mut faces = Vec::new();
+        // Build BVH first to get the face ordering
+        let bvh = Bvh::build(brep);
+        let (flat_nodes, bvh_faces) = bvh.flatten();
+
+        // Build face list in BVH traversal order (so BVH leaf indices are contiguous)
+        let mut faces = Vec::with_capacity(bvh_faces.len());
         let mut face_index_map = std::collections::HashMap::new();
         let mut trim_verts = Vec::new();
+        let mut inner_loop_descs = Vec::new();
 
-        for (face_id, face) in &brep.topology.faces {
+        for (gpu_idx, &face_id) in bvh_faces.iter().enumerate() {
+            let face = &brep.topology.faces[face_id];
 
             // Compute face AABB
             let aabb = face_aabb(brep, face_id);
 
-            // Get trim loop vertices in UV space using the trim module
+            // Get outer trim loop vertices in UV space
             let trim_start = trim_verts.len() as u32;
             let mut trim_count = 0u32;
 
-            // Extract UV coordinates for the trim loop
+            // Extract UV coordinates for the outer loop
             let uvs = trim::extract_face_uv_loop(brep, face_id);
+            #[cfg(target_arch = "wasm32")]
+            {
+                web_sys::console::log_1(
+                    &format!(
+                        "[RT] Face {} (id {:?}) outer loop: {} vertices",
+                        gpu_idx, face_id, uvs.len()
+                    )
+                    .into(),
+                );
+                // Log first 4 UV coordinates for debugging
+                for (j, uv) in uvs.iter().take(4).enumerate() {
+                    web_sys::console::log_1(
+                        &format!("[RT]   UV[{}]: ({:.2}, {:.2})", j, uv.x, uv.y).into(),
+                    );
+                }
+            }
             for uv in &uvs {
                 trim_verts.push(GpuVec2 { x: uv.x as f32, y: uv.y as f32 });
                 trim_count += 1;
+            }
+
+            // Extract inner loops (holes)
+            let inner_start = trim_verts.len() as u32;
+            let inner_desc_start = inner_loop_descs.len() as u32;
+            let mut inner_count = 0u32;
+            let inner_loops = trim::extract_face_inner_loops(brep, face_id);
+            let inner_loop_count = inner_loops.len() as u32;
+
+            for (loop_idx, inner_uvs) in inner_loops.iter().enumerate() {
+                #[cfg(target_arch = "wasm32")]
+                web_sys::console::log_1(
+                    &format!(
+                        "[RT] Face {} inner loop {}: {} vertices",
+                        gpu_idx, loop_idx, inner_uvs.len()
+                    )
+                    .into(),
+                );
+                // Store the vertex count for this inner loop
+                inner_loop_descs.push(inner_uvs.len() as u32);
+                for uv in inner_uvs {
+                    trim_verts.push(GpuVec2 { x: uv.x as f32, y: uv.y as f32 });
+                    inner_count += 1;
+                }
             }
 
             let orientation = match face.orientation {
@@ -326,8 +419,7 @@ impl GpuScene {
                 vcad_kernel_topo::Orientation::Reversed => 1,
             };
 
-            let gpu_face_idx = faces.len() as u32;
-            face_index_map.insert(face_id, gpu_face_idx);
+            face_index_map.insert(face_id, gpu_idx as u32);
 
             faces.push(GpuFace {
                 surface_idx: face.surface_index as u32,
@@ -336,6 +428,10 @@ impl GpuScene {
                 trim_count,
                 aabb_min: [aabb.min.x as f32, aabb.min.y as f32, aabb.min.z as f32, 0.0],
                 aabb_max: [aabb.max.x as f32, aabb.max.y as f32, aabb.max.z as f32, 0.0],
+                inner_start,
+                inner_count,
+                inner_loop_count,
+                inner_desc_start,
             });
         }
 
@@ -346,12 +442,8 @@ impl GpuScene {
             return Err(GpuSceneError::TooManyTrimVerts(trim_verts.len()));
         }
 
-        // Build BVH from face AABBs and flatten for GPU
-        let bvh = Bvh::build(brep);
-        let (flat_nodes, bvh_faces) = bvh.flatten();
-
         // Convert flattened BVH to GPU format
-        // Note: BVH faces are in leaf traversal order, we need to map to GPU face indices
+        // Faces are now in BVH order, so leaf indices map directly
         let mut bvh_nodes = Vec::with_capacity(flat_nodes.len().max(1));
 
         if flat_nodes.is_empty() {
@@ -360,23 +452,12 @@ impl GpuScene {
         } else {
             for (aabb, is_leaf, left_or_first, right_or_count) in &flat_nodes {
                 if *is_leaf {
-                    // For leaves: left_or_first is start in bvh_faces, right_or_count is count
-                    // We need to remap to our GPU face indices
-                    let start = *left_or_first as usize;
-                    let count = *right_or_count as usize;
-
-                    // Get the first GPU face index from the BVH face list
-                    let first_gpu_idx = if start < bvh_faces.len() {
-                        face_index_map.get(&bvh_faces[start]).copied().unwrap_or(0)
-                    } else {
-                        0
-                    };
-
+                    // For leaves: left_or_first is start index in faces array (which is now BVH-ordered)
                     bvh_nodes.push(GpuBvhNode {
                         aabb_min: [aabb.min.x as f32, aabb.min.y as f32, aabb.min.z as f32, 0.0],
                         aabb_max: [aabb.max.x as f32, aabb.max.y as f32, aabb.max.z as f32, 0.0],
-                        left_or_first: first_gpu_idx,
-                        right_or_count: count as u32,
+                        left_or_first: *left_or_first,
+                        right_or_count: *right_or_count,
                         is_leaf: 1,
                         _pad: 0,
                     });
@@ -397,11 +478,17 @@ impl GpuScene {
             return Err(GpuSceneError::TooManyBvhNodes(bvh_nodes.len()));
         }
 
+        // Ensure inner_loop_descs is not empty (GPU requires non-zero buffer)
+        if inner_loop_descs.is_empty() {
+            inner_loop_descs.push(0);
+        }
+
         Ok(Self {
             surfaces,
             faces,
             bvh_nodes,
             trim_verts,
+            inner_loop_descs,
             face_index_map,
         })
     }

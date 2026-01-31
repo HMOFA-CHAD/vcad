@@ -2,6 +2,72 @@
 /* eslint-disable */
 
 /**
+ * GPU-accelerated ray tracer for direct BRep rendering.
+ *
+ * This ray tracer renders BRep surfaces directly without tessellation,
+ * achieving pixel-perfect silhouettes at any zoom level.
+ */
+export class RayTracer {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Check if a solid can be ray traced.
+     *
+     * Returns true if the solid has a BRep representation.
+     */
+    static canRaytrace(solid: Solid): boolean;
+    /**
+     * Create a new ray tracer.
+     *
+     * Requires WebGPU to be available and initialized.
+     * Call `initGpu()` before calling this method.
+     */
+    static create(): RayTracer;
+    /**
+     * Check if the ray tracer has a scene loaded.
+     */
+    hasScene(): boolean;
+    /**
+     * Pick a face at the given pixel coordinates.
+     *
+     * # Arguments
+     * * `camera`, `target`, `up` - Camera parameters
+     * * `width`, `height`, `fov` - View parameters
+     * * `pixel_x`, `pixel_y` - Pixel coordinates to pick
+     *
+     * # Returns
+     * Face index if a face was hit, or -1 if background was hit.
+     */
+    pick(camera: Float64Array, target: Float64Array, up: Float64Array, width: number, height: number, fov: number, pixel_x: number, pixel_y: number): number;
+    /**
+     * Render the scene to an RGBA image.
+     *
+     * # Arguments
+     * * `camera` - Camera position [x, y, z]
+     * * `target` - Look-at target [x, y, z]
+     * * `up` - Up vector [x, y, z]
+     * * `width` - Image width in pixels
+     * * `height` - Image height in pixels
+     * * `fov` - Field of view in radians
+     *
+     * # Returns
+     * RGBA pixel data as a byte array (width * height * 4 bytes).
+     *
+     * # Note
+     * This function is async to support WASM's single-threaded environment.
+     * In JavaScript, it returns a Promise<Uint8Array>.
+     */
+    render(camera: Float64Array, target: Float64Array, up: Float64Array, width: number, height: number, fov: number): Promise<Uint8Array>;
+    /**
+     * Upload a solid's BRep representation for ray tracing.
+     *
+     * This extracts the BRep surfaces and builds the GPU scene data.
+     */
+    uploadSolid(solid: Solid): void;
+}
+
+/**
  * A 3D solid geometry object.
  *
  * Create solids from primitives, combine with boolean operations,
@@ -279,6 +345,19 @@ export class WasmAnnotationLayer {
 }
 
 /**
+ * Compute creased normals using GPU acceleration.
+ *
+ * # Arguments
+ * * `positions` - Flat array of vertex positions (x, y, z, ...)
+ * * `indices` - Triangle indices
+ * * `crease_angle` - Angle in radians; faces meeting at sharper angles get hard edges
+ *
+ * # Returns
+ * Flat array of normals (nx, ny, nz, ...), same length as positions.
+ */
+export function computeCreasedNormalsGpu(positions: Float32Array, indices: Uint32Array, crease_angle: number): Promise<Float32Array>;
+
+/**
  * Create a detail view from a projected view.
  *
  * A detail view is a magnified region of a parent view, useful for showing
@@ -297,6 +376,19 @@ export class WasmAnnotationLayer {
  * A JS object containing the detail view with edges and bounds.
  */
 export function createDetailView(parent_json: string, center_x: number, center_y: number, scale: number, width: number, height: number, label: string): any;
+
+/**
+ * Decimate a mesh to reduce triangle count.
+ *
+ * # Arguments
+ * * `positions` - Flat array of vertex positions
+ * * `indices` - Triangle indices
+ * * `target_ratio` - Target ratio of triangles to keep (0.5 = 50%)
+ *
+ * # Returns
+ * A JS object with decimated positions, indices, and normals.
+ */
+export function decimateMeshGpu(positions: Float32Array, indices: Uint32Array, target_ratio: number): Promise<any>;
 
 /**
  * Export a projected view to DXF format.
@@ -331,6 +423,36 @@ export function importStepBuffer(data: Uint8Array): any;
 export function init(): void;
 
 /**
+ * Initialize the GPU context for accelerated geometry processing.
+ *
+ * Returns `true` if WebGPU is available and initialized, `false` otherwise.
+ * This should be called once at application startup.
+ */
+export function initGpu(): Promise<boolean>;
+
+/**
+ * Check if GPU processing is available.
+ */
+export function isGpuAvailable(): boolean;
+
+/**
+ * Process geometry with GPU acceleration.
+ *
+ * Computes creased normals and optionally generates LOD meshes.
+ *
+ * # Arguments
+ * * `positions` - Flat array of vertex positions (x, y, z, ...)
+ * * `indices` - Triangle indices
+ * * `crease_angle` - Angle in radians for creased normal computation
+ * * `generate_lod` - If true, returns multiple LOD levels
+ *
+ * # Returns
+ * A JS array of geometry results. If `generate_lod` is true, returns
+ * [full, 50%, 25%] detail levels. Otherwise returns a single mesh.
+ */
+export function processGeometryGpu(positions: Float32Array, indices: Uint32Array, crease_angle: number, generate_lod: boolean): Promise<any>;
+
+/**
  * Project a triangle mesh to a 2D view.
  *
  * # Arguments
@@ -359,12 +481,24 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_raytracer_free: (a: number, b: number) => void;
     readonly __wbg_solid_free: (a: number, b: number) => void;
     readonly __wbg_wasmannotationlayer_free: (a: number, b: number) => void;
+    readonly computeCreasedNormalsGpu: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly createDetailView: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number];
+    readonly decimateMeshGpu: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly exportProjectedViewToDxf: (a: number, b: number) => [number, number, number, number];
     readonly importStepBuffer: (a: number, b: number) => [number, number, number];
+    readonly initGpu: () => any;
+    readonly isGpuAvailable: () => number;
+    readonly processGeometryGpu: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly projectMesh: (a: any, b: number, c: number) => any;
+    readonly raytracer_canRaytrace: (a: number) => number;
+    readonly raytracer_create: () => [number, number, number];
+    readonly raytracer_hasScene: (a: number) => number;
+    readonly raytracer_pick: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number];
+    readonly raytracer_render: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => any;
+    readonly raytracer_uploadSolid: (a: number, b: number) => [number, number];
     readonly sectionMesh: (a: any, b: number, c: number, d: number, e: number) => any;
     readonly solid_boundingBox: (a: number) => [number, number];
     readonly solid_centerOfMass: (a: number) => [number, number];
@@ -409,6 +543,11 @@ export interface InitOutput {
     readonly wasmannotationlayer_new: () => number;
     readonly wasmannotationlayer_renderAll: (a: number, b: number, c: number) => any;
     readonly init: () => void;
+    readonly wasm_bindgen__closure__destroy__ha8b73a36ae48e470: (a: number, b: number) => void;
+    readonly wasm_bindgen__closure__destroy__h250d7189f9770b99: (a: number, b: number) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h60f25fed64173f82: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h4488ad9b37e81000: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__ha8b3f1b8e67fad08: (a: number, b: number, c: any) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

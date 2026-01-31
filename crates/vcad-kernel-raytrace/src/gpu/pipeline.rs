@@ -88,9 +88,20 @@ impl RayTracePipeline {
                     },
                     count: None,
                 },
-                // Output texture
+                // Inner loop descriptors (vertex counts for each inner loop)
                 wgpu::BindGroupLayoutEntry {
                     binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Output texture
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
@@ -124,7 +135,11 @@ impl RayTracePipeline {
     }
 
     /// Render a scene to an output texture.
-    pub fn render(
+    ///
+    /// This function is async to support WASM's single-threaded environment where
+    /// blocking GPU buffer readback causes deadlocks. The async wrapper allows
+    /// wasm-bindgen-futures to yield control back to the browser event loop.
+    pub async fn render(
         &self,
         ctx: &GpuContext,
         scene: &GpuScene,
@@ -186,6 +201,17 @@ impl RayTracePipeline {
             usage: wgpu::BufferUsages::STORAGE,
         });
 
+        let inner_loop_descs = if scene.inner_loop_descs.is_empty() {
+            vec![0u32]
+        } else {
+            scene.inner_loop_descs.clone()
+        };
+        let inner_loop_descs_buffer = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Inner Loop Descs Buffer"),
+            contents: bytemuck::cast_slice(&inner_loop_descs),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
         // Create output texture
         let output_texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Output Texture"),
@@ -240,6 +266,10 @@ impl RayTracePipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
+                    resource: inner_loop_descs_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
                     resource: wgpu::BindingResource::TextureView(&output_view),
                 },
             ],
@@ -283,16 +313,100 @@ impl RayTracePipeline {
             },
         );
 
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&format!(
+            "[RT] Submitting GPU work: {}x{} = {} pixels",
+            width, height, width * height
+        ).into());
+
         ctx.queue.submit(Some(encoder.finish()));
 
         // Map and read buffer
         let buffer_slice = readback_buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            tx.send(result).unwrap();
-        });
-        ctx.device.poll(wgpu::Maintain::Wait);
-        rx.recv().unwrap().map_err(|_| GpuError::BufferMapping)?;
+
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&"[RT] Calling map_async...".into());
+
+        // On WASM, use a Promise that resolves when the callback fires
+        // This properly yields to the browser event loop
+        #[cfg(target_arch = "wasm32")]
+        let map_result = {
+            use wasm_bindgen::prelude::*;
+            use wasm_bindgen_futures::JsFuture;
+
+            // Create a Promise that resolves when map_async callback fires
+            let (promise, resolve, reject) = {
+                let resolve_ref = std::rc::Rc::new(std::cell::RefCell::new(None::<js_sys::Function>));
+                let reject_ref = std::rc::Rc::new(std::cell::RefCell::new(None::<js_sys::Function>));
+                let resolve_clone = resolve_ref.clone();
+                let reject_clone = reject_ref.clone();
+
+                let promise = js_sys::Promise::new(&mut |resolve, reject| {
+                    *resolve_clone.borrow_mut() = Some(resolve);
+                    *reject_clone.borrow_mut() = Some(reject);
+                });
+
+                let resolve = resolve_ref.borrow().clone().unwrap();
+                let reject = reject_ref.borrow().clone().unwrap();
+                (promise, resolve, reject)
+            };
+
+            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                web_sys::console::log_1(&format!("[RT] map_async callback: {:?}", result.is_ok()).into());
+                match result {
+                    Ok(()) => {
+                        let _ = resolve.call0(&JsValue::undefined());
+                    }
+                    Err(_) => {
+                        let _ = reject.call1(&JsValue::undefined(), &JsValue::from_str("Buffer mapping failed"));
+                    }
+                }
+            });
+
+            // Single poll to submit the mapping request
+            ctx.device.poll(wgpu::Maintain::Poll);
+
+            web_sys::console::log_1(&"[RT] Awaiting buffer mapping...".into());
+
+            // Await the promise - this yields to browser event loop properly
+            match JsFuture::from(promise).await {
+                Ok(_) => {
+                    web_sys::console::log_1(&"[RT] Buffer mapping complete".into());
+                    Ok(())
+                }
+                Err(_) => Err(GpuError::BufferMapping)
+            }
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let map_result = {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            use std::sync::Arc;
+
+            let success = Arc::new(AtomicBool::new(false));
+            let success_clone = success.clone();
+
+            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                if result.is_ok() {
+                    success_clone.store(true, Ordering::SeqCst);
+                }
+            });
+
+            ctx.device.poll(wgpu::Maintain::Wait);
+
+            if success.load(Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err(GpuError::BufferMapping)
+            }
+        };
+
+        if map_result.is_err() {
+            return Err(GpuError::BufferMapping);
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&"[RT] Reading mapped data...".into());
 
         let data = buffer_slice.get_mapped_range();
 

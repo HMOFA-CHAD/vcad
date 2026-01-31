@@ -10,6 +10,9 @@ export interface TriangleMesh {
 export interface EvaluatedPart {
   mesh: TriangleMesh;
   material: string;
+  /** Optional BRep solid for ray tracing (only available for primitives, not boolean results). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  solid?: any;
 }
 
 /** A part definition in an assembly (reusable geometry). */

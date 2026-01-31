@@ -8,6 +8,11 @@
 
 let wasmModule: typeof import("@vcad/kernel-wasm") | null = null;
 let gpuAvailable = false;
+let gpuInitPromise: Promise<boolean> | null = null;
+let rayTracerAvailable = false;
+let rayTracerInitPromise: Promise<boolean> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let rayTracerInstance: any = null;
 
 /**
  * Result of GPU geometry processing.
@@ -30,28 +35,34 @@ export interface GpuGeometryResult {
  * @returns true if WebGPU is available and initialized
  */
 export async function initializeGpu(): Promise<boolean> {
+  // Already initialized
   if (gpuAvailable) return true;
 
-  try {
-    if (!wasmModule) {
-      wasmModule = await import("@vcad/kernel-wasm");
-    }
+  // Init in progress - return existing promise to avoid double init
+  if (gpuInitPromise) return gpuInitPromise;
 
-    // @ts-expect-error initGpu may not be defined if GPU feature is disabled
-    if (typeof wasmModule.initGpu === "function") {
-      // @ts-expect-error
-      gpuAvailable = await wasmModule.initGpu();
-      console.log(`[GPU] WebGPU ${gpuAvailable ? "available" : "not available"}`);
-    } else {
-      console.log("[GPU] GPU feature not compiled into WASM module");
-      gpuAvailable = false;
-    }
+  gpuInitPromise = (async () => {
+    try {
+      if (!wasmModule) {
+        wasmModule = await import("@vcad/kernel-wasm");
+      }
 
-    return gpuAvailable;
-  } catch (e) {
-    console.warn("[GPU] Init failed:", e);
-    return false;
-  }
+      if (typeof wasmModule.initGpu === "function") {
+        gpuAvailable = await wasmModule.initGpu();
+        console.log(`[GPU] WebGPU ${gpuAvailable ? "available" : "not available"}`);
+      } else {
+        console.log("[GPU] GPU feature not compiled into WASM module");
+        gpuAvailable = false;
+      }
+
+      return gpuAvailable;
+    } catch (e) {
+      console.warn("[GPU] Init failed:", e);
+      return false;
+    }
+  })();
+
+  return gpuInitPromise;
 }
 
 /**
@@ -87,10 +98,9 @@ export async function processGeometryGpu(
     throw new Error("WASM module not loaded");
   }
 
-  // @ts-expect-error processGeometryGpu may not be defined
   const results = await wasmModule.processGeometryGpu(
-    Array.from(positions),
-    Array.from(indices),
+    positions,
+    indices,
     creaseAngle,
     generateLod
   );
@@ -124,10 +134,9 @@ export async function computeCreasedNormalsGpu(
     throw new Error("WASM module not loaded");
   }
 
-  // @ts-expect-error computeCreasedNormalsGpu may not be defined
   const normals = await wasmModule.computeCreasedNormalsGpu(
-    Array.from(positions),
-    Array.from(indices),
+    positions,
+    indices,
     creaseAngle
   );
 
@@ -156,10 +165,9 @@ export async function decimateMeshGpu(
     throw new Error("WASM module not loaded");
   }
 
-  // @ts-expect-error decimateMeshGpu may not be defined
   const result = await wasmModule.decimateMeshGpu(
-    Array.from(positions),
-    Array.from(indices),
+    positions,
+    indices,
     targetRatio
   );
 
@@ -213,4 +221,67 @@ export function mergeMeshes(
   }
 
   return { positions, indices };
+}
+
+/**
+ * Initialize the GPU ray tracer for direct BRep rendering.
+ *
+ * Requires WebGPU to be available (call initializeGpu first).
+ * Safe to call multiple times - subsequent calls return the cached result.
+ *
+ * @returns true if ray tracer is available and initialized
+ */
+export async function initializeRayTracer(): Promise<boolean> {
+  // Already initialized
+  if (rayTracerAvailable) return true;
+
+  // Init in progress - return existing promise
+  if (rayTracerInitPromise) return rayTracerInitPromise;
+
+  // GPU must be initialized first
+  if (!gpuAvailable) {
+    console.log("[RayTracer] GPU not available, skipping ray tracer init");
+    return false;
+  }
+
+  rayTracerInitPromise = (async () => {
+    try {
+      if (!wasmModule) {
+        wasmModule = await import("@vcad/kernel-wasm");
+      }
+
+      if (typeof wasmModule.RayTracer?.create === "function") {
+        rayTracerInstance = wasmModule.RayTracer.create();
+        rayTracerAvailable = true;
+        console.log("[RayTracer] Ray tracer initialized successfully");
+      } else {
+        console.log("[RayTracer] Ray tracing feature not compiled into WASM module");
+        rayTracerAvailable = false;
+      }
+
+      return rayTracerAvailable;
+    } catch (e) {
+      console.warn("[RayTracer] Init failed:", e);
+      return false;
+    }
+  })();
+
+  return rayTracerInitPromise;
+}
+
+/**
+ * Get the ray tracer instance.
+ *
+ * Returns null if ray tracer is not initialized.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getRayTracer(): any {
+  return rayTracerInstance;
+}
+
+/**
+ * Check if the ray tracer is currently available.
+ */
+export function isRayTracerAvailable(): boolean {
+  return rayTracerAvailable;
 }

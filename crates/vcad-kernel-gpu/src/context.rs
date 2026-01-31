@@ -4,7 +4,27 @@ use std::sync::OnceLock;
 use thiserror::Error;
 use wgpu::{Device, Instance, Queue};
 
+// Wrapper to make GpuContext Send+Sync for WASM (which is single-threaded anyway)
+#[cfg(target_arch = "wasm32")]
+struct SendSyncWrapper(GpuContext);
+
+#[cfg(target_arch = "wasm32")]
+unsafe impl Send for SendSyncWrapper {}
+#[cfg(target_arch = "wasm32")]
+unsafe impl Sync for SendSyncWrapper {}
+
+#[cfg(target_arch = "wasm32")]
+static GPU_CONTEXT: OnceLock<SendSyncWrapper> = OnceLock::new();
+
+#[cfg(not(target_arch = "wasm32"))]
 static GPU_CONTEXT: OnceLock<GpuContext> = OnceLock::new();
+
+// Guard to prevent concurrent initialization attempts
+#[cfg(target_arch = "wasm32")]
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(target_arch = "wasm32")]
+static INIT_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 /// Errors that can occur during GPU operations.
 #[derive(Debug, Error)]
@@ -39,15 +59,8 @@ pub struct GpuContext {
 }
 
 impl GpuContext {
-    /// Initialize the GPU context asynchronously.
-    ///
-    /// This should be called once at application startup. Subsequent calls
-    /// will return the existing context.
-    pub async fn init() -> Result<&'static Self, GpuError> {
-        if let Some(ctx) = GPU_CONTEXT.get() {
-            return Ok(ctx);
-        }
-
+    /// Create a new GPU context from device and queue.
+    async fn create() -> Result<Self, GpuError> {
         let instance = Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
             ..Default::default()
@@ -66,21 +79,74 @@ impl GpuContext {
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await?;
 
+        Ok(GpuContext { device, queue })
+    }
+
+    /// Initialize the GPU context asynchronously.
+    ///
+    /// This should be called once at application startup. Subsequent calls
+    /// will return the existing context.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn init() -> Result<&'static Self, GpuError> {
+        if let Some(ctx) = GPU_CONTEXT.get() {
+            return Ok(ctx);
+        }
+
+        let ctx = Self::create().await?;
+
         GPU_CONTEXT
-            .set(GpuContext { device, queue })
+            .set(ctx)
             .map_err(|_| GpuError::AlreadyInitialized)?;
 
         Ok(GPU_CONTEXT.get().unwrap())
     }
 
+    /// Initialize the GPU context asynchronously (WASM version).
+    #[cfg(target_arch = "wasm32")]
+    pub async fn init() -> Result<&'static Self, GpuError> {
+        // Already initialized - return existing context
+        if let Some(wrapper) = GPU_CONTEXT.get() {
+            return Ok(&wrapper.0);
+        }
+
+        // Check if another init is in progress (prevents race condition)
+        if INIT_IN_PROGRESS.swap(true, Ordering::SeqCst) {
+            // Another init is running, wait for it by polling
+            // In single-threaded WASM, this means init was called recursively or re-entrantly
+            // Just return an error to avoid the FnOnce panic
+            return Err(GpuError::AlreadyInitialized);
+        }
+
+        let result = Self::create().await;
+
+        match result {
+            Ok(ctx) => {
+                let _ = GPU_CONTEXT.set(SendSyncWrapper(ctx));
+                INIT_IN_PROGRESS.store(false, Ordering::SeqCst);
+                Ok(&GPU_CONTEXT.get().unwrap().0)
+            }
+            Err(e) => {
+                INIT_IN_PROGRESS.store(false, Ordering::SeqCst);
+                Err(e)
+            }
+        }
+    }
+
     /// Get the GPU context if it has been initialized.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get() -> Option<&'static Self> {
         GPU_CONTEXT.get()
     }
 
+    /// Get the GPU context if it has been initialized (WASM version).
+    #[cfg(target_arch = "wasm32")]
+    pub fn get() -> Option<&'static Self> {
+        GPU_CONTEXT.get().map(|w| &w.0)
+    }
+
     /// Get the GPU context, returning an error if not initialized.
     pub fn require() -> Result<&'static Self, GpuError> {
-        GPU_CONTEXT.get().ok_or(GpuError::NotInitialized)
+        Self::get().ok_or(GpuError::NotInitialized)
     }
 
     /// Initialize the GPU context synchronously (native only).

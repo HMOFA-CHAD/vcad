@@ -1977,6 +1977,7 @@ name = "vcad-kernel-raytrace"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "js-sys",
  "thiserror 2.0.18",
  "vcad-kernel-booleans",
  "vcad-kernel-geom",
@@ -1984,6 +1985,9 @@ dependencies = [
  "vcad-kernel-math",
  "vcad-kernel-primitives",
  "vcad-kernel-topo",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "wgpu",
 ]
 

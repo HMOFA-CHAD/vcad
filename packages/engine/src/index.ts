@@ -23,6 +23,9 @@ export {
   computeCreasedNormalsGpu,
   decimateMeshGpu,
   mergeMeshes,
+  initializeRayTracer,
+  getRayTracer,
+  isRayTracerAvailable,
 } from "./gpu.js";
 
 export type { GpuGeometryResult } from "./gpu.js";

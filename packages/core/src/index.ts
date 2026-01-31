@@ -43,7 +43,7 @@ export { useDocumentStore, getUndoActionName, getRedoActionName } from "./stores
 export type { VcadFile, DocumentState } from "./stores/document-store.js";
 
 export { useUiStore } from "./stores/ui-store.js";
-export type { UiState, MaterialPreview } from "./stores/ui-store.js";
+export type { UiState, MaterialPreview, RenderMode, RaytraceQuality } from "./stores/ui-store.js";
 
 export { useSketchStore } from "./stores/sketch-store.js";
 export type { SketchStore, ProfileSnapshot, SketchExitStatus } from "./stores/sketch-store.js";

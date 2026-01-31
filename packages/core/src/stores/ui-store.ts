@@ -6,6 +6,9 @@ export interface MaterialPreview {
   materialKey: string;
 }
 
+export type RenderMode = "standard" | "raytrace";
+export type RaytraceQuality = "draft" | "standard" | "high";
+
 export interface UiState {
   selectedPartIds: Set<string>;
   hoveredPartId: string | null;
@@ -26,6 +29,10 @@ export interface UiState {
   previewMaterial: MaterialPreview | null;
   recentMaterials: string[]; // Last 6 used material keys
   favoriteMaterials: string[]; // User-pinned material keys
+  // Ray tracing state
+  renderMode: RenderMode;
+  raytraceQuality: RaytraceQuality;
+  raytraceAvailable: boolean;
 
   select: (partId: string | null) => void;
   toggleSelect: (partId: string) => void;
@@ -53,6 +60,11 @@ export interface UiState {
   setPreviewMaterial: (preview: MaterialPreview | null) => void;
   addRecentMaterial: (key: string) => void;
   toggleFavoriteMaterial: (key: string) => void;
+  // Ray tracing actions
+  setRenderMode: (mode: RenderMode) => void;
+  toggleRenderMode: () => void;
+  setRaytraceQuality: (quality: RaytraceQuality) => void;
+  setRaytraceAvailable: (available: boolean) => void;
 }
 
 // Load persisted material preferences from localStorage
@@ -93,6 +105,9 @@ export const useUiStore = create<UiState>((set) => ({
   previewMaterial: null,
   recentMaterials: persistedMaterials.recent,
   favoriteMaterials: persistedMaterials.favorites,
+  renderMode: "standard",
+  raytraceQuality: "draft",
+  raytraceAvailable: false,
 
   select: (partId) =>
     set({ selectedPartIds: partId ? new Set([partId]) : new Set() }),
@@ -188,4 +203,15 @@ export const useUiStore = create<UiState>((set) => ({
       }
       return { favoriteMaterials: favorites };
     }),
+
+  setRenderMode: (mode) => set({ renderMode: mode }),
+
+  toggleRenderMode: () =>
+    set((s) => ({
+      renderMode: s.renderMode === "standard" ? "raytrace" : "standard",
+    })),
+
+  setRaytraceQuality: (quality) => set({ raytraceQuality: quality }),
+
+  setRaytraceAvailable: (available) => set({ raytraceAvailable: available }),
 }));

@@ -19,7 +19,11 @@ const PI: f32 = 3.14159265359;
 
 struct GpuSurface {
     surface_type: u32,
-    _pad: vec3<u32>,
+    // Use explicit u32 padding instead of vec3<u32> to match Rust layout
+    // vec3<u32> in WGSL has 16-byte alignment which would misalign params
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
     params: array<f32, 32>,
 }
 
@@ -30,6 +34,10 @@ struct GpuFace {
     trim_count: u32,
     aabb_min: vec4<f32>,
     aabb_max: vec4<f32>,
+    inner_start: u32,
+    inner_count: u32,
+    inner_loop_count: u32,
+    inner_desc_start: u32,
 }
 
 struct GpuBvhNode {
@@ -43,7 +51,7 @@ struct GpuBvhNode {
 
 struct Camera {
     position: vec4<f32>,
-    target: vec4<f32>,
+    look_at: vec4<f32>,
     up: vec4<f32>,
     fov: f32,
     width: u32,
@@ -64,7 +72,8 @@ struct RayHit {
 @group(0) @binding(2) var<storage, read> faces: array<GpuFace>;
 @group(0) @binding(3) var<storage, read> bvh_nodes: array<GpuBvhNode>;
 @group(0) @binding(4) var<storage, read> trim_verts: array<vec2<f32>>;
-@group(0) @binding(5) var output: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(5) var<storage, read> inner_loop_descs: array<u32>;
+@group(0) @binding(6) var output: texture_storage_2d<rgba8unorm, write>;
 
 // Utility functions
 
@@ -79,7 +88,7 @@ fn ray_origin_and_direction(pixel: vec2<u32>) -> mat2x3<f32> {
     );
 
     // Build camera coordinate system
-    let forward = normalize(camera.target.xyz - camera.position.xyz);
+    let forward = normalize(camera.look_at.xyz - camera.position.xyz);
     let right = normalize(cross(forward, camera.up.xyz));
     let up = cross(right, forward);
 
@@ -268,19 +277,17 @@ fn intersect_surface(origin: vec3<f32>, dir: vec3<f32>, surface_idx: u32) -> Ray
     }
 }
 
-// Point-in-polygon test (winding number)
-fn point_in_face(uv: vec2<f32>, face_idx: u32) -> bool {
-    let face = faces[face_idx];
-    if face.trim_count < 3u {
-        return true; // No trim loop, assume valid
+// Compute winding number for a single polygon
+fn winding_number_polygon(uv: vec2<f32>, start: u32, count: u32) -> i32 {
+    if count < 3u {
+        return 0;
     }
 
     var winding: i32 = 0;
-    let n = face.trim_count;
 
-    for (var i = 0u; i < n; i++) {
-        let p1 = trim_verts[face.trim_start + i];
-        let p2 = trim_verts[face.trim_start + ((i + 1u) % n)];
+    for (var i = 0u; i < count; i++) {
+        let p1 = trim_verts[start + i];
+        let p2 = trim_verts[start + ((i + 1u) % count)];
 
         if p1.y <= uv.y {
             if p2.y > uv.y {
@@ -299,7 +306,100 @@ fn point_in_face(uv: vec2<f32>, face_idx: u32) -> bool {
         }
     }
 
-    return winding != 0;
+    return winding;
+}
+
+// Simple AABB check for outer loop (for debugging)
+fn uv_in_trim_bounds(uv: vec2<f32>, start: u32, count: u32) -> bool {
+    if count == 0u {
+        return false;
+    }
+
+    var min_uv = trim_verts[start];
+    var max_uv = trim_verts[start];
+
+    for (var i = 1u; i < count; i++) {
+        let v = trim_verts[start + i];
+        min_uv = min(min_uv, v);
+        max_uv = max(max_uv, v);
+    }
+
+    // Add small epsilon for numerical tolerance
+    let eps = 0.001;
+    return uv.x >= min_uv.x - eps && uv.x <= max_uv.x + eps &&
+           uv.y >= min_uv.y - eps && uv.y <= max_uv.y + eps;
+}
+
+// Point-in-polygon test with inner loops (holes)
+fn point_in_face(uv: vec2<f32>, face_idx: u32) -> bool {
+    let face = faces[face_idx];
+
+    // Check outer loop - point must be inside
+    if face.trim_count < 3u {
+        // For faces with < 3 trim vertices (e.g., full cylinder walls),
+        // the 2 vertices define a v-range (height bounds).
+        // The u-coordinate wraps around 0 to 2π.
+        if face.trim_count == 2u {
+            let v1 = trim_verts[face.trim_start];
+            let v2 = trim_verts[face.trim_start + 1u];
+            let v_min = min(v1.y, v2.y);
+            let v_max = max(v1.y, v2.y);
+            // Check v is in range (u is assumed valid for full wrap-around)
+            return uv.y >= v_min && uv.y <= v_max;
+        }
+        // For 0 or 1 vertices, reject
+        return false;
+    }
+
+    // Quick AABB rejection before expensive winding number test
+    if !uv_in_trim_bounds(uv, face.trim_start, face.trim_count) {
+        return false;
+    }
+
+    // Winding number test for proper polygon boundary
+    let outer_winding = winding_number_polygon(uv, face.trim_start, face.trim_count);
+    if outer_winding == 0 {
+        return false; // Outside outer boundary
+    }
+
+    // Check inner loops (holes) - point must be outside all holes
+    if face.inner_loop_count > 0u {
+        var inner_offset = face.inner_start;
+        for (var loop_idx = 0u; loop_idx < face.inner_loop_count; loop_idx++) {
+            let loop_size = inner_loop_descs[face.inner_desc_start + loop_idx];
+            if loop_size >= 3u {
+                let inner_winding = winding_number_polygon(uv, inner_offset, loop_size);
+                if inner_winding != 0 {
+                    return false; // Inside a hole
+                }
+            }
+            inner_offset += loop_size;
+        }
+    }
+
+    return true;
+}
+
+// Debug: trace with bounds checking but without BVH
+fn trace_debug(origin: vec3<f32>, dir: vec3<f32>) -> RayHit {
+    var best_hit: RayHit;
+    best_hit.t = MAX_T;
+    best_hit.face_idx = 0xFFFFFFFFu;
+
+    let num_faces = arrayLength(&faces);
+    for (var i = 0u; i < num_faces; i++) {
+        let face = faces[i];
+        let hit = intersect_surface(origin, dir, face.surface_idx);
+        if hit.t > EPSILON && hit.t < best_hit.t {
+            // Apply bounds checking to reject hits outside face boundary
+            if point_in_face(hit.uv, i) {
+                best_hit = hit;
+                best_hit.face_idx = i;
+            }
+        }
+    }
+
+    return best_hit;
 }
 
 // BVH traversal
@@ -335,6 +435,7 @@ fn trace_bvh(origin: vec3<f32>, dir: vec3<f32>) -> RayHit {
 
                 let hit = intersect_surface(origin, dir, face.surface_idx);
                 if hit.t < best_hit.t && hit.t > 0.0 {
+                    // Use proper UV-based point-in-polygon test
                     if point_in_face(hit.uv, face_idx) {
                         best_hit = hit;
                         best_hit.face_idx = face_idx;
@@ -407,7 +508,7 @@ fn compute_normal(hit: RayHit) -> vec3<f32> {
     return normalize(normal);
 }
 
-// Simple shading
+// Shading with lighting
 fn shade(hit: RayHit, dir: vec3<f32>) -> vec4<f32> {
     if hit.face_idx == 0xFFFFFFFFu {
         // Background color (sky blue gradient)
@@ -415,21 +516,20 @@ fn shade(hit: RayHit, dir: vec3<f32>) -> vec4<f32> {
         return mix(vec4<f32>(0.3, 0.4, 0.5, 1.0), vec4<f32>(0.6, 0.7, 0.9, 1.0), t);
     }
 
+    // Compute normal
     let normal = compute_normal(hit);
 
-    // Simple directional light + ambient
-    let light_dir = normalize(vec3<f32>(1.0, 2.0, 1.5));
+    // Simple directional lighting
+    let light_dir = normalize(vec3<f32>(0.5, 0.8, 0.3));
     let ndotl = max(dot(normal, light_dir), 0.0);
-
-    // Base color (face index for debug)
-    let face_color = vec3<f32>(0.7, 0.75, 0.8);
-
-    // Ambient + diffuse
     let ambient = 0.3;
     let diffuse = 0.7 * ndotl;
-    let color = face_color * (ambient + diffuse);
 
-    return vec4<f32>(color, 1.0);
+    // Base material color (neutral gray)
+    let base_color = vec3<f32>(0.7, 0.7, 0.7);
+    let lit_color = base_color * (ambient + diffuse);
+
+    return vec4<f32>(lit_color, 1.0);
 }
 
 @compute @workgroup_size(8, 8)
@@ -444,6 +544,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let origin = ray[0];
     let dir = ray[1];
 
+    // Trace ray using BVH acceleration
     let hit = trace_bvh(origin, dir);
     let color = shade(hit, dir);
 
