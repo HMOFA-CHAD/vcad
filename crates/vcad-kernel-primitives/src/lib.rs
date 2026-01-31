@@ -68,19 +68,19 @@ pub fn make_cube(sx: f64, sy: f64, sz: f64) -> BRepSolid {
             Vec3::new(1.0, 0.0, 0.0),
             Vec3::new(0.0, 1.0, 0.0),
         ),
-        // Front face (y=0): normal -Y = (0,0,1) × (1,0,0)
+        // Front face (y=0): normal -Y = (1,0,0) × (0,0,1)
         (
             [v0, v1, v5, v4],
             Point3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
             Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
         ),
-        // Back face (y=sy): normal +Y = (1,0,0) × (0,0,1)
+        // Back face (y=sy): normal +Y = (0,0,1) × (1,0,0)
         (
             [v2, v3, v7, v6],
             Point3::new(0.0, sy, 0.0),
-            Vec3::new(1.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(1.0, 0.0, 0.0),
         ),
         // Left face (x=0): normal -X = (0,0,1) × (0,1,0)
         (
