@@ -10,17 +10,21 @@ import { dirname, resolve } from "path";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const isDev = process.env.NODE_ENV !== "production";
-
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.0.0"),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     tailwindcss(),
     wasm(),
     topLevelAwait(),
-    // Disable PWA in development to avoid caching issues
-    !isDev && VitePWA({
-      registerType: "autoUpdate",
+    VitePWA({
+      registerType: "prompt",
+      devOptions: {
+        enabled: true,
+      },
       includeAssets: ["fonts/**/*", "assets/**/*"],
       manifest: false, // Use public/manifest.json
       workbox: {
@@ -81,7 +85,7 @@ export default defineConfig({
         ],
       },
     }),
-  ].filter(Boolean),
+  ],
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),

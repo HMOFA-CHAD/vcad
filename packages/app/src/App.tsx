@@ -25,6 +25,7 @@ import { LogViewer } from "@/components/LogViewer";
 import { PrintPanel } from "@/components/print";
 import { DocumentPicker } from "@/components/DocumentPicker";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { UpdateNotification } from "@/components/UpdateNotification";
 import {
   useSketchStore,
   useEngineStore,
@@ -511,6 +512,9 @@ export function App() {
 
         {/* Offline indicator */}
         <OfflineIndicator />
+
+        {/* PWA update prompt */}
+        <UpdateNotification />
 
         {/* Modals */}
         <AboutModal open={aboutOpen} onOpenChange={setAboutOpen} />

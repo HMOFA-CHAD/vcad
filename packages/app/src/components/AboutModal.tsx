@@ -117,6 +117,9 @@ export function AboutModal({
           <div className="mb-5 flex items-center justify-between">
             <Dialog.Title className="text-2xl font-bold tracking-tight text-text">
               vcad<span className="text-accent">.</span>
+              <span className="ml-2 text-[10px] font-normal text-text-muted">
+                v{__APP_VERSION__}
+              </span>
             </Dialog.Title>
             <Dialog.Close className=" p-1 text-text-muted hover:bg-border/50 hover:text-text transition-colors cursor-pointer">
               <X size={16} />
@@ -193,6 +196,11 @@ export function AboutModal({
                 ))}
               </div>
             </Section>
+
+            {/* Build info */}
+            <div className="text-[10px] text-text-muted/50">
+              Built {new Date(__BUILD_TIME__).toLocaleDateString()}
+            </div>
 
             {/* Links */}
             <div className="flex gap-4 pt-1 text-xs">
