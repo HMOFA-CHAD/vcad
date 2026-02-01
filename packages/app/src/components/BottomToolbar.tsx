@@ -372,7 +372,7 @@ export function BottomToolbar() {
 
   // Track manual tab clicks to temporarily disable auto-switch
   const manualOverrideRef = useRef(false);
-  const manualOverrideTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const manualOverrideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTabClick = useCallback((tab: ToolbarTab) => {
     // Set manual override for 2 seconds
