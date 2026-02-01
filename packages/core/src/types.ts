@@ -134,7 +134,7 @@ export function isImportedMeshPart(part: PartInfo): part is ImportedMeshPartInfo
   return part.kind === "imported-mesh";
 }
 
-export type ToolMode = "select" | "primitive";
+export type ToolMode = "select" | "primitive" | "simulate";
 export type TransformMode = "translate" | "rotate" | "scale";
 export type Theme = "system" | "dark" | "light";
 

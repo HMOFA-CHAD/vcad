@@ -43,13 +43,22 @@ export { useDocumentStore, getUndoActionName, getRedoActionName } from "./stores
 export type { VcadFile, DocumentState } from "./stores/document-store.js";
 
 export { useUiStore } from "./stores/ui-store.js";
-export type { UiState, MaterialPreview, RenderMode, RaytraceQuality } from "./stores/ui-store.js";
+export type { UiState, MaterialPreview, RenderMode, RaytraceQuality, RaytraceDebugMode } from "./stores/ui-store.js";
 
 export { useSketchStore } from "./stores/sketch-store.js";
 export type { SketchStore, ProfileSnapshot, SketchExitStatus } from "./stores/sketch-store.js";
 
 export { useEngineStore } from "./stores/engine-store.js";
 export type { EngineState } from "./stores/engine-store.js";
+
+export { useSimulationStore } from "./stores/simulation-store.js";
+export type {
+  SimulationState,
+  SimulationMode,
+  ActionType,
+  JointState,
+  SimulationObservation,
+} from "./stores/simulation-store.js";
 
 // Commands
 export { createCommandRegistry } from "./commands.js";
