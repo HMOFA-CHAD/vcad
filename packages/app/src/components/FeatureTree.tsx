@@ -1,6 +1,24 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Cube,
   Cylinder,
   Globe,
@@ -22,14 +40,21 @@ import {
   CubeTransparent,
   DotsThree,
   ArrowsHorizontal,
+  Eye,
+  EyeSlash,
+  DotsSixVertical,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ContextMenu } from "@/components/ContextMenu";
-import { useDocumentStore, useUiStore, isBooleanPart } from "@vcad/core";
-import type { PrimitiveKind, PartInfo, BooleanPartInfo } from "@vcad/core";
+import { useDocumentStore, useUiStore, isBooleanPart, isPrimitivePart } from "@vcad/core";
+import type { PrimitiveKind, PartInfo, BooleanPartInfo, PrimitivePartInfo } from "@vcad/core";
 import type { PartInstance, Joint, JointKind } from "@vcad/ir";
 import { cn } from "@/lib/utils";
+import { getPartSummary } from "./tree/part-summary";
+import { InlineCubeDimensions, InlineCylinderDimensions, InlineSphereDimensions } from "./tree/InlineDimensions";
+import { InlinePositionSection, InlineRotationSection } from "./tree/InlineTransform";
+import { InlineMaterial } from "./tree/InlineMaterial";
 
 const KIND_ICONS: Record<PrimitiveKind, typeof Cube> = {
   cube: Cube,
@@ -51,6 +76,17 @@ function getPartIcon(part: PartInfo): typeof Cube {
   if (part.kind === "circular-pattern") return ArrowsClockwise;
   if (part.kind === "mirror") return ArrowsHorizontal;
   return KIND_ICONS[part.kind];
+}
+
+/** Drag preview shown in DragOverlay - renders outside sidebar constraints */
+function DragPreview({ part }: { part: PartInfo }) {
+  const Icon = getPartIcon(part);
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-1 bg-surface border border-accent rounded shadow-lg text-xs text-text">
+      <Icon size={12} className="shrink-0 text-text-muted" />
+      <span className="truncate max-w-32">{part.name}</span>
+    </div>
+  );
 }
 
 function InlineRenameInput({
@@ -103,6 +139,13 @@ interface TreeNodeProps {
   consumedParts: Record<string, PartInfo>;
   renamingId: string | null;
   setRenamingId: (id: string | null) => void;
+  /** IDs of parts that are expanded for inline editing */
+  inlineExpandedIds: Set<string>;
+  toggleInlineExpanded: (id: string) => void;
+  /** Drag handle listeners (only for depth 0) */
+  dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>;
+  /** Whether this node is being dragged */
+  isDragging?: boolean;
 }
 
 function TreeNode({
@@ -113,6 +156,10 @@ function TreeNode({
   consumedParts,
   renamingId,
   setRenamingId,
+  inlineExpandedIds,
+  toggleInlineExpanded,
+  dragHandleProps,
+  isDragging,
 }: TreeNodeProps) {
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const hoveredPartId = useUiStore((s) => s.hoveredPartId);
@@ -121,6 +168,8 @@ function TreeNode({
   const toggleSelect = useUiStore((s) => s.toggleSelect);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const removePart = useDocumentStore((s) => s.removePart);
+  const document = useDocumentStore((s) => s.document);
+  const setPartVisible = useDocumentStore((s) => s.setPartVisible);
 
   const Icon = getPartIcon(part);
   const isSelected = selectedPartIds.has(part.id);
@@ -130,6 +179,32 @@ function TreeNode({
   const isBoolean = isBooleanPart(part);
   const hasChildren = isBoolean && part.sourcePartIds.length > 0;
   const isExpanded = expandedIds.has(part.id);
+  const isInlineExpanded = inlineExpandedIds.has(part.id);
+
+  // Check if this part is visible
+  const rootEntry = document.roots.find((r) => r.root === part.translateNodeId);
+  const isVisible = rootEntry?.visible !== false;
+
+  // Allow inline expansion for all top-level parts (not just primitives)
+  const canInlineExpand = depth === 0;
+
+  // Get summary text for collapsed state
+  const summary = getPartSummary(part, document);
+
+  // Get transform data for inline editing
+  const translateNode = document.nodes[String(part.translateNodeId)];
+  const rotateNode = document.nodes[String(part.rotateNodeId)];
+  const offset =
+    translateNode?.op.type === "Translate"
+      ? translateNode.op.offset
+      : { x: 0, y: 0, z: 0 };
+  const angles =
+    rotateNode?.op.type === "Rotate"
+      ? rotateNode.op.angles
+      : { x: 0, y: 0, z: 0 };
+
+  // Get material for inline picker
+  const materialKey = rootEntry?.material ?? "default";
 
   const childParts = useMemo(() => {
     if (!isBoolean) return [];
@@ -137,6 +212,22 @@ function TreeNode({
       .map((id) => consumedParts[id])
       .filter((p): p is PartInfo => p !== undefined);
   }, [isBoolean, part, consumedParts]);
+
+  // Render inline dimensions if expanded
+  function renderInlineDimensions() {
+    if (!isPrimitivePart(part)) return null;
+    const primPart = part as PrimitivePartInfo;
+    switch (primPart.kind) {
+      case "cube":
+        return <InlineCubeDimensions part={primPart} />;
+      case "cylinder":
+        return <InlineCylinderDimensions part={primPart} />;
+      case "sphere":
+        return <InlineSphereDimensions part={primPart} />;
+      default:
+        return null;
+    }
+  }
 
   return (
     <>
@@ -149,6 +240,8 @@ function TreeNode({
             ? "bg-surface/80 text-text backdrop-blur-sm"
             : "text-text-muted/90 hover:bg-surface/60 hover:text-text hover:backdrop-blur-sm",
           depth > 0 && "opacity-70",
+          !isVisible && "opacity-40",
+          isDragging && "opacity-50",
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={(e) => {
@@ -164,15 +257,34 @@ function TreeNode({
         onMouseEnter={() => setHoveredPartId(part.id)}
         onMouseLeave={() => setHoveredPartId(null)}
       >
-        {hasChildren ? (
+        {/* Drag handle (only at depth 0) */}
+        {depth === 0 && dragHandleProps && (
+          <button
+            {...dragHandleProps}
+            className="shrink-0 p-0.5 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 text-text-muted hover:text-text"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DotsSixVertical size={10} />
+          </button>
+        )}
+        {/* Expand caret for boolean children OR inline dimensions */}
+        {(hasChildren || canInlineExpand) ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              toggleExpanded(part.id);
+              if (hasChildren) {
+                toggleExpanded(part.id);
+              } else if (canInlineExpand) {
+                toggleInlineExpanded(part.id);
+              }
             }}
             className="shrink-0 p-0.5 hover:bg-hover"
           >
-            {isExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
+            {(hasChildren ? isExpanded : isInlineExpanded) ? (
+              <CaretDown size={10} />
+            ) : (
+              <CaretRight size={10} />
+            )}
           </button>
         ) : (
           <span className="w-4" />
@@ -185,26 +297,63 @@ function TreeNode({
             onDone={() => setRenamingId(null)}
           />
         ) : (
-          <span className="flex-1 truncate">{part.name}</span>
+          <span className="flex-1 truncate">
+            {part.name}
+            {/* Show summary when not inline expanded */}
+            {!isInlineExpanded && summary && (
+              <span className="ml-1 text-text-muted/60 text-[10px]">{summary}</span>
+            )}
+          </span>
         )}
         {depth === 0 && (
-          <Tooltip content="Delete (Shift+click to skip confirmation)">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-5 w-5 opacity-0 group-hover:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation();
-                removePart(part.id);
-                if (isSelected) clearSelection();
-              }}
-            >
-              <Trash size={12} />
-            </Button>
-          </Tooltip>
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+            {/* Visibility toggle */}
+            <Tooltip content={isVisible ? "Hide" : "Show"}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-5 w-5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPartVisible(part.id, !isVisible);
+                }}
+              >
+                {isVisible ? <Eye size={12} /> : <EyeSlash size={12} />}
+              </Button>
+            </Tooltip>
+            {/* Delete button */}
+            <Tooltip content="Delete">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-5 w-5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removePart(part.id);
+                  if (isSelected) clearSelection();
+                }}
+              >
+                <Trash size={12} />
+              </Button>
+            </Tooltip>
+          </div>
         )}
       </div>
 
+      {/* Inline editing panel (when expanded) */}
+      {canInlineExpand && isInlineExpanded && (
+        <div className="pl-6 space-y-0.5">
+          {/* Dimensions (for primitives only) */}
+          {renderInlineDimensions()}
+          {/* Position & Rotation */}
+          <InlinePositionSection part={part} offset={offset} />
+          <InlineRotationSection part={part} angles={angles} />
+          {/* Material */}
+          <InlineMaterial partId={part.id} currentMaterialKey={materialKey} />
+        </div>
+      )}
+
+      {/* Boolean children */}
       {hasChildren && isExpanded && (
         <>
           {childParts.map((child) => (
@@ -217,11 +366,44 @@ function TreeNode({
               consumedParts={consumedParts}
               renamingId={renamingId}
               setRenamingId={setRenamingId}
+              inlineExpandedIds={inlineExpandedIds}
+              toggleInlineExpanded={toggleInlineExpanded}
             />
           ))}
         </>
       )}
     </>
+  );
+}
+
+/** Sortable wrapper for TreeNode at depth 0 */
+interface SortableTreeNodeProps extends Omit<TreeNodeProps, "dragHandleProps" | "isDragging"> {
+  id: string;
+}
+
+function SortableTreeNode({ id, ...props }: SortableTreeNodeProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <TreeNode
+        {...props}
+        dragHandleProps={listeners}
+        isDragging={isDragging}
+      />
+    </div>
   );
 }
 
@@ -538,12 +720,51 @@ export function FeatureTree() {
   const parts = useDocumentStore((s) => s.parts);
   const consumedParts = useDocumentStore((s) => s.consumedParts);
   const document = useDocumentStore((s) => s.document);
+  const reorderPart = useDocumentStore((s) => s.reorderPart);
   const featureTreeOpen = useUiStore((s) => s.featureTreeOpen);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [inlineExpandedIds, setInlineExpandedIds] = useState<Set<string>>(new Set());
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   // Check if this is an assembly document
   const hasInstances = document.instances && document.instances.length > 0;
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement before drag starts
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Part IDs for sortable context
+  const partIds = useMemo(() => parts.map((p) => p.id), [parts]);
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(event.active.id as string);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = parts.findIndex((p) => p.id === active.id);
+    const newIndex = parts.findIndex((p) => p.id === over.id);
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      reorderPart(active.id as string, newIndex);
+    }
+  }
+
+  // Get the active part for drag overlay
+  const activePart = activeId ? parts.find((p) => p.id === activeId) : null;
 
   useEffect(() => {
     function handleRename() {
@@ -558,6 +779,18 @@ export function FeatureTree() {
 
   function toggleExpanded(id: string) {
     setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleInlineExpanded(id: string) {
+    setInlineExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -595,21 +828,37 @@ export function FeatureTree() {
                 groundInstanceId={document.groundInstanceId}
               />
             ) : (
-              <>
-                {/* Legacy mode: show parts */}
-                {parts.map((part) => (
-                  <TreeNode
-                    key={part.id}
-                    part={part}
-                    depth={0}
-                    expandedIds={expandedIds}
-                    toggleExpanded={toggleExpanded}
-                    consumedParts={consumedParts}
-                    renamingId={renamingId}
-                    setRenamingId={setRenamingId}
-                  />
-                ))}
-              </>
+              /* Parts mode with drag-and-drop */
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={partIds}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {parts.map((part) => (
+                    <SortableTreeNode
+                      key={part.id}
+                      id={part.id}
+                      part={part}
+                      depth={0}
+                      expandedIds={expandedIds}
+                      toggleExpanded={toggleExpanded}
+                      consumedParts={consumedParts}
+                      renamingId={renamingId}
+                      setRenamingId={setRenamingId}
+                      inlineExpandedIds={inlineExpandedIds}
+                      toggleInlineExpanded={toggleInlineExpanded}
+                    />
+                  ))}
+                </SortableContext>
+                <DragOverlay dropAnimation={null}>
+                  {activePart && <DragPreview part={activePart} />}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
         </ContextMenu>

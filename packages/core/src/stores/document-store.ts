@@ -207,6 +207,10 @@ export interface DocumentState {
   // Incremental evaluation actions
   clearDirtyNodes: () => Set<NodeId>;
   setParameterDragging: (dragging: boolean) => void;
+  // Visibility toggle
+  setPartVisible: (partId: string, visible: boolean) => void;
+  // Reorder parts in tree
+  reorderPart: (partId: string, newIndex: number) => void;
 }
 
 function makeNode(id: NodeId, name: string | null, op: CsgOp): Node {
@@ -2198,5 +2202,68 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   setParameterDragging: (dragging) => {
     set({ isParameterDragging: dragging });
+  },
+
+  setPartVisible: (partId, visible) => {
+    const state = get();
+    const part = state.partIndex.get(partId);
+    if (!part) return;
+
+    const undoState = pushUndo(state, visible ? "Show Part" : "Hide Part");
+    const newDoc = structuredClone(state.document);
+
+    // Find and update the root entry
+    const rootIdx = newDoc.roots.findIndex((r) => r.root === part.translateNodeId);
+    if (rootIdx !== -1) {
+      const entry = newDoc.roots[rootIdx]!;
+      newDoc.roots[rootIdx] = { ...entry, visible };
+    }
+
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  reorderPart: (partId, newIndex) => {
+    const state = get();
+    const part = state.partIndex.get(partId);
+    if (!part) return;
+
+    const oldIndex = state.parts.findIndex((p) => p.id === partId);
+    if (oldIndex === -1 || oldIndex === newIndex) return;
+
+    const undoState = pushUndo(state, "Reorder");
+
+    // Reorder parts array
+    const newParts = [...state.parts];
+    const [removed] = newParts.splice(oldIndex, 1);
+    if (removed) {
+      newParts.splice(newIndex, 0, removed);
+    }
+
+    // Also reorder document.roots to keep in sync
+    const newDoc = structuredClone(state.document);
+    const rootIndex = newDoc.roots.findIndex((r) => r.root === part.translateNodeId);
+    if (rootIndex !== -1) {
+      const [rootEntry] = newDoc.roots.splice(rootIndex, 1);
+      if (rootEntry) {
+        // Find corresponding new position in roots
+        const targetPart = newParts[newIndex];
+        const targetRootIndex = targetPart
+          ? newDoc.roots.findIndex((r) => r.root === targetPart.translateNodeId)
+          : newDoc.roots.length;
+        newDoc.roots.splice(
+          targetRootIndex !== -1 ? targetRootIndex : newDoc.roots.length,
+          0,
+          rootEntry
+        );
+      }
+    }
+
+    set({
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      document: newDoc,
+      isDirty: true,
+      ...undoState,
+    });
   },
 }));
