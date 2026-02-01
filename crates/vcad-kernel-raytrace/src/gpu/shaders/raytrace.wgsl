@@ -46,7 +46,11 @@ struct GpuFace {
     inner_loop_count: u32,
     inner_desc_start: u32,
     material_idx: u32,
-    _pad2: vec3<u32>,
+    // Use explicit u32 padding instead of vec3<u32> to match Rust layout
+    // vec3<u32> in WGSL has 16-byte alignment which would misalign struct
+    _pad2_0: u32,
+    _pad2_1: u32,
+    _pad2_2: u32,
 }
 
 struct GpuBvhNode {
@@ -75,7 +79,9 @@ struct RenderState {
     enable_edges: u32,
     edge_depth_threshold: f32,
     edge_normal_threshold: f32,
-    _pad: vec2<f32>,
+    /// Debug render mode: 0=normal, 1=show normals as RGB, 2=show face_id, 3=show n_dot_l
+    debug_mode: u32,
+    _pad: f32,
 }
 
 struct RayHit {
@@ -966,6 +972,18 @@ fn shade(hit: RayHit, dir: vec3<f32>) -> vec4<f32> {
         lo += (diffuse + specular) * light_color * light_intensity2 * n_dot_l;
     }
 
+    // Camera-relative fill light (ensures faces pointing toward camera get light)
+    {
+        let camera_fill_intensity = 0.25;
+        let n_dot_v = max(dot(normal, view_dir), 0.0);
+
+        // Simple Lambertian fill from camera direction
+        let kd = (1.0 - metallic);
+        let diffuse = kd * albedo / PI;
+
+        lo += diffuse * light_color * camera_fill_intensity * n_dot_v;
+    }
+
     // Combine ambient and direct lighting
     var color = ambient + lo;
 
@@ -976,6 +994,30 @@ fn shade(hit: RayHit, dir: vec3<f32>) -> vec4<f32> {
     color = pow(color, vec3<f32>(1.0 / 2.2));
 
     return vec4<f32>(color, 1.0);
+}
+
+// HSV to RGB conversion for debug visualization
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3<f32> {
+    let c = v * s;
+    let h6 = h * 6.0;
+    let x = c * (1.0 - abs(fract(h6 / 2.0) * 2.0 - 1.0));
+    let m = v - c;
+
+    var rgb: vec3<f32>;
+    if h6 < 1.0 {
+        rgb = vec3<f32>(c, x, 0.0);
+    } else if h6 < 2.0 {
+        rgb = vec3<f32>(x, c, 0.0);
+    } else if h6 < 3.0 {
+        rgb = vec3<f32>(0.0, c, x);
+    } else if h6 < 4.0 {
+        rgb = vec3<f32>(0.0, x, c);
+    } else if h6 < 5.0 {
+        rgb = vec3<f32>(x, 0.0, c);
+    } else {
+        rgb = vec3<f32>(c, 0.0, x);
+    }
+    return rgb + vec3<f32>(m, m, m);
 }
 
 // Compute depth and normal for a pixel
@@ -1104,6 +1146,34 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             // Darken edges
             let edge_color = vec4<f32>(0.1, 0.1, 0.12, 1.0);
             final_color = mix(accumulated, edge_color, edge * 0.8);
+        }
+    }
+
+    // Apply debug visualization if enabled
+    if render_state.debug_mode > 0u && hit.face_idx != 0xFFFFFFFFu {
+        let normal = compute_normal(hit);
+
+        if render_state.debug_mode == 1u {
+            // Normal visualization: map (-1,1) to (0,1) as RGB
+            final_color = vec4<f32>((normal + 1.0) * 0.5, 1.0);
+        } else if render_state.debug_mode == 2u {
+            // Face ID as color (use HSV for distinct colors)
+            let hue = fract(f32(hit.face_idx) * 0.15);
+            let face_color = hsv_to_rgb(hue, 1.0, 1.0);
+            final_color = vec4<f32>(face_color, 1.0);
+        } else if render_state.debug_mode == 3u {
+            // N dot L visualization (grayscale) using primary light direction
+            let light_dir = normalize(vec3<f32>(0.5, 0.8, 0.3));
+            let ndl = max(dot(normal, light_dir), 0.0);
+            final_color = vec4<f32>(ndl, ndl, ndl, 1.0);
+        } else if render_state.debug_mode == 4u {
+            // Face orientation visualization: green=forward(0), red=reversed(1)
+            let face = faces[hit.face_idx];
+            if face.orientation == 0u {
+                final_color = vec4<f32>(0.2, 1.0, 0.2, 1.0);  // Green for forward
+            } else {
+                final_color = vec4<f32>(1.0, 0.2, 0.2, 1.0);  // Red for reversed
+            }
         }
     }
 
