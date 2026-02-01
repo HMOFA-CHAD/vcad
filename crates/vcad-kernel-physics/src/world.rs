@@ -244,36 +244,45 @@ impl PhysicsWorld {
 
                 // Extract position and velocity based on joint type
                 let (position, velocity) = match kind {
-                    JointKind::Revolute { axis, .. } => {
-                        // Get rotation angle around the joint axis
-                        let axis_vec = Vector3::new(axis.x as f32, axis.y as f32, axis.z as f32).normalize();
-                        let (axis_angle, angle) = relative.rotation.axis_angle().unwrap_or((
-                            nalgebra::Unit::new_normalize(axis_vec),
-                            0.0,
-                        ));
-                        // Check if rotation is around the expected axis (might be flipped)
-                        let sign = if axis_angle.dot(&axis_vec) >= 0.0 { 1.0 } else { -1.0 };
-                        let joint_angle = sign * angle;
+                    JointKind::Revolute { .. } => {
+                        // Rapier's revolute joint rotates around the X axis of the joint frame.
+                        // The local_axis1/local_axis2 orient the frame so X aligns with our axis.
+                        // So we extract rotation around X from the relative transform.
 
-                        // Get angular velocity from bodies
+                        // Use Y and Z components of the relative rotation to get angle around X
+                        // For a rotation purely around X: q = (cos(θ/2), sin(θ/2), 0, 0)
+                        // But we may have small errors in Y/Z rotation, so project properly.
+
+                        // Rotate the Y-axis unit vector and measure its angle in the YZ plane
+                        let y_axis = Vector3::new(0.0, 1.0, 0.0);
+                        let rotated_y = relative.rotation * y_axis;
+
+                        // The angle around X is atan2(rotated_y.z, rotated_y.y)
+                        let joint_angle = rotated_y.z.atan2(rotated_y.y);
+
+                        // Get angular velocity - transform to joint frame and take X component
                         let angvel1 = body1.angvel();
                         let angvel2 = body2.angvel();
                         let rel_angvel = angvel2 - angvel1;
-                        let joint_vel = rel_angvel.dot(&axis_vec);
+                        // Transform relative angular velocity to joint frame 1
+                        let frame1_rot = (body1.position() * joint.data.local_frame1).rotation;
+                        let local_angvel = frame1_rot.inverse() * rel_angvel;
+                        let joint_vel = local_angvel.x;
 
                         (joint_angle, joint_vel)
                     }
-                    JointKind::Slider { axis, .. } => {
-                        // Get translation along the joint axis
-                        let axis_vec = Vector3::new(axis.x as f32, axis.y as f32, axis.z as f32).normalize();
-                        let translation = relative.translation.vector;
-                        let joint_pos = translation.dot(&axis_vec);
+                    JointKind::Slider { .. } => {
+                        // Rapier's prismatic joint translates along the X axis of the joint frame.
+                        // The relative transform is already in the joint frame, so just take X.
+                        let joint_pos = relative.translation.x;
 
-                        // Get linear velocity along axis
+                        // Get linear velocity - transform to joint frame and take X component
                         let linvel1 = body1.linvel();
                         let linvel2 = body2.linvel();
                         let rel_linvel = linvel2 - linvel1;
-                        let joint_vel = rel_linvel.dot(&axis_vec);
+                        let frame1_rot = (body1.position() * joint.data.local_frame1).rotation;
+                        let local_linvel = frame1_rot.inverse() * rel_linvel;
+                        let joint_vel = local_linvel.x;
 
                         (joint_pos, joint_vel)
                     }
