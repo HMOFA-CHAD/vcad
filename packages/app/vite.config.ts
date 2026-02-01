@@ -10,13 +10,16 @@ import { dirname, resolve } from "path";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const isDev = process.env.NODE_ENV !== "production";
+
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
     wasm(),
     topLevelAwait(),
-    VitePWA({
+    // Disable PWA in development to avoid caching issues
+    !isDev && VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["fonts/**/*", "assets/**/*"],
       manifest: false, // Use public/manifest.json
@@ -75,7 +78,7 @@ export default defineConfig({
         ],
       },
     }),
-  ],
+  ].filter(Boolean),
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
