@@ -20,6 +20,7 @@ import { ribbonExample } from "./ribbon.vcad";
 import { springExample } from "./spring.vcad";
 import { vaseExample } from "./vase.vcad";
 import { wineglassExample } from "./wineglass.vcad";
+import { robotArmExample } from "./robot-arm.vcad";
 
 export const examples: Example[] = [
   plateExample,
@@ -31,4 +32,5 @@ export const examples: Example[] = [
   springExample,
   vaseExample,
   wineglassExample,
+  robotArmExample,
 ];
