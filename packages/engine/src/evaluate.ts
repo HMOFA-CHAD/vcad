@@ -274,7 +274,6 @@ export function evaluateDocument(
   // Assembly mode: evaluate partDefs and instances
   let evaluatedPartDefs: EvaluatedPartDef[] | undefined;
   let evaluatedInstances: EvaluatedInstance[] | undefined;
-  const instanceSolids: { instanceId: string; solid: Solid; transform: Transform3D }[] = [];
 
   if (doc.partDefs && Object.keys(doc.partDefs).length > 0 && doc.instances && doc.instances.length > 0) {
     // Solve forward kinematics to get world transforms
@@ -318,23 +317,16 @@ export function evaluateDocument(
         transform: worldTransform,
       });
 
-      // Store transformed solid for clash detection
-      const baseSolid = partDefSolids.get(instance.partDefId);
-      if (baseSolid && worldTransform) {
-        // Transform the solid for clash detection
-        let transformedSolid = baseSolid
-          .scale(worldTransform.scale.x, worldTransform.scale.y, worldTransform.scale.z)
-          .rotate(worldTransform.rotation.x, worldTransform.rotation.y, worldTransform.rotation.z)
-          .translate(worldTransform.translation.x, worldTransform.translation.y, worldTransform.translation.z);
-        instanceSolids.push({ instanceId: instance.id, solid: transformedSolid, transform: worldTransform });
-      }
+      // Note: Clash detection for assembly instances is disabled because FK transforms
+      // are applied in Three.js, not baked into the solid geometry. Proper clash detection
+      // for assemblies would require computing transformed meshes, not boolean operations.
     }
   }
 
   // Compute pairwise intersections for clash detection
   const clashes: TriangleMesh[] = [];
 
-  // Clashes between traditional parts
+  // Clashes between traditional parts (non-assembly mode)
   for (let i = 0; i < solids.length; i++) {
     for (let j = i + 1; j < solids.length; j++) {
       const intersection = solids[i].intersection(solids[j]);
@@ -353,24 +345,9 @@ export function evaluateDocument(
     }
   }
 
-  // Clashes between assembly instances
-  for (let i = 0; i < instanceSolids.length; i++) {
-    for (let j = i + 1; j < instanceSolids.length; j++) {
-      const intersection = instanceSolids[i].solid.intersection(instanceSolids[j].solid);
-      if (!intersection.isEmpty()) {
-        const meshData = intersection.getMesh();
-        if (meshData.positions.length > 0) {
-          clashes.push({
-            positions: new Float32Array(meshData.positions),
-            indices: new Uint32Array(meshData.indices),
-            normals: meshData.normals
-              ? new Float32Array(meshData.normals)
-              : undefined,
-          });
-        }
-      }
-    }
-  }
+  // Note: Assembly clash detection is disabled. FK transforms are applied in the
+  // renderer, not baked into geometry, so boolean intersection won't work correctly.
+  // TODO: Implement proper assembly clash detection using transformed mesh positions.
 
   return {
     parts,
