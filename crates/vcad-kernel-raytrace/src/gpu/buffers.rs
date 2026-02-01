@@ -307,8 +307,10 @@ pub struct GpuRenderState {
     pub edge_depth_threshold: f32,
     /// Edge detection threshold for normal discontinuity (degrees).
     pub edge_normal_threshold: f32,
+    /// Debug render mode: 0=normal, 1=show normals, 2=show face_id, 3=show n_dot_l, 4=show orientation.
+    pub debug_mode: u32,
     /// Padding for 16-byte alignment.
-    pub _pad: [f32; 2],
+    pub _pad: f32,
 }
 
 impl GpuRenderState {
@@ -322,8 +324,16 @@ impl GpuRenderState {
             enable_edges: 1, // Enabled by default
             edge_depth_threshold: 0.1,
             edge_normal_threshold: 30.0, // degrees
-            _pad: [0.0; 2],
+            debug_mode: 0, // Normal rendering by default
+            _pad: 0.0,
         }
+    }
+
+    /// Create a new render state with a specific debug mode.
+    pub fn with_debug_mode(frame_index: u32, debug_mode: u32) -> Self {
+        let mut state = Self::new(frame_index);
+        state.debug_mode = debug_mode;
+        state
     }
 
     /// Create a render state with edge detection disabled.

@@ -208,6 +208,26 @@ impl RayTracePipeline {
         frame_index: u32,
         accum_buffer: Option<wgpu::Buffer>,
     ) -> Result<(Vec<u8>, wgpu::Buffer), GpuError> {
+        self.render_progressive_with_debug(ctx, scene, camera, width, height, frame_index, accum_buffer, 0).await
+    }
+
+    /// Render a scene with debug visualization mode.
+    ///
+    /// # Arguments
+    /// * Same as render_progressive, plus:
+    /// * `debug_mode` - Debug visualization: 0=normal, 1=normals as RGB, 2=face_id, 3=n_dot_l, 4=orientation
+    #[allow(clippy::too_many_arguments)]
+    pub async fn render_progressive_with_debug(
+        &self,
+        ctx: &GpuContext,
+        scene: &GpuScene,
+        camera: &GpuCamera,
+        width: u32,
+        height: u32,
+        frame_index: u32,
+        accum_buffer: Option<wgpu::Buffer>,
+        debug_mode: u32,
+    ) -> Result<(Vec<u8>, wgpu::Buffer), GpuError> {
         use wgpu::util::DeviceExt;
 
         // Create camera buffer
@@ -218,7 +238,7 @@ impl RayTracePipeline {
         });
 
         // Create render state buffer
-        let render_state = GpuRenderState::new(frame_index);
+        let render_state = GpuRenderState::with_debug_mode(frame_index, debug_mode);
         let render_state_buffer = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Render State Buffer"),
             contents: bytemuck::bytes_of(&render_state),

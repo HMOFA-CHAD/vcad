@@ -102,9 +102,11 @@ function SettingsMenu({ onAboutOpen }: { onAboutOpen: () => void }) {
   const setSnapIncrement = useUiStore((s) => s.setSnapIncrement);
   const renderMode = useUiStore((s) => s.renderMode);
   const raytraceQuality = useUiStore((s) => s.raytraceQuality);
+  const raytraceDebugMode = useUiStore((s) => s.raytraceDebugMode);
   const raytraceAvailable = useUiStore((s) => s.raytraceAvailable);
   const toggleRenderMode = useUiStore((s) => s.toggleRenderMode);
   const setRaytraceQuality = useUiStore((s) => s.setRaytraceQuality);
+  const setRaytraceDebugMode = useUiStore((s) => s.setRaytraceDebugMode);
 
   // Camera settings
   const controlSchemeId = useCameraSettingsStore((s) => s.controlSchemeId);
@@ -280,6 +282,33 @@ function SettingsMenu({ onAboutOpen }: { onAboutOpen: () => void }) {
                         </span>
                       </button>
                     ))}
+
+                    {/* Debug modes separator */}
+                    {renderMode === "raytrace" && (
+                      <>
+                        <div className="my-1 border-t border-border" />
+                        <div className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-text-muted">
+                          Debug
+                        </div>
+                        {([
+                          ["off", "Off"],
+                          ["normals", "Normals"],
+                          ["face-id", "Face ID"],
+                          ["lighting", "N·L"],
+                          ["orientation", "Orientation"],
+                        ] as const).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            onClick={() => setRaytraceDebugMode(mode)}
+                            className="flex items-center gap-2 px-2 py-1 text-xs text-text hover:bg-hover"
+                          >
+                            <span className={raytraceDebugMode === mode ? "text-accent" : ""}>
+                              {label}
+                            </span>
+                          </button>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </Popover.Content>
               </Popover.Portal>

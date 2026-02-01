@@ -8,6 +8,7 @@ export interface MaterialPreview {
 
 export type RenderMode = "standard" | "raytrace";
 export type RaytraceQuality = "draft" | "standard" | "high";
+export type RaytraceDebugMode = "off" | "normals" | "face-id" | "lighting" | "orientation";
 
 export interface UiState {
   selectedPartIds: Set<string>;
@@ -32,6 +33,7 @@ export interface UiState {
   // Ray tracing state
   renderMode: RenderMode;
   raytraceQuality: RaytraceQuality;
+  raytraceDebugMode: RaytraceDebugMode;
   raytraceAvailable: boolean;
 
   select: (partId: string | null) => void;
@@ -64,6 +66,7 @@ export interface UiState {
   setRenderMode: (mode: RenderMode) => void;
   toggleRenderMode: () => void;
   setRaytraceQuality: (quality: RaytraceQuality) => void;
+  setRaytraceDebugMode: (mode: RaytraceDebugMode) => void;
   setRaytraceAvailable: (available: boolean) => void;
 }
 
@@ -107,6 +110,7 @@ export const useUiStore = create<UiState>((set) => ({
   favoriteMaterials: persistedMaterials.favorites,
   renderMode: "standard",
   raytraceQuality: "draft",
+  raytraceDebugMode: "off",
   raytraceAvailable: false,
 
   select: (partId) =>
@@ -212,6 +216,8 @@ export const useUiStore = create<UiState>((set) => ({
     })),
 
   setRaytraceQuality: (quality) => set({ raytraceQuality: quality }),
+
+  setRaytraceDebugMode: (mode) => set({ raytraceDebugMode: mode }),
 
   setRaytraceAvailable: (available) => set({ raytraceAvailable: available }),
 }));
