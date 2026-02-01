@@ -7,3 +7,5 @@ packages/*/dist/
 out/
 .env
 __pycache__/
+packages/app/dev-dist/
+.turbo

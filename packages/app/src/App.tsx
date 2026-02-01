@@ -451,15 +451,15 @@ export function App() {
     }
   }, [guidedFlowActive, guidedFlowStep, parts, selectedPartIds, selectMultiple]);
 
-  // Only block on fatal error - let viewport render while engine loads
-  if (error && !engineReady) return <ErrorScreen message={error} />;
-
   // Auto-open command palette on startup when canvas is empty
   useEffect(() => {
     if (initialized && !hasParts && !guidedFlowActive && !sketchActive) {
       setCommandPaletteOpen(true);
     }
   }, [initialized, hasParts, guidedFlowActive, sketchActive, setCommandPaletteOpen]);
+
+  // Only block on fatal error - let viewport render while engine loads
+  if (error && !engineReady) return <ErrorScreen message={error} />;
 
   return (
     <TooltipProvider>

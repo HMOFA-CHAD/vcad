@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "*.js", "*.d.ts"],
+      "inputs": ["src/**", "package.json", "tsconfig.json"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "inputs": ["src/**", "**/*.test.ts"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "vcad-kernel-wasm#build": {
+      "inputs": [
+        "../../crates/**/*.rs",
+        "../../crates/**/Cargo.toml",
+        "../../Cargo.toml",
+        "../../Cargo.lock"
+      ],
+      "outputs": ["pkg/**", "*.wasm", "*.js", "*.d.ts"]
+    },
+    "@vcad/engine#build": {
+      "dependsOn": ["vcad-kernel-wasm#build", "^build"],
+      "outputs": ["dist/**", "*.js", "*.d.ts"],
+      "inputs": ["src/**", "package.json", "tsconfig.json"]
+    }
+  }
+}
