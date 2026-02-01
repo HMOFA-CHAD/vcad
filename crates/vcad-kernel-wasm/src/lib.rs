@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use vcad_kernel::vcad_kernel_math::{Point2, Point3, Vec3};
 use vcad_kernel::vcad_kernel_sketch::{SketchProfile, SketchSegment};
 use wasm_bindgen::prelude::*;
+use wasmosis::module;
 
 /// Initialize the WASM module (sets up panic hook for better error messages).
 #[wasm_bindgen(start)]
@@ -718,6 +719,161 @@ impl Solid {
 }
 
 // =========================================================================
+// Standalone advanced operations (lazy-loaded module)
+// =========================================================================
+
+/// Fillet all edges of a solid with the given radius.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("advanced")]
+#[wasm_bindgen]
+pub fn op_fillet(solid: &Solid, radius: f64) -> Solid {
+    solid.fillet(radius)
+}
+
+/// Chamfer all edges of a solid by the given distance.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("advanced")]
+#[wasm_bindgen]
+pub fn op_chamfer(solid: &Solid, distance: f64) -> Solid {
+    solid.chamfer(distance)
+}
+
+/// Shell (hollow) a solid by offsetting all faces inward.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("advanced")]
+#[wasm_bindgen]
+pub fn op_shell(solid: &Solid, thickness: f64) -> Solid {
+    solid.shell(thickness)
+}
+
+// =========================================================================
+// Standalone sweep operations (lazy-loaded module)
+// =========================================================================
+
+/// Create a solid by revolving a 2D sketch profile around an axis.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("sweep")]
+#[wasm_bindgen]
+pub fn op_revolve(
+    profile_js: JsValue,
+    axis_origin: Vec<f64>,
+    axis_dir: Vec<f64>,
+    angle_deg: f64,
+) -> Result<Solid, JsError> {
+    Solid::revolve(profile_js, axis_origin, axis_dir, angle_deg)
+}
+
+/// Create a solid by sweeping a profile along a line path.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("sweep")]
+#[wasm_bindgen]
+pub fn op_sweep_line(
+    profile_js: JsValue,
+    start: Vec<f64>,
+    end: Vec<f64>,
+    twist_angle: Option<f64>,
+    scale_start: Option<f64>,
+    scale_end: Option<f64>,
+) -> Result<Solid, JsError> {
+    Solid::sweep_line(profile_js, start, end, twist_angle, scale_start, scale_end)
+}
+
+/// Create a solid by sweeping a profile along a helix path.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("sweep")]
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn op_sweep_helix(
+    profile_js: JsValue,
+    radius: f64,
+    pitch: f64,
+    height: f64,
+    turns: f64,
+    twist_angle: Option<f64>,
+    scale_start: Option<f64>,
+    scale_end: Option<f64>,
+    path_segments: Option<u32>,
+    arc_segments: Option<u32>,
+) -> Result<Solid, JsError> {
+    Solid::sweep_helix(
+        profile_js,
+        radius,
+        pitch,
+        height,
+        turns,
+        twist_angle,
+        scale_start,
+        scale_end,
+        path_segments,
+        arc_segments,
+    )
+}
+
+/// Create a solid by lofting between multiple profiles.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("sweep")]
+#[wasm_bindgen]
+pub fn op_loft(profiles_js: JsValue, closed: Option<bool>) -> Result<Solid, JsError> {
+    Solid::loft(profiles_js, closed)
+}
+
+// =========================================================================
+// Standalone pattern operations (lazy-loaded module)
+// =========================================================================
+
+/// Create a linear pattern of a solid along a direction.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("patterns")]
+#[wasm_bindgen]
+pub fn op_linear_pattern(
+    solid: &Solid,
+    dir_x: f64,
+    dir_y: f64,
+    dir_z: f64,
+    count: u32,
+    spacing: f64,
+) -> Solid {
+    solid.linear_pattern(dir_x, dir_y, dir_z, count, spacing)
+}
+
+/// Create a circular pattern of a solid around an axis.
+///
+/// This is a standalone wrapper for lazy loading via wasmosis.
+#[module("patterns")]
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn op_circular_pattern(
+    solid: &Solid,
+    axis_origin_x: f64,
+    axis_origin_y: f64,
+    axis_origin_z: f64,
+    axis_dir_x: f64,
+    axis_dir_y: f64,
+    axis_dir_z: f64,
+    count: u32,
+    angle_deg: f64,
+) -> Solid {
+    solid.circular_pattern(
+        axis_origin_x,
+        axis_origin_y,
+        axis_origin_z,
+        axis_dir_x,
+        axis_dir_y,
+        axis_dir_z,
+        count,
+        angle_deg,
+    )
+}
+
+// =========================================================================
 // Standalone drafting functions
 // =========================================================================
 
@@ -730,6 +886,7 @@ impl Solid {
 ///
 /// # Returns
 /// A JS object containing the section view with curves, hatch lines, and bounds.
+#[module("drafting")]
 #[wasm_bindgen(js_name = sectionMesh)]
 pub fn section_mesh_wasm(
     mesh_js: JsValue,
@@ -774,6 +931,7 @@ pub fn section_mesh_wasm(
 ///
 /// # Returns
 /// A JS object containing the projected view with edges and bounds.
+#[module("drafting")]
 #[wasm_bindgen(js_name = projectMesh)]
 pub fn project_mesh_wasm(mesh_js: JsValue, view_direction: &str) -> JsValue {
     use vcad_kernel_drafting::{project_mesh, ViewDirection};
@@ -1003,6 +1161,7 @@ impl Default for WasmAnnotationLayer {
 ///
 /// # Returns
 /// A byte array containing the DXF file content.
+#[module("drafting")]
 #[wasm_bindgen(js_name = exportProjectedViewToDxf)]
 pub fn export_projected_view_to_dxf(view_json: &str) -> Result<Vec<u8>, JsError> {
     use std::io::Write;
@@ -1177,6 +1336,7 @@ pub fn export_projected_view_to_dxf(view_json: &str) -> Result<Vec<u8>, JsError>
 ///
 /// # Returns
 /// A JS object containing the detail view with edges and bounds.
+#[module("drafting")]
 #[wasm_bindgen(js_name = createDetailView)]
 #[allow(clippy::too_many_arguments)]
 pub fn create_detail_view(
@@ -1220,6 +1380,7 @@ pub fn create_detail_view(
 ///
 /// # Returns
 /// A JS array of mesh objects for rendering the imported geometry.
+#[module("step")]
 #[wasm_bindgen(js_name = importStepBuffer)]
 pub fn import_step_buffer(data: &[u8]) -> Result<JsValue, JsError> {
     let solids = vcad_kernel::Solid::from_step_buffer_all(data)
@@ -1260,6 +1421,7 @@ pub struct GpuGeometryResult {
 /// Returns `true` if WebGPU is available and initialized, `false` otherwise.
 /// This should be called once at application startup.
 #[cfg(feature = "gpu")]
+#[module("gpu")]
 #[wasm_bindgen(js_name = initGpu)]
 pub async fn init_gpu() -> Result<bool, JsError> {
     match vcad_kernel_gpu::GpuContext::init().await {
@@ -1276,6 +1438,7 @@ pub async fn init_gpu() -> Result<bool, JsError> {
 
 /// Initialize the GPU context (stub when GPU feature is disabled).
 #[cfg(not(feature = "gpu"))]
+#[module("gpu")]
 #[wasm_bindgen(js_name = initGpu)]
 pub async fn init_gpu() -> Result<bool, JsError> {
     web_sys::console::log_1(&"[WASM] GPU feature not enabled".into());
@@ -1283,6 +1446,7 @@ pub async fn init_gpu() -> Result<bool, JsError> {
 }
 
 /// Check if GPU processing is available.
+#[module("gpu")]
 #[wasm_bindgen(js_name = isGpuAvailable)]
 pub fn is_gpu_available() -> bool {
     #[cfg(feature = "gpu")]
@@ -1309,6 +1473,7 @@ pub fn is_gpu_available() -> bool {
 /// A JS array of geometry results. If `generate_lod` is true, returns
 /// [full, 50%, 25%] detail levels. Otherwise returns a single mesh.
 #[cfg(feature = "gpu")]
+#[module("gpu")]
 #[wasm_bindgen(js_name = processGeometryGpu)]
 pub async fn process_geometry_gpu(
     positions: Vec<f32>,
@@ -1356,6 +1521,7 @@ pub async fn process_geometry_gpu(
 
 /// Process geometry (CPU fallback when GPU feature is disabled).
 #[cfg(not(feature = "gpu"))]
+#[module("gpu")]
 #[wasm_bindgen(js_name = processGeometryGpu)]
 pub async fn process_geometry_gpu(
     _positions: Vec<f32>,
@@ -1376,6 +1542,7 @@ pub async fn process_geometry_gpu(
 /// # Returns
 /// Flat array of normals (nx, ny, nz, ...), same length as positions.
 #[cfg(feature = "gpu")]
+#[module("gpu")]
 #[wasm_bindgen(js_name = computeCreasedNormalsGpu)]
 pub async fn compute_creased_normals_gpu(
     positions: Vec<f32>,
@@ -1389,6 +1556,7 @@ pub async fn compute_creased_normals_gpu(
 
 /// Compute creased normals (CPU fallback when GPU feature is disabled).
 #[cfg(not(feature = "gpu"))]
+#[module("gpu")]
 #[wasm_bindgen(js_name = computeCreasedNormalsGpu)]
 pub async fn compute_creased_normals_gpu(
     _positions: Vec<f32>,
@@ -1408,6 +1576,7 @@ pub async fn compute_creased_normals_gpu(
 /// # Returns
 /// A JS object with decimated positions, indices, and normals.
 #[cfg(feature = "gpu")]
+#[module("gpu")]
 #[wasm_bindgen(js_name = decimateMeshGpu)]
 pub async fn decimate_mesh_gpu(
     positions: Vec<f32>,
@@ -1429,6 +1598,7 @@ pub async fn decimate_mesh_gpu(
 
 /// Decimate a mesh (CPU fallback when GPU feature is disabled).
 #[cfg(not(feature = "gpu"))]
+#[module("gpu")]
 #[wasm_bindgen(js_name = decimateMeshGpu)]
 pub async fn decimate_mesh_gpu(
     _positions: Vec<f32>,
@@ -1811,6 +1981,7 @@ impl RayTracer {
 /// const doc = parseCompactIR(ir);
 /// console.log(doc); // JSON document
 /// ```
+#[module("ml")]
 #[wasm_bindgen(js_name = parseCompactIR)]
 pub fn parse_compact_ir(compact_ir: &str) -> Result<String, JsError> {
     let doc = vcad_ir::compact::from_compact(compact_ir)
@@ -1833,6 +2004,7 @@ pub fn parse_compact_ir(compact_ir: &str) -> Result<String, JsError> {
 /// const compact = toCompactIR(docJson);
 /// console.log(compact); // "C 50 30 5\nY 5 10\n..."
 /// ```
+#[module("ml")]
 #[wasm_bindgen(js_name = toCompactIR)]
 pub fn to_compact_ir(doc_json: &str) -> Result<String, JsError> {
     let doc = vcad_ir::Document::from_json(doc_json)
@@ -1852,6 +2024,7 @@ pub fn to_compact_ir(doc_json: &str) -> Result<String, JsError> {
 ///
 /// # Returns
 /// A Solid object that can be rendered or queried.
+#[module("ml")]
 #[wasm_bindgen(js_name = evaluateCompactIR)]
 pub fn evaluate_compact_ir(compact_ir: &str) -> Result<Solid, JsError> {
     let doc = vcad_ir::compact::from_compact(compact_ir)
@@ -2044,6 +2217,7 @@ impl PhysicsSim {
 }
 
 /// Check if physics simulation is available.
+#[module("physics")]
 #[wasm_bindgen(js_name = isPhysicsAvailable)]
 pub fn is_physics_available() -> bool {
     cfg!(feature = "physics")
