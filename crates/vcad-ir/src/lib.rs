@@ -351,6 +351,20 @@ pub enum CsgOp {
         /// Wall thickness (inward offset).
         thickness: f64,
     },
+    /// Fillet — round edges of a solid.
+    Fillet {
+        /// Child node to fillet.
+        child: NodeId,
+        /// Fillet radius.
+        radius: f64,
+    },
+    /// Chamfer — bevel edges of a solid.
+    Chamfer {
+        /// Child node to chamfer.
+        child: NodeId,
+        /// Chamfer distance.
+        distance: f64,
+    },
     /// Imported geometry from a STEP file.
     #[serde(rename = "step_import")]
     StepImport {

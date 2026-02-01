@@ -306,6 +306,143 @@ function ExtrudeDialog({
   );
 }
 
+function RevolveDialog({
+  onRevolve,
+  onClose,
+  plane,
+  origin,
+  segments,
+}: {
+  onRevolve: (angleDeg: number, flip: boolean) => void;
+  onClose: () => void;
+  plane: SketchPlane;
+  origin: Vec3;
+  segments: SketchSegment2D[];
+}) {
+  const [angle, setAngle] = useState(360);
+  const [flip, setFlip] = useState(false);
+  const engine = useEngineStore((s) => s.engine);
+  const setPreviewMesh = useEngineStore((s) => s.setPreviewMesh);
+
+  // Animated angle for smooth preview transitions
+  const animatedAngleRef = useRef(360);
+  const targetAngleRef = useRef(360);
+  const rafRef = useRef<number>(0);
+
+  // Update target when angle changes
+  useEffect(() => {
+    targetAngleRef.current = angle;
+  }, [angle]);
+
+  // Animation loop for smooth preview
+  useEffect(() => {
+    if (!engine || segments.length === 0) return;
+
+    const { x_dir, y_dir } = getSketchPlaneDirections(plane);
+    let lastRenderedAngle = animatedAngleRef.current;
+
+    // Compute axis origin (edge of sketch bounding box) and direction
+    // For revolve, the axis is along the local X axis of the sketch plane, at the sketch origin
+    const axisOrigin = origin;
+    const axisDir = flip ? { x: -x_dir.x, y: -x_dir.y, z: -x_dir.z } : x_dir;
+
+    const animate = () => {
+      const target = targetAngleRef.current;
+      const current = animatedAngleRef.current;
+      const diff = target - current;
+
+      // Lerp toward target
+      if (Math.abs(diff) > 0.5) {
+        animatedAngleRef.current = current + diff * 0.35;
+      } else {
+        animatedAngleRef.current = target;
+      }
+
+      // Only regenerate mesh if angle changed significantly
+      const angleChange = Math.abs(animatedAngleRef.current - lastRenderedAngle);
+      if (angleChange > 2) {
+        lastRenderedAngle = animatedAngleRef.current;
+
+        const mesh = engine.evaluateRevolvePreview(
+          origin,
+          x_dir,
+          y_dir,
+          segments,
+          axisOrigin,
+          axisDir,
+          animatedAngleRef.current
+        );
+        setPreviewMesh(mesh);
+      }
+
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    // Generate initial preview
+    const mesh = engine.evaluateRevolvePreview(
+      origin,
+      x_dir,
+      y_dir,
+      segments,
+      axisOrigin,
+      axisDir,
+      animatedAngleRef.current
+    );
+    setPreviewMesh(mesh);
+
+    rafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      setPreviewMesh(null);
+    };
+  }, [engine, plane, origin, segments, flip, setPreviewMesh]);
+
+  return (
+    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 border border-border bg-card p-4 shadow-2xl">
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-medium text-text">Revolve Angle</div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={angle}
+            onChange={(e) => setAngle(Number(e.target.value))}
+            className="w-24 border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-accent"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onRevolve(angle, flip);
+              if (e.key === "Escape") onClose();
+            }}
+          />
+          <span className="text-xs text-text-muted">°</span>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={flip}
+            onChange={(e) => setFlip(e.target.checked)}
+            className="accent-accent"
+          />
+          <span className="text-xs text-text-muted">Flip axis direction</span>
+        </label>
+        <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            className="flex-1"
+            onClick={() => onRevolve(angle, flip)}
+          >
+            Revolve
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SweepDialog({
   onSweep,
   onClose,
@@ -412,6 +549,7 @@ function LoftHeightDialog({
 
 export function SketchToolbar() {
   const [showExtrudeDialog, setShowExtrudeDialog] = useState(false);
+  const [showRevolveDialog, setShowRevolveDialog] = useState(false);
   const [showLengthDialog, setShowLengthDialog] = useState(false);
   const [showSweepDialog, setShowSweepDialog] = useState(false);
   const [showLoftHeightDialog, setShowLoftHeightDialog] = useState(false);
@@ -449,6 +587,7 @@ export function SketchToolbar() {
   const enterFaceSelectionMode = useSketchStore((s) => s.enterFaceSelectionMode);
 
   const addExtrude = useDocumentStore((s) => s.addExtrude);
+  const addRevolve = useDocumentStore((s) => s.addRevolve);
   const addSweep = useDocumentStore((s) => s.addSweep);
   const addLoft = useDocumentStore((s) => s.addLoft);
   const select = useUiStore((s) => s.select);
@@ -530,6 +669,23 @@ export function SketchToolbar() {
     }
     exitSketchMode();
     setShowExtrudeDialog(false);
+  }
+
+  function handleRevolve(angleDeg: number, flip: boolean) {
+    if (!hasSegments) return;
+
+    const { x_dir } = getSketchPlaneDirections(plane);
+    // Axis is along local X direction of sketch plane
+    const axisOrigin = origin;
+    const axisDir = flip ? { x: -x_dir.x, y: -x_dir.y, z: -x_dir.z } : x_dir;
+
+    const partId = addRevolve(plane, origin, segments, axisOrigin, axisDir, angleDeg);
+    if (partId) {
+      select(partId);
+      addToast("Created Revolve", "success");
+    }
+    exitSketchMode();
+    setShowRevolveDialog(false);
   }
 
   function handleSweep(params: { type: "line" | "helix"; height: number; radius?: number; turns?: number }) {
@@ -859,6 +1015,18 @@ export function SketchToolbar() {
               </Button>
             </Tooltip>
 
+            {/* Revolve */}
+            <Tooltip content="Revolve sketch">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setShowRevolveDialog(true)}
+                disabled={!hasSegments}
+              >
+                <ArrowsClockwise size={16} />
+              </Button>
+            </Tooltip>
+
             {/* Sweep */}
             <Tooltip content="Sweep sketch">
               <Button
@@ -886,6 +1054,17 @@ export function SketchToolbar() {
             onExtrude={handleExtrude}
             onClose={() => setShowExtrudeDialog(false)}
             normalDir={formatDirection(getSketchPlaneDirections(plane).normal)}
+            plane={plane}
+            origin={origin}
+            segments={segments}
+          />
+        )}
+
+        {/* Revolve dialog */}
+        {showRevolveDialog && (
+          <RevolveDialog
+            onRevolve={handleRevolve}
+            onClose={() => setShowRevolveDialog(false)}
             plane={plane}
             origin={origin}
             segments={segments}

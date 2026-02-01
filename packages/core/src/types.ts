@@ -104,7 +104,73 @@ export interface ImportedMeshPartInfo {
   source?: string;
 }
 
-export type PartInfo = PrimitivePartInfo | BooleanPartInfo | ExtrudePartInfo | RevolvePartInfo | SweepPartInfo | LoftPartInfo | ImportedMeshPartInfo;
+export interface FilletPartInfo {
+  id: string;
+  name: string;
+  kind: "fillet";
+  sourcePartId: string;
+  filletNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+}
+
+export interface ChamferPartInfo {
+  id: string;
+  name: string;
+  kind: "chamfer";
+  sourcePartId: string;
+  chamferNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+}
+
+export interface ShellPartInfo {
+  id: string;
+  name: string;
+  kind: "shell";
+  sourcePartId: string;
+  shellNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+}
+
+export interface LinearPatternPartInfo {
+  id: string;
+  name: string;
+  kind: "linear-pattern";
+  sourcePartId: string;
+  patternNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+}
+
+export interface CircularPatternPartInfo {
+  id: string;
+  name: string;
+  kind: "circular-pattern";
+  sourcePartId: string;
+  patternNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+}
+
+export interface MirrorPartInfo {
+  id: string;
+  name: string;
+  kind: "mirror";
+  sourcePartId: string;
+  mirrorNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+}
+
+export type PartInfo = PrimitivePartInfo | BooleanPartInfo | ExtrudePartInfo | RevolvePartInfo | SweepPartInfo | LoftPartInfo | ImportedMeshPartInfo | FilletPartInfo | ChamferPartInfo | ShellPartInfo | LinearPatternPartInfo | CircularPatternPartInfo | MirrorPartInfo;
 
 export function isPrimitivePart(part: PartInfo): part is PrimitivePartInfo {
   return part.kind === "cube" || part.kind === "cylinder" || part.kind === "sphere";
@@ -132,6 +198,30 @@ export function isLoftPart(part: PartInfo): part is LoftPartInfo {
 
 export function isImportedMeshPart(part: PartInfo): part is ImportedMeshPartInfo {
   return part.kind === "imported-mesh";
+}
+
+export function isFilletPart(part: PartInfo): part is FilletPartInfo {
+  return part.kind === "fillet";
+}
+
+export function isChamferPart(part: PartInfo): part is ChamferPartInfo {
+  return part.kind === "chamfer";
+}
+
+export function isShellPart(part: PartInfo): part is ShellPartInfo {
+  return part.kind === "shell";
+}
+
+export function isLinearPatternPart(part: PartInfo): part is LinearPatternPartInfo {
+  return part.kind === "linear-pattern";
+}
+
+export function isCircularPatternPart(part: PartInfo): part is CircularPatternPartInfo {
+  return part.kind === "circular-pattern";
+}
+
+export function isMirrorPart(part: PartInfo): part is MirrorPartInfo {
+  return part.kind === "mirror";
 }
 
 export type ToolMode = "select" | "primitive" | "simulate";

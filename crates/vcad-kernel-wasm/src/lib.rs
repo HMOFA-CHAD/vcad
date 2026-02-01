@@ -2304,6 +2304,16 @@ fn evaluate_node(doc: &vcad_ir::Document, node_id: vcad_ir::NodeId) -> Result<So
             Ok(c.shell(*thickness))
         }
 
+        vcad_ir::CsgOp::Fillet { child, radius } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.fillet(*radius))
+        }
+
+        vcad_ir::CsgOp::Chamfer { child, distance } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.chamfer(*distance))
+        }
+
         vcad_ir::CsgOp::Sketch2D { .. } => {
             // Sketch2D nodes cannot be evaluated directly - they must be used with Extrude/Revolve
             Err(JsError::new("Sketch2D cannot be evaluated directly - use Extrude or Revolve"))

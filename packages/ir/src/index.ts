@@ -271,6 +271,18 @@ export interface ShellOp {
   thickness: number;
 }
 
+export interface FilletOp {
+  type: "Fillet";
+  child: NodeId;
+  radius: number;
+}
+
+export interface ChamferOp {
+  type: "Chamfer";
+  child: NodeId;
+  distance: number;
+}
+
 /**
  * An imported mesh (e.g., from STEP file).
  * Stores pre-tessellated geometry that can be transformed but not used in booleans.
@@ -346,6 +358,8 @@ export type CsgOp =
   | LinearPatternOp
   | CircularPatternOp
   | ShellOp
+  | FilletOp
+  | ChamferOp
   | SweepOp
   | LoftOp
   | ImportedMeshOp;

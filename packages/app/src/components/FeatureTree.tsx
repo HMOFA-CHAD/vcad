@@ -19,6 +19,11 @@ import {
   Anchor,
   Copy,
   PencilSimple,
+  Circle,
+  Octagon,
+  CubeTransparent,
+  DotsThree,
+  ArrowsHorizontal,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -41,6 +46,12 @@ function getPartIcon(part: PartInfo): typeof Cube {
   if (part.kind === "sweep") return Spiral;
   if (part.kind === "loft") return Stack;
   if (part.kind === "imported-mesh") return Package;
+  if (part.kind === "fillet") return Circle;
+  if (part.kind === "chamfer") return Octagon;
+  if (part.kind === "shell") return CubeTransparent;
+  if (part.kind === "linear-pattern") return DotsThree;
+  if (part.kind === "circular-pattern") return ArrowsClockwise;
+  if (part.kind === "mirror") return ArrowsHorizontal;
   return KIND_ICONS[part.kind];
 }
 

@@ -527,6 +527,16 @@ function evaluateOp(
       return child.shell(op.thickness);
     }
 
+    case "Fillet": {
+      const child = evaluateNode(op.child, nodes, Solid, cache, depth + 1);
+      return child.fillet(op.radius);
+    }
+
+    case "Chamfer": {
+      const child = evaluateNode(op.child, nodes, Solid, cache, depth + 1);
+      return child.chamfer(op.distance);
+    }
+
     case "Sweep": {
       const sketchNode = nodes[String(op.sketch)];
       if (!sketchNode || sketchNode.op.type !== "Sketch2D") {

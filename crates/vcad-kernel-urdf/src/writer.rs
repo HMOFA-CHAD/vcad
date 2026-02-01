@@ -321,8 +321,10 @@ impl<'a> UrdfWriter<'a> {
             }
             CsgOp::LinearPattern { child, .. }
             | CsgOp::CircularPattern { child, .. }
-            | CsgOp::Shell { child, .. } => {
-                // For patterns/shell, export base geometry
+            | CsgOp::Shell { child, .. }
+            | CsgOp::Fillet { child, .. }
+            | CsgOp::Chamfer { child, .. } => {
+                // For patterns/shell/fillet/chamfer, export base geometry
                 self.node_to_geometry(*child)
             }
             CsgOp::Sketch2D { .. } | CsgOp::Extrude { .. } | CsgOp::Revolve { .. } => {

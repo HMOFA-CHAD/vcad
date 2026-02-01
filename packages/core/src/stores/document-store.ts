@@ -25,6 +25,12 @@ import type {
   SweepPartInfo,
   LoftPartInfo,
   ImportedMeshPartInfo,
+  FilletPartInfo,
+  ChamferPartInfo,
+  ShellPartInfo,
+  LinearPatternPartInfo,
+  CircularPatternPartInfo,
+  MirrorPartInfo,
   SketchPlane,
 } from "../types.js";
 import {
@@ -35,6 +41,12 @@ import {
   isSweepPart,
   isLoftPart,
   isImportedMeshPart,
+  isFilletPart,
+  isChamferPart,
+  isShellPart,
+  isLinearPatternPart,
+  isCircularPatternPart,
+  isMirrorPart,
   getSketchPlaneDirections,
 } from "../types.js";
 
@@ -168,6 +180,24 @@ export interface DocumentState {
     normals?: Float32Array,
     source?: string,
   ) => string;
+  // Modify operations (wrap existing part)
+  addFillet: (partId: string, radius: number) => string | null;
+  addChamfer: (partId: string, distance: number) => string | null;
+  addShell: (partId: string, thickness: number) => string | null;
+  addLinearPattern: (
+    partId: string,
+    direction: Vec3,
+    count: number,
+    spacing: number,
+  ) => string | null;
+  addCircularPattern: (
+    partId: string,
+    axisOrigin: Vec3,
+    axisDir: Vec3,
+    count: number,
+    angleDeg: number,
+  ) => string | null;
+  addMirror: (partId: string, plane: "XY" | "XZ" | "YZ") => string | null;
 }
 
 function makeNode(id: NodeId, name: string | null, op: CsgOp): Node {
@@ -352,6 +382,18 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       delete newDoc.nodes[String(part.loftNodeId)];
     } else if (isImportedMeshPart(part)) {
       delete newDoc.nodes[String(part.meshNodeId)];
+    } else if (isFilletPart(part)) {
+      delete newDoc.nodes[String(part.filletNodeId)];
+    } else if (isChamferPart(part)) {
+      delete newDoc.nodes[String(part.chamferNodeId)];
+    } else if (isShellPart(part)) {
+      delete newDoc.nodes[String(part.shellNodeId)];
+    } else if (isLinearPatternPart(part)) {
+      delete newDoc.nodes[String(part.patternNodeId)];
+    } else if (isCircularPatternPart(part)) {
+      delete newDoc.nodes[String(part.patternNodeId)];
+    } else if (isMirrorPart(part)) {
+      delete newDoc.nodes[String(part.mirrorNodeId)];
     }
     delete newDoc.nodes[String(part.scaleNodeId)];
     delete newDoc.nodes[String(part.rotateNodeId)];
@@ -1256,6 +1298,497 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     });
 
     return partId;
+  },
+
+  addFillet: (partId, radius) => {
+    const state = get();
+    const sourcePart = state.partIndex.get(partId);
+    if (!sourcePart) return null;
+
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    const filletId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    const filletOp: CsgOp = {
+      type: "Fillet",
+      child: sourcePart.translateNodeId,
+      radius,
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: filletId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    const newPartId = `part-${partNum}`;
+    const name = `Fillet ${partNum}`;
+
+    const undoState = pushUndo(state, "Fillet");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(filletId)] = makeNode(filletId, null, filletOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+
+    // Remove source part from roots, add new part
+    newDoc.roots = newDoc.roots.filter((r) => r.root !== sourcePart.translateNodeId);
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    const partInfo: FilletPartInfo = {
+      id: newPartId,
+      name,
+      kind: "fillet",
+      sourcePartId: partId,
+      filletNodeId: filletId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+    };
+
+    // Track source part as consumed
+    const newConsumedParts = { ...state.consumedParts };
+    newConsumedParts[partId] = sourcePart;
+
+    const newParts = state.parts.filter((p) => p.id !== partId);
+    newParts.push(partInfo);
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      consumedParts: newConsumedParts,
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return newPartId;
+  },
+
+  addChamfer: (partId, distance) => {
+    const state = get();
+    const sourcePart = state.partIndex.get(partId);
+    if (!sourcePart) return null;
+
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    const chamferId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    const chamferOp: CsgOp = {
+      type: "Chamfer",
+      child: sourcePart.translateNodeId,
+      distance,
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: chamferId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    const newPartId = `part-${partNum}`;
+    const name = `Chamfer ${partNum}`;
+
+    const undoState = pushUndo(state, "Chamfer");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(chamferId)] = makeNode(chamferId, null, chamferOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+
+    newDoc.roots = newDoc.roots.filter((r) => r.root !== sourcePart.translateNodeId);
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    const partInfo: ChamferPartInfo = {
+      id: newPartId,
+      name,
+      kind: "chamfer",
+      sourcePartId: partId,
+      chamferNodeId: chamferId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+    };
+
+    const newConsumedParts = { ...state.consumedParts };
+    newConsumedParts[partId] = sourcePart;
+
+    const newParts = state.parts.filter((p) => p.id !== partId);
+    newParts.push(partInfo);
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      consumedParts: newConsumedParts,
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return newPartId;
+  },
+
+  addShell: (partId, thickness) => {
+    const state = get();
+    const sourcePart = state.partIndex.get(partId);
+    if (!sourcePart) return null;
+
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    const shellId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    const shellOp: CsgOp = {
+      type: "Shell",
+      child: sourcePart.translateNodeId,
+      thickness,
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: shellId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    const newPartId = `part-${partNum}`;
+    const name = `Shell ${partNum}`;
+
+    const undoState = pushUndo(state, "Shell");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(shellId)] = makeNode(shellId, null, shellOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+
+    newDoc.roots = newDoc.roots.filter((r) => r.root !== sourcePart.translateNodeId);
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    const partInfo: ShellPartInfo = {
+      id: newPartId,
+      name,
+      kind: "shell",
+      sourcePartId: partId,
+      shellNodeId: shellId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+    };
+
+    const newConsumedParts = { ...state.consumedParts };
+    newConsumedParts[partId] = sourcePart;
+
+    const newParts = state.parts.filter((p) => p.id !== partId);
+    newParts.push(partInfo);
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      consumedParts: newConsumedParts,
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return newPartId;
+  },
+
+  addLinearPattern: (partId, direction, count, spacing) => {
+    const state = get();
+    const sourcePart = state.partIndex.get(partId);
+    if (!sourcePart) return null;
+
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    const patternId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    const patternOp: CsgOp = {
+      type: "LinearPattern",
+      child: sourcePart.translateNodeId,
+      direction,
+      count,
+      spacing,
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: patternId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    const newPartId = `part-${partNum}`;
+    const name = `Linear Pattern ${partNum}`;
+
+    const undoState = pushUndo(state, "Linear Pattern");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(patternId)] = makeNode(patternId, null, patternOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+
+    newDoc.roots = newDoc.roots.filter((r) => r.root !== sourcePart.translateNodeId);
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    const partInfo: LinearPatternPartInfo = {
+      id: newPartId,
+      name,
+      kind: "linear-pattern",
+      sourcePartId: partId,
+      patternNodeId: patternId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+    };
+
+    const newConsumedParts = { ...state.consumedParts };
+    newConsumedParts[partId] = sourcePart;
+
+    const newParts = state.parts.filter((p) => p.id !== partId);
+    newParts.push(partInfo);
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      consumedParts: newConsumedParts,
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return newPartId;
+  },
+
+  addCircularPattern: (partId, axisOrigin, axisDir, count, angleDeg) => {
+    const state = get();
+    const sourcePart = state.partIndex.get(partId);
+    if (!sourcePart) return null;
+
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    const patternId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    const patternOp: CsgOp = {
+      type: "CircularPattern",
+      child: sourcePart.translateNodeId,
+      axis_origin: axisOrigin,
+      axis_dir: axisDir,
+      count,
+      angle_deg: angleDeg,
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: patternId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    const newPartId = `part-${partNum}`;
+    const name = `Circular Pattern ${partNum}`;
+
+    const undoState = pushUndo(state, "Circular Pattern");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(patternId)] = makeNode(patternId, null, patternOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+
+    newDoc.roots = newDoc.roots.filter((r) => r.root !== sourcePart.translateNodeId);
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    const partInfo: CircularPatternPartInfo = {
+      id: newPartId,
+      name,
+      kind: "circular-pattern",
+      sourcePartId: partId,
+      patternNodeId: patternId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+    };
+
+    const newConsumedParts = { ...state.consumedParts };
+    newConsumedParts[partId] = sourcePart;
+
+    const newParts = state.parts.filter((p) => p.id !== partId);
+    newParts.push(partInfo);
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      consumedParts: newConsumedParts,
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return newPartId;
+  },
+
+  addMirror: (partId, plane) => {
+    const state = get();
+    const sourcePart = state.partIndex.get(partId);
+    if (!sourcePart) return null;
+
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    // Mirror is implemented as a Scale with negative factor on one axis
+    const mirrorId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    // Determine scale factor based on mirror plane
+    const mirrorFactor = {
+      XY: { x: 1, y: 1, z: -1 },
+      XZ: { x: 1, y: -1, z: 1 },
+      YZ: { x: -1, y: 1, z: 1 },
+    }[plane];
+
+    const mirrorOp: CsgOp = {
+      type: "Scale",
+      child: sourcePart.translateNodeId,
+      factor: mirrorFactor,
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: mirrorId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    const newPartId = `part-${partNum}`;
+    const name = `Mirror ${plane} ${partNum}`;
+
+    const undoState = pushUndo(state, "Mirror");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(mirrorId)] = makeNode(mirrorId, null, mirrorOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+
+    // Keep source part in roots, add mirror as additional part
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    const partInfo: MirrorPartInfo = {
+      id: newPartId,
+      name,
+      kind: "mirror",
+      sourcePartId: partId,
+      mirrorNodeId: mirrorId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+    };
+
+    // Mirror keeps source, so don't remove from parts
+    const newParts = [...state.parts, partInfo];
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return newPartId;
   },
 
   setPartMaterial: (partId, materialKey) => {

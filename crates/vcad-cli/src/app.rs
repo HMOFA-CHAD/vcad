@@ -581,6 +581,14 @@ fn evaluate_node(doc: &Document, node_id: NodeId) -> Result<Option<vcad_kernel::
             let c = evaluate_node(doc, *child)?;
             c.map(|s| s.shell(*thickness))
         }
+        CsgOp::Fillet { child, radius } => {
+            let c = evaluate_node(doc, *child)?;
+            c.map(|s| s.fillet(*radius))
+        }
+        CsgOp::Chamfer { child, distance } => {
+            let c = evaluate_node(doc, *child)?;
+            c.map(|s| s.chamfer(*distance))
+        }
         CsgOp::StepImport { path } => {
             // Import geometry from STEP file
             match Solid::from_step(path) {

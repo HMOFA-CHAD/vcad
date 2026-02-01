@@ -207,7 +207,9 @@ fn get_children(op: &CsgOp) -> Vec<u64> {
         | CsgOp::Scale { child, .. }
         | CsgOp::LinearPattern { child, .. }
         | CsgOp::CircularPattern { child, .. }
-        | CsgOp::Shell { child, .. } => vec![*child],
+        | CsgOp::Shell { child, .. }
+        | CsgOp::Fillet { child, .. }
+        | CsgOp::Chamfer { child, .. } => vec![*child],
         CsgOp::Extrude { sketch, .. } | CsgOp::Revolve { sketch, .. } => vec![*sketch],
         _ => vec![],
     }
@@ -392,6 +394,22 @@ fn format_op(op: &CsgOp, id_map: &HashMap<u64, usize>) -> Result<String, Compact
                 message: format!("unknown node {}", child),
             })?;
             Ok(format!("SH {} {}", c, thickness))
+        }
+
+        CsgOp::Fillet { child, radius } => {
+            let c = id_map.get(child).ok_or_else(|| CompactParseError {
+                line: 0,
+                message: format!("unknown node {}", child),
+            })?;
+            Ok(format!("FI {} {}", c, radius))
+        }
+
+        CsgOp::Chamfer { child, distance } => {
+            let c = id_map.get(child).ok_or_else(|| CompactParseError {
+                line: 0,
+                message: format!("unknown node {}", child),
+            })?;
+            Ok(format!("CH {} {}", c, distance))
         }
 
         CsgOp::Sketch2D {
@@ -705,6 +723,32 @@ where
             Ok(CsgOp::Shell {
                 child: parse_u64(parts[1], line_num)?,
                 thickness: parse_f64(parts[2], line_num)?,
+            })
+        }
+
+        "FI" => {
+            if parts.len() != 3 {
+                return Err(CompactParseError {
+                    line: line_num,
+                    message: format!("FI requires 2 args, got {}", parts.len() - 1),
+                });
+            }
+            Ok(CsgOp::Fillet {
+                child: parse_u64(parts[1], line_num)?,
+                radius: parse_f64(parts[2], line_num)?,
+            })
+        }
+
+        "CH" => {
+            if parts.len() != 3 {
+                return Err(CompactParseError {
+                    line: line_num,
+                    message: format!("CH requires 2 args, got {}", parts.len() - 1),
+                });
+            }
+            Ok(CsgOp::Chamfer {
+                child: parse_u64(parts[1], line_num)?,
+                distance: parse_f64(parts[2], line_num)?,
             })
         }
 

@@ -44,6 +44,13 @@ export interface CommandActions {
   hasPartDefs: () => boolean;
   hasTwoInstancesSelected: () => boolean;
   hasOneInstanceSelected: () => boolean;
+  // Modify operations
+  applyFillet: () => void;
+  applyChamfer: () => void;
+  applyShell: () => void;
+  applyLinearPattern: () => void;
+  applyCircularPattern: () => void;
+  applyMirror: () => void;
 }
 
 export function createCommandRegistry(actions: CommandActions): CommandRegistry {
@@ -296,6 +303,56 @@ export function createCommandRegistry(actions: CommandActions): CommandRegistry 
       keywords: ["ground", "fix", "base", "assembly", "anchor"],
       action: actions.setGroundInstance,
       enabled: actions.hasOneInstanceSelected,
+    },
+
+    // Modify operations
+    {
+      id: "apply-fillet",
+      label: "Fillet",
+      icon: "Circle",
+      keywords: ["fillet", "round", "radius", "edge"],
+      action: actions.applyFillet,
+      enabled: actions.hasOnePartSelected,
+    },
+    {
+      id: "apply-chamfer",
+      label: "Chamfer",
+      icon: "Octagon",
+      keywords: ["chamfer", "bevel", "edge", "corner"],
+      action: actions.applyChamfer,
+      enabled: actions.hasOnePartSelected,
+    },
+    {
+      id: "apply-shell",
+      label: "Shell",
+      icon: "Cube",
+      keywords: ["shell", "hollow", "thickness", "wall"],
+      action: actions.applyShell,
+      enabled: actions.hasOnePartSelected,
+    },
+    {
+      id: "apply-linear-pattern",
+      label: "Linear Pattern",
+      icon: "DotsThree",
+      keywords: ["pattern", "linear", "array", "repeat", "copy"],
+      action: actions.applyLinearPattern,
+      enabled: actions.hasOnePartSelected,
+    },
+    {
+      id: "apply-circular-pattern",
+      label: "Circular Pattern",
+      icon: "CircleNotch",
+      keywords: ["pattern", "circular", "radial", "array", "repeat"],
+      action: actions.applyCircularPattern,
+      enabled: actions.hasOnePartSelected,
+    },
+    {
+      id: "apply-mirror",
+      label: "Mirror",
+      icon: "ArrowsHorizontal",
+      keywords: ["mirror", "reflect", "flip", "symmetry"],
+      action: actions.applyMirror,
+      enabled: actions.hasOnePartSelected,
     },
   ];
 }

@@ -322,6 +322,31 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
         );
         return instanceIds.length === 1;
       },
+      // Modify operations - dispatch events to open dialogs
+      applyFillet: () => {
+        window.dispatchEvent(new CustomEvent("vcad:apply-fillet"));
+        onOpenChange(false);
+      },
+      applyChamfer: () => {
+        window.dispatchEvent(new CustomEvent("vcad:apply-chamfer"));
+        onOpenChange(false);
+      },
+      applyShell: () => {
+        window.dispatchEvent(new CustomEvent("vcad:apply-shell"));
+        onOpenChange(false);
+      },
+      applyLinearPattern: () => {
+        window.dispatchEvent(new CustomEvent("vcad:apply-pattern"));
+        onOpenChange(false);
+      },
+      applyCircularPattern: () => {
+        window.dispatchEvent(new CustomEvent("vcad:apply-pattern"));
+        onOpenChange(false);
+      },
+      applyMirror: () => {
+        window.dispatchEvent(new CustomEvent("vcad:apply-mirror"));
+        onOpenChange(false);
+      },
     });
   }, [
     addJoint,

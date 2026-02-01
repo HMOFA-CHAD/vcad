@@ -21,6 +21,11 @@ import {
   Download,
   MagnifyingGlassPlus,
   X,
+  Circle,
+  Octagon,
+  CubeTransparent,
+  DotsThree,
+  ArrowsHorizontal,
 } from "@phosphor-icons/react";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -33,7 +38,14 @@ import type { PrimitiveKind, BooleanType } from "@vcad/core";
 import { downloadDxf } from "@/lib/save-load";
 import { useNotificationStore } from "@/stores/notification-store";
 import { cn } from "@/lib/utils";
-import { InsertInstanceDialog, AddJointDialog } from "@/components/dialogs";
+import {
+  InsertInstanceDialog,
+  AddJointDialog,
+  FilletChamferDialog,
+  ShellDialog,
+  PatternDialog,
+  MirrorDialog,
+} from "@/components/dialogs";
 import { useOnboardingStore, type GuidedFlowStep } from "@/stores/onboarding-store";
 import { useDrawingStore, type ViewDirection } from "@/stores/drawing-store";
 
@@ -133,6 +145,11 @@ export function BottomToolbar() {
 
   const [insertDialogOpen, setInsertDialogOpen] = useState(false);
   const [jointDialogOpen, setJointDialogOpen] = useState(false);
+  const [filletDialogOpen, setFilletDialogOpen] = useState(false);
+  const [chamferDialogOpen, setChamferDialogOpen] = useState(false);
+  const [shellDialogOpen, setShellDialogOpen] = useState(false);
+  const [patternDialogOpen, setPatternDialogOpen] = useState(false);
+  const [mirrorDialogOpen, setMirrorDialogOpen] = useState(false);
 
   // Drawing view state
   const viewMode = useDrawingStore((s) => s.viewMode);
@@ -191,6 +208,42 @@ export function BottomToolbar() {
   );
   const hasTwoInstancesSelected = selectedInstanceIds.length === 2;
 
+  // Get the single selected part ID (for modify operations)
+  const selectedPartId = hasOnePartSelected
+    ? Array.from(selectedPartIds).find((id) => parts.some((p) => p.id === id))
+    : null;
+
+  // Listen for modify operation events from command palette
+  useEffect(() => {
+    function handleFillet() {
+      if (selectedPartId) setFilletDialogOpen(true);
+    }
+    function handleChamfer() {
+      if (selectedPartId) setChamferDialogOpen(true);
+    }
+    function handleShell() {
+      if (selectedPartId) setShellDialogOpen(true);
+    }
+    function handlePattern() {
+      if (selectedPartId) setPatternDialogOpen(true);
+    }
+    function handleMirror() {
+      if (selectedPartId) setMirrorDialogOpen(true);
+    }
+    window.addEventListener("vcad:apply-fillet", handleFillet);
+    window.addEventListener("vcad:apply-chamfer", handleChamfer);
+    window.addEventListener("vcad:apply-shell", handleShell);
+    window.addEventListener("vcad:apply-pattern", handlePattern);
+    window.addEventListener("vcad:apply-mirror", handleMirror);
+    return () => {
+      window.removeEventListener("vcad:apply-fillet", handleFillet);
+      window.removeEventListener("vcad:apply-chamfer", handleChamfer);
+      window.removeEventListener("vcad:apply-shell", handleShell);
+      window.removeEventListener("vcad:apply-pattern", handlePattern);
+      window.removeEventListener("vcad:apply-mirror", handleMirror);
+    };
+  }, [selectedPartId]);
+
   function handleAddPrimitive(kind: PrimitiveKind) {
     const partId = addPrimitive(kind);
     select(partId);
@@ -241,6 +294,37 @@ export function BottomToolbar() {
         open={jointDialogOpen}
         onOpenChange={setJointDialogOpen}
       />
+      {selectedPartId && (
+        <>
+          <FilletChamferDialog
+            open={filletDialogOpen}
+            onOpenChange={setFilletDialogOpen}
+            mode="fillet"
+            partId={selectedPartId}
+          />
+          <FilletChamferDialog
+            open={chamferDialogOpen}
+            onOpenChange={setChamferDialogOpen}
+            mode="chamfer"
+            partId={selectedPartId}
+          />
+          <ShellDialog
+            open={shellDialogOpen}
+            onOpenChange={setShellDialogOpen}
+            partId={selectedPartId}
+          />
+          <PatternDialog
+            open={patternDialogOpen}
+            onOpenChange={setPatternDialogOpen}
+            partId={selectedPartId}
+          />
+          <MirrorDialog
+            open={mirrorDialogOpen}
+            onOpenChange={setMirrorDialogOpen}
+            partId={selectedPartId}
+          />
+        </>
+      )}
     {/* Mobile: full-width fixed at bottom; Desktop: centered floating */}
     <div className="fixed bottom-0 inset-x-0 sm:absolute sm:bottom-4 sm:left-1/2 sm:-translate-x-1/2 sm:inset-auto z-20 pb-[var(--safe-bottom)]">
       <div
@@ -329,6 +413,45 @@ export function BottomToolbar() {
             </ToolbarButton>
           </>
         )}
+
+        <Divider />
+
+        {/* Modify operations */}
+        <ToolbarButton
+          tooltip="Fillet"
+          disabled={!hasOnePartSelected || sketchActive}
+          onClick={() => setFilletDialogOpen(true)}
+        >
+          <Circle size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Chamfer"
+          disabled={!hasOnePartSelected || sketchActive}
+          onClick={() => setChamferDialogOpen(true)}
+        >
+          <Octagon size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Shell"
+          disabled={!hasOnePartSelected || sketchActive}
+          onClick={() => setShellDialogOpen(true)}
+        >
+          <CubeTransparent size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Pattern"
+          disabled={!hasOnePartSelected || sketchActive}
+          onClick={() => setPatternDialogOpen(true)}
+        >
+          <DotsThree size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Mirror"
+          disabled={!hasOnePartSelected || sketchActive}
+          onClick={() => setMirrorDialogOpen(true)}
+        >
+          <ArrowsHorizontal size={20} />
+        </ToolbarButton>
 
         <Divider />
 

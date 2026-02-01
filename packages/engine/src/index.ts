@@ -287,4 +287,54 @@ export class Engine {
       return null;
     }
   }
+
+  /** Evaluate a preview revolve without adding to document */
+  evaluateRevolvePreview(
+    origin: Vec3,
+    xDir: Vec3,
+    yDir: Vec3,
+    segments: SketchSegment2D[],
+    axisOrigin: Vec3,
+    axisDir: Vec3,
+    angleDeg: number,
+  ): TriangleMesh | null {
+    if (segments.length === 0) return null;
+
+    try {
+      const profile = {
+        origin: [origin.x, origin.y, origin.z],
+        x_dir: [xDir.x, xDir.y, xDir.z],
+        y_dir: [yDir.x, yDir.y, yDir.z],
+        segments: segments.map((seg) => {
+          if (seg.type === "Line") {
+            return {
+              type: "Line" as const,
+              start: [seg.start.x, seg.start.y],
+              end: [seg.end.x, seg.end.y],
+            };
+          } else {
+            return {
+              type: "Arc" as const,
+              start: [seg.start.x, seg.start.y],
+              end: [seg.end.x, seg.end.y],
+              center: [seg.center.x, seg.center.y],
+              ccw: seg.ccw,
+            };
+          }
+        }),
+      };
+
+      const axisOriginArray = new Float64Array([axisOrigin.x, axisOrigin.y, axisOrigin.z]);
+      const axisDirArray = new Float64Array([axisDir.x, axisDir.y, axisDir.z]);
+      const solid = this.kernel.Solid.revolve(profile, axisOriginArray, axisDirArray, angleDeg);
+      const meshData = solid.getMesh();
+
+      return {
+        positions: new Float32Array(meshData.positions),
+        indices: new Uint32Array(meshData.indices),
+      };
+    } catch {
+      return null;
+    }
+  }
 }
