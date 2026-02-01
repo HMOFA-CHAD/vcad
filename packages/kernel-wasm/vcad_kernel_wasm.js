@@ -1,10 +1,7 @@
 /* @ts-self-types="./vcad_kernel_wasm.d.ts" */
 
 /**
- * Physics simulation environment for robotics and RL.
- *
- * This provides a gym-style interface for simulating robot assemblies
- * with physics, joints, and collision detection.
+ * Stub PhysicsSim when physics feature is not enabled.
  */
 export class PhysicsSim {
     __destroy_into_raw() {
@@ -18,139 +15,24 @@ export class PhysicsSim {
         wasm.__wbg_physicssim_free(ptr, 0);
     }
     /**
-     * Get the action dimension.
-     * @returns {number}
+     * Returns an error when physics feature is not enabled.
+     * @param {string} _doc_json
+     * @param {string[]} _end_effector_ids
+     * @param {number | null} [_dt]
+     * @param {number | null} [_substeps]
      */
-    actionDim() {
-        const ret = wasm.physicssim_actionDim(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * Create a new physics simulation from a vcad document JSON.
-     *
-     * # Arguments
-     * * `doc_json` - JSON string representing a vcad IR Document
-     * * `end_effector_ids` - Array of instance IDs to track as end effectors
-     * * `dt` - Simulation timestep in seconds (default: 1/240)
-     * * `substeps` - Number of physics substeps per step (default: 4)
-     * @param {string} doc_json
-     * @param {string[]} end_effector_ids
-     * @param {number | null} [dt]
-     * @param {number | null} [substeps]
-     */
-    constructor(doc_json, end_effector_ids, dt, substeps) {
-        const ptr0 = passStringToWasm0(doc_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    constructor(_doc_json, _end_effector_ids, _dt, _substeps) {
+        const ptr0 = passStringToWasm0(_doc_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayJsValueToWasm0(end_effector_ids, wasm.__wbindgen_malloc);
+        const ptr1 = passArrayJsValueToWasm0(_end_effector_ids, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.physicssim_new(ptr0, len0, ptr1, len1, isLikeNone(dt) ? 0x100000001 : Math.fround(dt), isLikeNone(substeps) ? 0x100000001 : (substeps) >>> 0);
+        const ret = wasm.physicssim_new(ptr0, len0, ptr1, len1, isLikeNone(_dt) ? 0x100000001 : Math.fround(_dt), isLikeNone(_substeps) ? 0x100000001 : (_substeps) >>> 0);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         this.__wbg_ptr = ret[0] >>> 0;
         PhysicsSimFinalization.register(this, this.__wbg_ptr, this);
         return this;
-    }
-    /**
-     * Get the number of joints in the environment.
-     * @returns {number}
-     */
-    numJoints() {
-        const ret = wasm.physicssim_actionDim(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * Get the observation dimension.
-     * @returns {number}
-     */
-    observationDim() {
-        const ret = wasm.physicssim_observationDim(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * Get current observation without stepping.
-     *
-     * Returns observation as JSON.
-     * @returns {any}
-     */
-    observe() {
-        const ret = wasm.physicssim_observe(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * Reset the environment to initial state.
-     *
-     * Returns the initial observation as JSON.
-     * @returns {any}
-     */
-    reset() {
-        const ret = wasm.physicssim_reset(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * Set the maximum episode length.
-     * @param {number} max_steps
-     */
-    setMaxSteps(max_steps) {
-        wasm.physicssim_setMaxSteps(this.__wbg_ptr, max_steps);
-    }
-    /**
-     * Set the random seed.
-     * @param {bigint} seed
-     */
-    setSeed(seed) {
-        wasm.physicssim_setSeed(this.__wbg_ptr, seed);
-    }
-    /**
-     * Step the simulation with position targets.
-     *
-     * # Arguments
-     * * `targets` - Array of position targets for each joint (degrees or mm)
-     *
-     * # Returns
-     * Object with { observation, reward, done }
-     * @param {Float64Array} targets
-     * @returns {any}
-     */
-    stepPosition(targets) {
-        const ptr0 = passArrayF64ToWasm0(targets, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.physicssim_stepPosition(this.__wbg_ptr, ptr0, len0);
-        return ret;
-    }
-    /**
-     * Step the simulation with a torque action.
-     *
-     * # Arguments
-     * * `torques` - Array of torques/forces for each joint (Nm or N)
-     *
-     * # Returns
-     * Object with { observation, reward, done }
-     * @param {Float64Array} torques
-     * @returns {any}
-     */
-    stepTorque(torques) {
-        const ptr0 = passArrayF64ToWasm0(torques, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.physicssim_stepTorque(this.__wbg_ptr, ptr0, len0);
-        return ret;
-    }
-    /**
-     * Step the simulation with velocity targets.
-     *
-     * # Arguments
-     * * `targets` - Array of velocity targets for each joint (deg/s or mm/s)
-     *
-     * # Returns
-     * Object with { observation, reward, done }
-     * @param {Float64Array} targets
-     * @returns {any}
-     */
-    stepVelocity(targets) {
-        const ptr0 = passArrayF64ToWasm0(targets, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.physicssim_stepVelocity(this.__wbg_ptr, ptr0, len0);
-        return ret;
     }
 }
 if (Symbol.dispose) PhysicsSim.prototype[Symbol.dispose] = PhysicsSim.prototype.free;
@@ -994,7 +876,7 @@ export function isGpuAvailable() {
  * @returns {boolean}
  */
 export function isPhysicsAvailable() {
-    const ret = wasm.isPhysicsAvailable();
+    const ret = wasm.isGpuAvailable();
     return ret !== 0;
 }
 
@@ -1359,10 +1241,6 @@ function __wbg_get_imports() {
             const ret = typeof(val) === 'object' && val !== null;
             return ret;
         },
-        __wbg___wbindgen_is_string_cd444516edc5b180: function(arg0) {
-            const ret = typeof(arg0) === 'string';
-            return ret;
-        },
         __wbg___wbindgen_is_undefined_9e4d92534c42d778: function(arg0) {
             const ret = arg0 === undefined;
             return ret;
@@ -1517,10 +1395,6 @@ function __wbg_get_imports() {
                 state0.a = state0.b = 0;
             }
         },
-        __wbg_new_dca287b076112a51: function() {
-            const ret = new Map();
-            return ret;
-        },
         __wbg_new_dd2b680c8bf6ae29: function(arg0) {
             const ret = new Uint8Array(arg0);
             return ret;
@@ -1549,10 +1423,6 @@ function __wbg_get_imports() {
         },
         __wbg_resolve_002c4b7d9d8f6b64: function(arg0) {
             const ret = Promise.resolve(arg0);
-            return ret;
-        },
-        __wbg_set_1eb0999cf5d27fc8: function(arg0, arg1, arg2) {
-            const ret = arg0.set(arg1, arg2);
             return ret;
         },
         __wbg_set_3f1d0b984ed272ed: function(arg0, arg1, arg2) {
@@ -1593,7 +1463,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 734, function: Function { arguments: [Externref], shim_idx: 735, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 158, function: Function { arguments: [Externref], shim_idx: 159, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__ha1c57de1520edab9, wasm_bindgen__convert__closures_____invoke__h4889c924fd29fd81);
             return ret;
         },

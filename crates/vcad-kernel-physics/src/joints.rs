@@ -14,6 +14,7 @@ use crate::error::PhysicsError;
 pub const DEFAULT_MOTOR_STIFFNESS: f32 = 1000.0;
 #[allow(dead_code)]
 pub const DEFAULT_MOTOR_DAMPING: f32 = 100.0;
+#[allow(dead_code)]
 pub const DEFAULT_MAX_FORCE: f32 = 1000.0;
 
 /// Create a Rapier joint from a vcad joint definition.
