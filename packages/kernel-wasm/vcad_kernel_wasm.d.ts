@@ -25,6 +25,10 @@ export class RayTracer {
      */
     static create(): RayTracer;
     /**
+     * Get the current debug render mode.
+     */
+    getDebugMode(): number;
+    /**
      * Get the current frame index for progressive rendering.
      */
     getFrameIndex(): number;
@@ -70,6 +74,15 @@ export class RayTracer {
      * Reset the progressive accumulation (call when camera moves).
      */
     resetAccumulation(): void;
+    /**
+     * Set the debug render mode.
+     *
+     * # Arguments
+     * * `mode` - Debug mode: 0=normal, 1=normals as RGB, 2=face_id colors, 3=N·L grayscale, 4=orientation
+     *
+     * Call resetAccumulation() after changing mode to see immediate effect.
+     */
+    setDebugMode(mode: number): void;
     /**
      * Upload a solid's BRep representation for ray tracing.
      *
@@ -402,6 +415,20 @@ export function createDetailView(parent_json: string, center_x: number, center_y
 export function decimateMeshGpu(positions: Float32Array, indices: Uint32Array, target_ratio: number): Promise<any>;
 
 /**
+ * Evaluate compact IR and return a Solid for rendering.
+ *
+ * This is a convenience function that parses compact IR and evaluates
+ * the geometry in a single step.
+ *
+ * # Arguments
+ * * `compact_ir` - The compact IR text to evaluate
+ *
+ * # Returns
+ * A Solid object that can be rendered or queried.
+ */
+export function evaluateCompactIR(compact_ir: string): Solid;
+
+/**
  * Export a projected view to DXF format.
  *
  * Returns the DXF content as bytes.
@@ -447,6 +474,27 @@ export function initGpu(): Promise<boolean>;
 export function isGpuAvailable(): boolean;
 
 /**
+ * Parse compact IR text format into a vcad IR Document (JSON).
+ *
+ * The compact IR format is a token-efficient text representation designed
+ * for ML model training and inference. See `vcad_ir::compact` for format details.
+ *
+ * # Arguments
+ * * `compact_ir` - The compact IR text to parse
+ *
+ * # Returns
+ * A JSON string representing the parsed vcad IR Document.
+ *
+ * # Example
+ * ```javascript
+ * const ir = "C 50 30 5\nY 5 10\nT 1 25 15 0\nD 0 2";
+ * const doc = parseCompactIR(ir);
+ * console.log(doc); // JSON document
+ * ```
+ */
+export function parseCompactIR(compact_ir: string): string;
+
+/**
  * Process geometry with GPU acceleration.
  *
  * Computes creased normals and optionally generates LOD meshes.
@@ -488,6 +536,23 @@ export function projectMesh(mesh_js: any, view_direction: string): any;
  */
 export function sectionMesh(mesh_js: any, plane_json: string, hatch_json?: string | null): any;
 
+/**
+ * Convert a vcad IR Document (JSON) to compact IR text format.
+ *
+ * # Arguments
+ * * `doc_json` - JSON string representing a vcad IR Document
+ *
+ * # Returns
+ * The compact IR text representation.
+ *
+ * # Example
+ * ```javascript
+ * const compact = toCompactIR(docJson);
+ * console.log(compact); // "C 50 30 5\nY 5 10\n..."
+ * ```
+ */
+export function toCompactIR(doc_json: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -498,19 +563,23 @@ export interface InitOutput {
     readonly computeCreasedNormalsGpu: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly createDetailView: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number];
     readonly decimateMeshGpu: (a: number, b: number, c: number, d: number, e: number) => any;
+    readonly evaluateCompactIR: (a: number, b: number) => [number, number, number];
     readonly exportProjectedViewToDxf: (a: number, b: number) => [number, number, number, number];
     readonly importStepBuffer: (a: number, b: number) => [number, number, number];
     readonly initGpu: () => any;
     readonly isGpuAvailable: () => number;
+    readonly parseCompactIR: (a: number, b: number) => [number, number, number, number];
     readonly processGeometryGpu: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly projectMesh: (a: any, b: number, c: number) => any;
     readonly raytracer_canRaytrace: (a: number) => number;
     readonly raytracer_create: () => [number, number, number];
+    readonly raytracer_getDebugMode: (a: number) => number;
     readonly raytracer_getFrameIndex: (a: number) => number;
     readonly raytracer_hasScene: (a: number) => number;
     readonly raytracer_pick: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number];
     readonly raytracer_render: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => any;
     readonly raytracer_resetAccumulation: (a: number) => void;
+    readonly raytracer_setDebugMode: (a: number, b: number) => void;
     readonly raytracer_uploadSolid: (a: number, b: number) => [number, number];
     readonly sectionMesh: (a: any, b: number, c: number, d: number, e: number) => any;
     readonly solid_boundingBox: (a: number) => [number, number];
@@ -544,6 +613,7 @@ export interface InitOutput {
     readonly solid_translate: (a: number, b: number, c: number, d: number) => number;
     readonly solid_union: (a: number, b: number) => number;
     readonly solid_volume: (a: number) => number;
+    readonly toCompactIR: (a: number, b: number) => [number, number, number, number];
     readonly wasmannotationlayer_addAlignedDimension: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly wasmannotationlayer_addAngleDimension: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly wasmannotationlayer_addDiameterDimension: (a: number, b: number, c: number, d: number, e: number) => void;

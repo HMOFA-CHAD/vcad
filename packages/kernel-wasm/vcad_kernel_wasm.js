@@ -51,6 +51,14 @@ export class RayTracer {
         return RayTracer.__wrap(ret[0]);
     }
     /**
+     * Get the current debug render mode.
+     * @returns {number}
+     */
+    getDebugMode() {
+        const ret = wasm.raytracer_getDebugMode(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * Get the current frame index for progressive rendering.
      * @returns {number}
      */
@@ -142,6 +150,18 @@ export class RayTracer {
      */
     resetAccumulation() {
         wasm.raytracer_resetAccumulation(this.__wbg_ptr);
+    }
+    /**
+     * Set the debug render mode.
+     *
+     * # Arguments
+     * * `mode` - Debug mode: 0=normal, 1=normals as RGB, 2=face_id colors, 3=N·L grayscale, 4=orientation
+     *
+     * Call resetAccumulation() after changing mode to see immediate effect.
+     * @param {number} mode
+     */
+    setDebugMode(mode) {
+        wasm.raytracer_setDebugMode(this.__wbg_ptr, mode);
     }
     /**
      * Upload a solid's BRep representation for ray tracing.
@@ -847,6 +867,30 @@ export function decimateMeshGpu(positions, indices, target_ratio) {
 }
 
 /**
+ * Evaluate compact IR and return a Solid for rendering.
+ *
+ * This is a convenience function that parses compact IR and evaluates
+ * the geometry in a single step.
+ *
+ * # Arguments
+ * * `compact_ir` - The compact IR text to evaluate
+ *
+ * # Returns
+ * A Solid object that can be rendered or queried.
+ * @param {string} compact_ir
+ * @returns {Solid}
+ */
+export function evaluateCompactIR(compact_ir) {
+    const ptr0 = passStringToWasm0(compact_ir, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.evaluateCompactIR(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return Solid.__wrap(ret[0]);
+}
+
+/**
  * Export a projected view to DXF format.
  *
  * Returns the DXF content as bytes.
@@ -924,6 +968,48 @@ export function isGpuAvailable() {
 }
 
 /**
+ * Parse compact IR text format into a vcad IR Document (JSON).
+ *
+ * The compact IR format is a token-efficient text representation designed
+ * for ML model training and inference. See `vcad_ir::compact` for format details.
+ *
+ * # Arguments
+ * * `compact_ir` - The compact IR text to parse
+ *
+ * # Returns
+ * A JSON string representing the parsed vcad IR Document.
+ *
+ * # Example
+ * ```javascript
+ * const ir = "C 50 30 5\nY 5 10\nT 1 25 15 0\nD 0 2";
+ * const doc = parseCompactIR(ir);
+ * console.log(doc); // JSON document
+ * ```
+ * @param {string} compact_ir
+ * @returns {string}
+ */
+export function parseCompactIR(compact_ir) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(compact_ir, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.parseCompactIR(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * Process geometry with GPU acceleration.
  *
  * Computes creased normals and optionally generates LOD meshes.
@@ -994,6 +1080,44 @@ export function sectionMesh(mesh_js, plane_json, hatch_json) {
     var len1 = WASM_VECTOR_LEN;
     const ret = wasm.sectionMesh(mesh_js, ptr0, len0, ptr1, len1);
     return ret;
+}
+
+/**
+ * Convert a vcad IR Document (JSON) to compact IR text format.
+ *
+ * # Arguments
+ * * `doc_json` - JSON string representing a vcad IR Document
+ *
+ * # Returns
+ * The compact IR text representation.
+ *
+ * # Example
+ * ```javascript
+ * const compact = toCompactIR(docJson);
+ * console.log(compact); // "C 50 30 5\nY 5 10\n..."
+ * ```
+ * @param {string} doc_json
+ * @returns {string}
+ */
+export function toCompactIR(doc_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(doc_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.toCompactIR(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
 }
 
 function __wbg_get_imports() {
@@ -2775,12 +2899,12 @@ function __wbg_get_imports() {
             arg0.writeTexture(arg1, arg2, arg3, arg4);
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 1086, function: Function { arguments: [Externref], shim_idx: 1087, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 1150, function: Function { arguments: [Externref], shim_idx: 1151, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__ha8b73a36ae48e470, wasm_bindgen__convert__closures_____invoke__h4488ad9b37e81000);
             return ret;
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 341, function: Function { arguments: [NamedExternref("GPUUncapturedErrorEvent")], shim_idx: 342, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 405, function: Function { arguments: [NamedExternref("GPUUncapturedErrorEvent")], shim_idx: 406, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h250d7189f9770b99, wasm_bindgen__convert__closures_____invoke__ha8b3f1b8e67fad08);
             return ret;
         },
