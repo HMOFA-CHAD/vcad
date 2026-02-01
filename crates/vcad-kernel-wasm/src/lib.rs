@@ -1460,6 +1460,8 @@ pub struct RayTracer {
     /// Last render dimensions.
     last_width: u32,
     last_height: u32,
+    /// Debug render mode: 0=normal, 1=show normals, 2=show face_id, 3=show n_dot_l, 4=orientation.
+    debug_mode: u32,
 }
 
 #[cfg(feature = "raytrace")]
@@ -1488,6 +1490,7 @@ impl RayTracer {
             last_camera_hash: 0,
             last_width: 0,
             last_height: 0,
+            debug_mode: 0,
         })
     }
 
@@ -1502,6 +1505,27 @@ impl RayTracer {
     #[wasm_bindgen(js_name = getFrameIndex)]
     pub fn get_frame_index(&self) -> u32 {
         self.frame_index
+    }
+
+    /// Set the debug render mode.
+    ///
+    /// # Arguments
+    /// * `mode` - Debug mode: 0=normal, 1=normals as RGB, 2=face_id colors, 3=N·L grayscale, 4=orientation
+    ///
+    /// Call resetAccumulation() after changing mode to see immediate effect.
+    #[wasm_bindgen(js_name = setDebugMode)]
+    pub fn set_debug_mode(&mut self, mode: u32) {
+        self.debug_mode = mode;
+        // Reset accumulation when debug mode changes
+        self.frame_index = 0;
+        self.accum_buffer = None;
+        web_sys::console::log_1(&format!("[WASM] Debug mode set to {}", mode).into());
+    }
+
+    /// Get the current debug render mode.
+    #[wasm_bindgen(js_name = getDebugMode)]
+    pub fn get_debug_mode(&self) -> u32 {
+        self.debug_mode
     }
 
     /// Upload a solid's BRep representation for ray tracing.
@@ -1656,7 +1680,7 @@ impl RayTracer {
         let ctx = vcad_kernel_gpu::GpuContext::get()
             .ok_or_else(|| JsError::new("GPU context lost"))?;
 
-        let (pixels, new_accum) = self.pipeline.render_progressive(
+        let (pixels, new_accum) = self.pipeline.render_progressive_with_debug(
             ctx,
             scene,
             &gpu_camera,
@@ -1664,6 +1688,7 @@ impl RayTracer {
             height,
             self.frame_index,
             self.accum_buffer.take(),
+            self.debug_mode,
         )
             .await
             .map_err(|e| JsError::new(&format!("Render failed: {}", e)))?;
@@ -1762,5 +1787,257 @@ impl RayTracer {
     #[wasm_bindgen(js_name = create)]
     pub fn create() -> Result<RayTracer, JsError> {
         Err(JsError::new("Ray tracing feature not enabled. Compile with --features raytrace"))
+    }
+}
+
+// =========================================================================
+// Compact IR (for cad0 model integration)
+// =========================================================================
+
+/// Parse compact IR text format into a vcad IR Document (JSON).
+///
+/// The compact IR format is a token-efficient text representation designed
+/// for ML model training and inference. See `vcad_ir::compact` for format details.
+///
+/// # Arguments
+/// * `compact_ir` - The compact IR text to parse
+///
+/// # Returns
+/// A JSON string representing the parsed vcad IR Document.
+///
+/// # Example
+/// ```javascript
+/// const ir = "C 50 30 5\nY 5 10\nT 1 25 15 0\nD 0 2";
+/// const doc = parseCompactIR(ir);
+/// console.log(doc); // JSON document
+/// ```
+#[wasm_bindgen(js_name = parseCompactIR)]
+pub fn parse_compact_ir(compact_ir: &str) -> Result<String, JsError> {
+    let doc = vcad_ir::compact::from_compact(compact_ir)
+        .map_err(|e| JsError::new(&format!("Parse error: {}", e)))?;
+
+    doc.to_json()
+        .map_err(|e| JsError::new(&format!("JSON serialization failed: {}", e)))
+}
+
+/// Convert a vcad IR Document (JSON) to compact IR text format.
+///
+/// # Arguments
+/// * `doc_json` - JSON string representing a vcad IR Document
+///
+/// # Returns
+/// The compact IR text representation.
+///
+/// # Example
+/// ```javascript
+/// const compact = toCompactIR(docJson);
+/// console.log(compact); // "C 50 30 5\nY 5 10\n..."
+/// ```
+#[wasm_bindgen(js_name = toCompactIR)]
+pub fn to_compact_ir(doc_json: &str) -> Result<String, JsError> {
+    let doc = vcad_ir::Document::from_json(doc_json)
+        .map_err(|e| JsError::new(&format!("Invalid JSON: {}", e)))?;
+
+    vcad_ir::compact::to_compact(&doc)
+        .map_err(|e| JsError::new(&format!("Conversion error: {}", e)))
+}
+
+/// Evaluate compact IR and return a Solid for rendering.
+///
+/// This is a convenience function that parses compact IR and evaluates
+/// the geometry in a single step.
+///
+/// # Arguments
+/// * `compact_ir` - The compact IR text to evaluate
+///
+/// # Returns
+/// A Solid object that can be rendered or queried.
+#[wasm_bindgen(js_name = evaluateCompactIR)]
+pub fn evaluate_compact_ir(compact_ir: &str) -> Result<Solid, JsError> {
+    let doc = vcad_ir::compact::from_compact(compact_ir)
+        .map_err(|e| JsError::new(&format!("Parse error: {}", e)))?;
+
+    // Find the root node
+    let root_id = doc.roots.first()
+        .ok_or_else(|| JsError::new("Document has no root nodes"))?
+        .root;
+
+    // Evaluate the DAG to produce a solid
+    evaluate_node(&doc, root_id)
+}
+
+/// Recursively evaluate a node in the IR DAG.
+fn evaluate_node(doc: &vcad_ir::Document, node_id: vcad_ir::NodeId) -> Result<Solid, JsError> {
+    let node = doc.nodes.get(&node_id)
+        .ok_or_else(|| JsError::new(&format!("Node {} not found", node_id)))?;
+
+    match &node.op {
+        vcad_ir::CsgOp::Cube { size } => Ok(Solid::cube(size.x, size.y, size.z)),
+
+        vcad_ir::CsgOp::Cylinder { radius, height, segments } => {
+            let segs = if *segments == 0 { None } else { Some(*segments) };
+            Ok(Solid::cylinder(*radius, *height, segs))
+        }
+
+        vcad_ir::CsgOp::Sphere { radius, segments } => {
+            let segs = if *segments == 0 { None } else { Some(*segments) };
+            Ok(Solid::sphere(*radius, segs))
+        }
+
+        vcad_ir::CsgOp::Cone { radius_bottom, radius_top, height, segments } => {
+            let segs = if *segments == 0 { None } else { Some(*segments) };
+            Ok(Solid::cone(*radius_bottom, *radius_top, *height, segs))
+        }
+
+        vcad_ir::CsgOp::Empty => Ok(Solid::empty()),
+
+        vcad_ir::CsgOp::Union { left, right } => {
+            let l = evaluate_node(doc, *left)?;
+            let r = evaluate_node(doc, *right)?;
+            Ok(l.union(&r))
+        }
+
+        vcad_ir::CsgOp::Difference { left, right } => {
+            let l = evaluate_node(doc, *left)?;
+            let r = evaluate_node(doc, *right)?;
+            Ok(l.difference(&r))
+        }
+
+        vcad_ir::CsgOp::Intersection { left, right } => {
+            let l = evaluate_node(doc, *left)?;
+            let r = evaluate_node(doc, *right)?;
+            Ok(l.intersection(&r))
+        }
+
+        vcad_ir::CsgOp::Translate { child, offset } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.translate(offset.x, offset.y, offset.z))
+        }
+
+        vcad_ir::CsgOp::Rotate { child, angles } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.rotate(angles.x, angles.y, angles.z))
+        }
+
+        vcad_ir::CsgOp::Scale { child, factor } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.scale(factor.x, factor.y, factor.z))
+        }
+
+        vcad_ir::CsgOp::LinearPattern { child, direction, count, spacing } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.linear_pattern(direction.x, direction.y, direction.z, *count, *spacing))
+        }
+
+        vcad_ir::CsgOp::CircularPattern { child, axis_origin, axis_dir, count, angle_deg } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.circular_pattern(
+                axis_origin.x, axis_origin.y, axis_origin.z,
+                axis_dir.x, axis_dir.y, axis_dir.z,
+                *count, *angle_deg
+            ))
+        }
+
+        vcad_ir::CsgOp::Shell { child, thickness } => {
+            let c = evaluate_node(doc, *child)?;
+            Ok(c.shell(*thickness))
+        }
+
+        vcad_ir::CsgOp::Sketch2D { .. } => {
+            // Sketch2D nodes cannot be evaluated directly - they must be used with Extrude/Revolve
+            Err(JsError::new("Sketch2D cannot be evaluated directly - use Extrude or Revolve"))
+        }
+
+        vcad_ir::CsgOp::Extrude { sketch, direction } => {
+            // Get the sketch node
+            let sketch_node = doc.nodes.get(sketch)
+                .ok_or_else(|| JsError::new(&format!("Sketch node {} not found", sketch)))?;
+
+            match &sketch_node.op {
+                vcad_ir::CsgOp::Sketch2D { origin, x_dir, y_dir, segments } => {
+                    let wasm_segments: Vec<WasmSketchSegment> = segments.iter().map(|seg| {
+                        match seg {
+                            vcad_ir::SketchSegment2D::Line { start, end } => {
+                                WasmSketchSegment::Line {
+                                    start: [start.x, start.y],
+                                    end: [end.x, end.y],
+                                }
+                            }
+                            vcad_ir::SketchSegment2D::Arc { start, end, center, ccw } => {
+                                WasmSketchSegment::Arc {
+                                    start: [start.x, start.y],
+                                    end: [end.x, end.y],
+                                    center: [center.x, center.y],
+                                    ccw: *ccw,
+                                }
+                            }
+                        }
+                    }).collect();
+
+                    let profile = WasmSketchProfile {
+                        origin: [origin.x, origin.y, origin.z],
+                        x_dir: [x_dir.x, x_dir.y, x_dir.z],
+                        y_dir: [y_dir.x, y_dir.y, y_dir.z],
+                        segments: wasm_segments,
+                    };
+
+                    let profile_js = serde_wasm_bindgen::to_value(&profile)
+                        .map_err(|e| JsError::new(&format!("Profile serialization failed: {}", e)))?;
+
+                    Solid::extrude(profile_js, vec![direction.x, direction.y, direction.z])
+                }
+                _ => Err(JsError::new("Extrude requires a Sketch2D node"))
+            }
+        }
+
+        vcad_ir::CsgOp::Revolve { sketch, axis_origin, axis_dir, angle_deg } => {
+            let sketch_node = doc.nodes.get(sketch)
+                .ok_or_else(|| JsError::new(&format!("Sketch node {} not found", sketch)))?;
+
+            match &sketch_node.op {
+                vcad_ir::CsgOp::Sketch2D { origin, x_dir, y_dir, segments } => {
+                    let wasm_segments: Vec<WasmSketchSegment> = segments.iter().map(|seg| {
+                        match seg {
+                            vcad_ir::SketchSegment2D::Line { start, end } => {
+                                WasmSketchSegment::Line {
+                                    start: [start.x, start.y],
+                                    end: [end.x, end.y],
+                                }
+                            }
+                            vcad_ir::SketchSegment2D::Arc { start, end, center, ccw } => {
+                                WasmSketchSegment::Arc {
+                                    start: [start.x, start.y],
+                                    end: [end.x, end.y],
+                                    center: [center.x, center.y],
+                                    ccw: *ccw,
+                                }
+                            }
+                        }
+                    }).collect();
+
+                    let profile = WasmSketchProfile {
+                        origin: [origin.x, origin.y, origin.z],
+                        x_dir: [x_dir.x, x_dir.y, x_dir.z],
+                        y_dir: [y_dir.x, y_dir.y, y_dir.z],
+                        segments: wasm_segments,
+                    };
+
+                    let profile_js = serde_wasm_bindgen::to_value(&profile)
+                        .map_err(|e| JsError::new(&format!("Profile serialization failed: {}", e)))?;
+
+                    Solid::revolve(
+                        profile_js,
+                        vec![axis_origin.x, axis_origin.y, axis_origin.z],
+                        vec![axis_dir.x, axis_dir.y, axis_dir.z],
+                        *angle_deg,
+                    )
+                }
+                _ => Err(JsError::new("Revolve requires a Sketch2D node"))
+            }
+        }
+
+        vcad_ir::CsgOp::StepImport { .. } => {
+            Err(JsError::new("STEP import not supported in compact IR evaluation"))
+        }
     }
 }

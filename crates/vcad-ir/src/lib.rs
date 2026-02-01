@@ -9,6 +9,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub mod compact;
+
 // ============================================================================
 // Assembly types (for kinematics)
 // ============================================================================
