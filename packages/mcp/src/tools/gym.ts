@@ -3,39 +3,27 @@
  *
  * These tools provide a gym-like interface for simulating robot assemblies
  * with physics, enabling reinforcement learning training.
+ *
+ * Uses the Rapier3D physics engine via WASM bindings.
  */
 
 import type { Document } from "@vcad/ir";
+import {
+  PhysicsEnv,
+  isPhysicsAvailable,
+  type PhysicsObservation,
+  type PhysicsStepResult,
+  type PhysicsActionType,
+} from "@vcad/engine";
 
-/** Observation from the robot environment */
-export interface Observation {
-  joint_positions: number[];
-  joint_velocities: number[];
-  end_effector_poses: Array<[number, number, number, number, number, number, number]>;
-}
+/** Observation from the robot environment (re-export for API compatibility) */
+export type Observation = PhysicsObservation;
 
-/** Step result from the environment */
-export interface StepResult {
-  observation: Observation;
-  reward: number;
-  done: boolean;
-}
-
-/** Active simulation environment state */
-interface SimulationState {
-  doc: Document;
-  endEffectorIds: string[];
-  dt: number;
-  substeps: number;
-  maxSteps: number;
-  currentStep: number;
-  jointPositions: Map<string, number>;
-  jointVelocities: Map<string, number>;
-  jointIds: string[];
-}
+/** Step result from the environment (re-export for API compatibility) */
+export type StepResult = PhysicsStepResult;
 
 /** In-memory storage for active simulations */
-const simulations = new Map<string, SimulationState>();
+const simulations = new Map<string, PhysicsEnv>();
 let nextSimId = 1;
 
 /** JSON Schema for create_robot_env input */
@@ -126,39 +114,10 @@ export const gymCloseSchema = {
   required: ["env_id"],
 };
 
-/** Extract joint IDs from document */
-function extractJointIds(doc: Document): string[] {
-  if (!doc.joints) return [];
-  return doc.joints.map((j) => j.id);
-}
-
-/** Create initial observation from state */
-function createObservation(state: SimulationState): Observation {
-  const positions: number[] = [];
-  const velocities: number[] = [];
-
-  for (const jointId of state.jointIds) {
-    positions.push(state.jointPositions.get(jointId) ?? 0);
-    velocities.push(state.jointVelocities.get(jointId) ?? 0);
-  }
-
-  // For now, return zeros for end effector poses
-  // A full implementation would compute forward kinematics
-  const endEffectorPoses: Array<
-    [number, number, number, number, number, number, number]
-  > = state.endEffectorIds.map(() => [0, 0, 0, 1, 0, 0, 0]);
-
-  return {
-    joint_positions: positions,
-    joint_velocities: velocities,
-    end_effector_poses: endEffectorPoses,
-  };
-}
-
 /** Create a new robot simulation environment */
-export function createRobotEnv(input: unknown): {
+export async function createRobotEnv(input: unknown): Promise<{
   content: Array<{ type: "text"; text: string }>;
-} {
+}> {
   const args = input as {
     document: Document;
     end_effector_ids: string[];
@@ -167,50 +126,53 @@ export function createRobotEnv(input: unknown): {
     max_steps?: number;
   };
 
-  const envId = `sim_${nextSimId++}`;
-  const jointIds = extractJointIds(args.document);
-
-  // Initialize joint state
-  const jointPositions = new Map<string, number>();
-  const jointVelocities = new Map<string, number>();
-
-  // Initialize from document joint states
-  if (args.document.joints) {
-    for (const joint of args.document.joints) {
-      jointPositions.set(joint.id, joint.state ?? 0);
-      jointVelocities.set(joint.id, 0);
-    }
+  // Check if physics is available
+  const available = await isPhysicsAvailable();
+  if (!available) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "Physics simulation not available. WASM must be compiled with --features physics",
+          }),
+        },
+      ],
+    };
   }
 
-  const state: SimulationState = {
-    doc: args.document,
-    endEffectorIds: args.end_effector_ids,
-    dt: args.dt ?? 1 / 240,
-    substeps: args.substeps ?? 4,
-    maxSteps: args.max_steps ?? 1000,
-    currentStep: 0,
-    jointPositions,
-    jointVelocities,
-    jointIds,
-  };
+  try {
+    const envId = `sim_${nextSimId++}`;
 
-  simulations.set(envId, state);
+    const env = await PhysicsEnv.create(args.document, {
+      endEffectorIds: args.end_effector_ids,
+      dt: args.dt,
+      substeps: args.substeps,
+      maxSteps: args.max_steps,
+    });
 
-  const info = {
-    env_id: envId,
-    num_joints: jointIds.length,
-    joint_ids: jointIds,
-    end_effector_ids: args.end_effector_ids,
-    action_dim: jointIds.length,
-    observation_dim: jointIds.length * 2 + args.end_effector_ids.length * 7,
-    dt: state.dt,
-    substeps: state.substeps,
-    max_steps: state.maxSteps,
-  };
+    simulations.set(envId, env);
 
-  return {
-    content: [{ type: "text", text: JSON.stringify(info, null, 2) }],
-  };
+    const info = {
+      env_id: envId,
+      num_joints: env.numJoints,
+      action_dim: env.actionDim,
+      observation_dim: env.observationDim,
+      end_effector_ids: args.end_effector_ids,
+      dt: args.dt ?? 1 / 240,
+      substeps: args.substeps ?? 4,
+      max_steps: args.max_steps ?? 1000,
+    };
+
+    return {
+      content: [{ type: "text", text: JSON.stringify(info, null, 2) }],
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+    };
+  }
 }
 
 /** Step the simulation with an action */
@@ -219,12 +181,12 @@ export function gymStep(input: unknown): {
 } {
   const args = input as {
     env_id: string;
-    action_type: "torque" | "position" | "velocity";
+    action_type: PhysicsActionType;
     values: number[];
   };
 
-  const state = simulations.get(args.env_id);
-  if (!state) {
+  const env = simulations.get(args.env_id);
+  if (!env) {
     return {
       content: [
         { type: "text", text: JSON.stringify({ error: `Unknown env_id: ${args.env_id}` }) },
@@ -232,45 +194,17 @@ export function gymStep(input: unknown): {
     };
   }
 
-  // Apply action based on type
-  for (let i = 0; i < state.jointIds.length && i < args.values.length; i++) {
-    const jointId = state.jointIds[i];
-
-    switch (args.action_type) {
-      case "position":
-        // Set target position directly (simplified simulation)
-        state.jointPositions.set(jointId, args.values[i]);
-        break;
-      case "velocity":
-        // Apply velocity and update position (simplified)
-        state.jointVelocities.set(jointId, args.values[i]);
-        const currentPos = state.jointPositions.get(jointId) ?? 0;
-        const deltaPos = args.values[i] * state.dt * state.substeps;
-        state.jointPositions.set(jointId, currentPos + deltaPos);
-        break;
-      case "torque":
-        // Torque control (simplified - would need mass/inertia for real simulation)
-        // For now, treat torque as acceleration and update velocity
-        const currentVel = state.jointVelocities.get(jointId) ?? 0;
-        const newVel = currentVel + args.values[i] * state.dt * state.substeps * 0.01;
-        state.jointVelocities.set(jointId, newVel);
-        const pos = state.jointPositions.get(jointId) ?? 0;
-        state.jointPositions.set(jointId, pos + newVel * state.dt * state.substeps);
-        break;
-    }
+  try {
+    const result = env.step(args.action_type, args.values);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+    };
   }
-
-  state.currentStep++;
-
-  const observation = createObservation(state);
-  const reward = 0; // Placeholder - would be task-specific
-  const done = state.currentStep >= state.maxSteps;
-
-  const result: StepResult = { observation, reward, done };
-
-  return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-  };
 }
 
 /** Reset the environment to initial state */
@@ -279,8 +213,8 @@ export function gymReset(input: unknown): {
 } {
   const args = input as { env_id: string };
 
-  const state = simulations.get(args.env_id);
-  if (!state) {
+  const env = simulations.get(args.env_id);
+  if (!env) {
     return {
       content: [
         { type: "text", text: JSON.stringify({ error: `Unknown env_id: ${args.env_id}` }) },
@@ -288,23 +222,17 @@ export function gymReset(input: unknown): {
     };
   }
 
-  // Reset to initial state
-  state.currentStep = 0;
-  state.jointPositions.clear();
-  state.jointVelocities.clear();
-
-  if (state.doc.joints) {
-    for (const joint of state.doc.joints) {
-      state.jointPositions.set(joint.id, joint.state ?? 0);
-      state.jointVelocities.set(joint.id, 0);
-    }
+  try {
+    const observation = env.reset();
+    return {
+      content: [{ type: "text", text: JSON.stringify(observation, null, 2) }],
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+    };
   }
-
-  const observation = createObservation(state);
-
-  return {
-    content: [{ type: "text", text: JSON.stringify(observation, null, 2) }],
-  };
 }
 
 /** Get current observation without stepping */
@@ -313,8 +241,8 @@ export function gymObserve(input: unknown): {
 } {
   const args = input as { env_id: string };
 
-  const state = simulations.get(args.env_id);
-  if (!state) {
+  const env = simulations.get(args.env_id);
+  if (!env) {
     return {
       content: [
         { type: "text", text: JSON.stringify({ error: `Unknown env_id: ${args.env_id}` }) },
@@ -322,11 +250,17 @@ export function gymObserve(input: unknown): {
     };
   }
 
-  const observation = createObservation(state);
-
-  return {
-    content: [{ type: "text", text: JSON.stringify(observation, null, 2) }],
-  };
+  try {
+    const observation = env.observe();
+    return {
+      content: [{ type: "text", text: JSON.stringify(observation, null, 2) }],
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+    };
+  }
 }
 
 /** Close and clean up a simulation environment */
@@ -335,7 +269,9 @@ export function gymClose(input: unknown): {
 } {
   const args = input as { env_id: string };
 
-  if (simulations.has(args.env_id)) {
+  const env = simulations.get(args.env_id);
+  if (env) {
+    env.close();
     simulations.delete(args.env_id);
     return {
       content: [{ type: "text", text: JSON.stringify({ success: true }) }],

@@ -125,7 +125,7 @@ export async function createServer(): Promise<Server> {
           return inspectCad(args, engine);
 
         case "create_robot_env":
-          return createRobotEnv(args);
+          return await createRobotEnv(args);
 
         case "gym_step":
           return gymStep(args);
