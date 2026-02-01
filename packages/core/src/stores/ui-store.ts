@@ -10,6 +10,8 @@ export type RenderMode = "standard" | "raytrace";
 export type RaytraceQuality = "draft" | "standard" | "high";
 export type RaytraceDebugMode = "off" | "normals" | "face-id" | "lighting" | "orientation";
 
+export type ToolbarTab = "create" | "transform" | "combine" | "modify" | "assembly" | "simulate" | "view" | "print";
+
 export interface UiState {
   selectedPartIds: Set<string>;
   hoveredPartId: string | null;
@@ -38,6 +40,9 @@ export interface UiState {
   raytraceEdgesEnabled: boolean;
   raytraceEdgeDepthThreshold: number;
   raytraceEdgeNormalThreshold: number;
+  // Toolbar state
+  toolbarExpanded: boolean;
+  toolbarTab: ToolbarTab;
 
   select: (partId: string | null) => void;
   toggleSelect: (partId: string) => void;
@@ -74,6 +79,10 @@ export interface UiState {
   setRaytraceEdgesEnabled: (enabled: boolean) => void;
   setRaytraceEdgeDepthThreshold: (threshold: number) => void;
   setRaytraceEdgeNormalThreshold: (threshold: number) => void;
+  // Toolbar actions
+  setToolbarExpanded: (expanded: boolean) => void;
+  toggleToolbarExpanded: () => void;
+  setToolbarTab: (tab: ToolbarTab) => void;
 }
 
 // Load persisted material preferences from localStorage
@@ -93,7 +102,21 @@ function loadPersistedMaterials(): { recent: string[]; favorites: string[] } {
   }
 }
 
+// Load persisted toolbar preferences from localStorage
+function loadToolbarExpanded(): boolean {
+  if (typeof window === "undefined") {
+    return true; // Default to expanded
+  }
+  try {
+    const stored = localStorage.getItem("vcad:toolbarExpanded");
+    return stored === null ? true : stored === "true";
+  } catch {
+    return true;
+  }
+}
+
 const persistedMaterials = loadPersistedMaterials();
+const persistedToolbarExpanded = loadToolbarExpanded();
 
 export const useUiStore = create<UiState>((set) => ({
   selectedPartIds: new Set(),
@@ -121,6 +144,8 @@ export const useUiStore = create<UiState>((set) => ({
   raytraceEdgesEnabled: true,
   raytraceEdgeDepthThreshold: 0.1,
   raytraceEdgeNormalThreshold: 30.0,
+  toolbarExpanded: persistedToolbarExpanded,
+  toolbarTab: "create" as ToolbarTab,
 
   select: (partId) =>
     set({ selectedPartIds: partId ? new Set([partId]) : new Set() }),
@@ -235,4 +260,26 @@ export const useUiStore = create<UiState>((set) => ({
   setRaytraceEdgeDepthThreshold: (threshold) => set({ raytraceEdgeDepthThreshold: threshold }),
 
   setRaytraceEdgeNormalThreshold: (threshold) => set({ raytraceEdgeNormalThreshold: threshold }),
+
+  setToolbarExpanded: (expanded) => {
+    try {
+      localStorage.setItem("vcad:toolbarExpanded", String(expanded));
+    } catch {
+      // Ignore storage errors
+    }
+    set({ toolbarExpanded: expanded });
+  },
+
+  toggleToolbarExpanded: () =>
+    set((s) => {
+      const expanded = !s.toolbarExpanded;
+      try {
+        localStorage.setItem("vcad:toolbarExpanded", String(expanded));
+      } catch {
+        // Ignore storage errors
+      }
+      return { toolbarExpanded: expanded };
+    }),
+
+  setToolbarTab: (tab) => set({ toolbarTab: tab }),
 }));

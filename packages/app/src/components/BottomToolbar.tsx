@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Cube,
   Cylinder,
@@ -39,6 +39,7 @@ import {
   useSketchStore,
   useEngineStore,
   useSimulationStore,
+  type ToolbarTab,
 } from "@vcad/core";
 import type { PrimitiveKind, BooleanType } from "@vcad/core";
 import { downloadDxf } from "@/lib/save-load";
@@ -66,12 +67,11 @@ const VIEW_DIRECTIONS: { value: ViewDirection; label: string }[] = [
   { value: "isometric", label: "Isometric" },
 ];
 
-const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] =
-  [
-    { kind: "cube", icon: Cube, label: "Box" },
-    { kind: "cylinder", icon: Cylinder, label: "Cylinder" },
-    { kind: "sphere", icon: Globe, label: "Sphere" },
-  ];
+const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] = [
+  { kind: "cube", icon: Cube, label: "Box" },
+  { kind: "cylinder", icon: Cylinder, label: "Cylinder" },
+  { kind: "sphere", icon: Globe, label: "Sphere" },
+];
 
 const BOOLEANS: {
   type: BooleanType;
@@ -81,12 +81,29 @@ const BOOLEANS: {
 }[] = [
   { type: "union", icon: Unite, label: "Union", shortcut: "⌘⇧U" },
   { type: "difference", icon: Subtract, label: "Difference", shortcut: "⌘⇧D" },
-  {
-    type: "intersection",
-    icon: Intersect,
-    label: "Intersection",
-    shortcut: "⌘⇧I",
-  },
+  { type: "intersection", icon: Intersect, label: "Intersection", shortcut: "⌘⇧I" },
+];
+
+const TAB_COLORS: Record<ToolbarTab, string> = {
+  create: "text-emerald-400",
+  transform: "text-blue-400",
+  combine: "text-violet-400",
+  modify: "text-amber-400",
+  assembly: "text-rose-400",
+  simulate: "text-cyan-400",
+  view: "text-slate-400",
+  print: "text-orange-400",
+};
+
+const TABS: { id: ToolbarTab; label: string; icon: typeof Cube }[] = [
+  { id: "create", label: "Create", icon: Cube },
+  { id: "transform", label: "Transform", icon: ArrowsOutCardinal },
+  { id: "combine", label: "Combine", icon: Unite },
+  { id: "modify", label: "Modify", icon: Circle },
+  { id: "assembly", label: "Assembly", icon: Package },
+  { id: "simulate", label: "Simulate", icon: Play },
+  { id: "view", label: "View", icon: Cube3D },
+  { id: "print", label: "Print", icon: Printer },
 ];
 
 function ToolbarButton({
@@ -96,6 +113,10 @@ function ToolbarButton({
   onClick,
   tooltip,
   pulse,
+  expanded,
+  label,
+  shortcut,
+  iconColor,
 }: {
   children: React.ReactNode;
   active?: boolean;
@@ -103,32 +124,107 @@ function ToolbarButton({
   onClick?: () => void;
   tooltip: string;
   pulse?: boolean;
+  expanded?: boolean;
+  label?: string;
+  shortcut?: string;
+  iconColor?: string;
 }) {
   return (
     <Tooltip content={tooltip}>
       <button
         className={cn(
-          // Mobile: 44px touch targets (iOS minimum)
-          "flex h-11 w-11 min-w-[44px] items-center justify-center relative",
-          // Desktop: 40px
-          "sm:h-10 sm:w-10 sm:min-w-0",
-          "disabled:opacity-40 disabled:cursor-not-allowed",
-          active
-            ? "bg-accent text-white"
-            : "text-text-muted hover:bg-hover hover:text-text",
-          pulse && "animate-pulse ring-2 ring-accent ring-offset-1 ring-offset-surface",
+          "flex items-center justify-center relative gap-1",
+          "h-10 min-w-[40px] px-1.5",
+          "sm:h-8 sm:min-w-0",
+          expanded ? "sm:px-2" : "sm:px-1.5",
+          "disabled:opacity-30 disabled:cursor-not-allowed",
+          active && "drop-shadow-lg",
+          pulse && "animate-pulse",
         )}
         disabled={disabled}
         onClick={onClick}
       >
-        {children}
+        <span className={cn(
+          iconColor,
+          "transition-transform",
+          active && "scale-110",
+          !disabled && "hover:scale-110"
+        )}>
+          {children}
+        </span>
+        {expanded && label && (
+          <span className={cn(
+            "hidden sm:inline text-xs whitespace-nowrap",
+            active ? "text-text" : "text-text-muted"
+          )}>
+            {label}
+            {shortcut && <span className="ml-1 opacity-60">{shortcut}</span>}
+          </span>
+        )}
       </button>
     </Tooltip>
   );
 }
 
+function TabButton({
+  id,
+  label,
+  icon: Icon,
+  active,
+  previewing,
+  onClick,
+  onMouseEnter,
+  expanded,
+}: {
+  id: ToolbarTab;
+  label: string;
+  icon: typeof Cube;
+  active: boolean;
+  previewing: boolean;
+  onClick: () => void;
+  onMouseEnter: () => void;
+  expanded: boolean;
+}) {
+  const button = (
+    <button
+      className={cn(
+        "flex items-center justify-center gap-1.5 px-3 py-2 text-xs",
+        active && "drop-shadow-lg",
+      )}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+    >
+      <Icon
+        size={16}
+        weight={active || previewing ? "fill" : "regular"}
+        className={cn(
+          TAB_COLORS[id],
+          active && "drop-shadow-sm scale-110",
+          previewing && "scale-105",
+          "transition-transform"
+        )}
+      />
+      {expanded && (
+        <span className={cn(
+          "hidden sm:inline font-medium transition-colors",
+          active ? "text-text" : "text-text-muted"
+        )}>
+          {label}
+        </span>
+      )}
+    </button>
+  );
+
+  // Show tooltip in compact mode
+  if (!expanded) {
+    return <Tooltip content={label}>{button}</Tooltip>;
+  }
+
+  return button;
+}
+
 function Divider() {
-  return <div className="h-6 w-px bg-border" />;
+  return <div className="w-3" />;
 }
 
 export function BottomToolbar() {
@@ -141,11 +237,12 @@ export function BottomToolbar() {
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const transformMode = useUiStore((s) => s.transformMode);
   const setTransformMode = useUiStore((s) => s.setTransformMode);
+  const toolbarExpanded = useUiStore((s) => s.toolbarExpanded);
+  const toolbarTab = useUiStore((s) => s.toolbarTab);
+  const setToolbarTab = useUiStore((s) => s.setToolbarTab);
 
   const enterSketchMode = useSketchStore((s) => s.enterSketchMode);
-  const enterFaceSelectionMode = useSketchStore(
-    (s) => s.enterFaceSelectionMode,
-  );
+  const enterFaceSelectionMode = useSketchStore((s) => s.enterFaceSelectionMode);
   const sketchActive = useSketchStore((s) => s.active);
   const faceSelectionMode = useSketchStore((s) => s.faceSelectionMode);
   const parts = useDocumentStore((s) => s.parts);
@@ -157,6 +254,12 @@ export function BottomToolbar() {
   const [shellDialogOpen, setShellDialogOpen] = useState(false);
   const [patternDialogOpen, setPatternDialogOpen] = useState(false);
   const [mirrorDialogOpen, setMirrorDialogOpen] = useState(false);
+
+  // Hover preview state - shows tools without committing
+  const [hoveredTab, setHoveredTab] = useState<ToolbarTab | null>(null);
+
+  // The tab to display (hovered preview or actual selection)
+  const displayedTab = hoveredTab ?? toolbarTab;
 
   // Drawing view state
   const viewMode = useDrawingStore((s) => s.viewMode);
@@ -217,14 +320,19 @@ export function BottomToolbar() {
   const hasJoints = document.joints && document.joints.length > 0;
 
   // Check if we have one part selected (for create part def)
-  const hasOnePartSelected = selectedPartIds.size === 1 &&
-    parts.some((p) => selectedPartIds.has(p.id));
+  const hasOnePartSelected =
+    selectedPartIds.size === 1 && parts.some((p) => selectedPartIds.has(p.id));
 
   // Check if we have two instances selected (for add joint)
   const selectedInstanceIds = Array.from(selectedPartIds).filter((id) =>
     document.instances?.some((i) => i.id === id)
   );
   const hasTwoInstancesSelected = selectedInstanceIds.length === 2;
+
+  // Check if an instance is selected (for assembly tab auto-switch)
+  const hasInstanceSelected = Array.from(selectedPartIds).some((id) =>
+    document.instances?.some((i) => i.id === id)
+  );
 
   // Get the single selected part ID (for modify operations)
   const selectedPartId = hasOnePartSelected
@@ -261,6 +369,71 @@ export function BottomToolbar() {
       window.removeEventListener("vcad:apply-mirror", handleMirror);
     };
   }, [selectedPartId]);
+
+  // Track manual tab clicks to temporarily disable auto-switch
+  const manualOverrideRef = useRef(false);
+  const manualOverrideTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleTabClick = useCallback((tab: ToolbarTab) => {
+    // Set manual override for 2 seconds
+    manualOverrideRef.current = true;
+    if (manualOverrideTimeout.current) {
+      clearTimeout(manualOverrideTimeout.current);
+    }
+    manualOverrideTimeout.current = setTimeout(() => {
+      manualOverrideRef.current = false;
+    }, 2000);
+    setToolbarTab(tab);
+  }, [setToolbarTab]);
+
+  // Auto-switch tabs based on context
+  const autoSwitchTab = useCallback(() => {
+    // Don't auto-switch during guided flow or if user manually changed tabs recently
+    if (guidedFlowActive || manualOverrideRef.current) return;
+
+    // Switch to view tab when entering 2D mode
+    if (viewMode === "2d") {
+      setToolbarTab("view");
+      return;
+    }
+
+    // Switch to assembly tab when instance is selected
+    if (hasInstanceSelected && isAssemblyMode) {
+      setToolbarTab("assembly");
+      return;
+    }
+
+    // Switch to combine tab when exactly 2 parts selected
+    if (hasTwoSelected) {
+      setToolbarTab("combine");
+      return;
+    }
+
+    // Switch to transform tab when 1+ parts selected
+    if (hasSelection) {
+      setToolbarTab("transform");
+      return;
+    }
+
+    // Default to create when nothing selected
+    if (!hasSelection && toolbarTab !== "modify" && toolbarTab !== "simulate" && toolbarTab !== "view") {
+      setToolbarTab("create");
+    }
+  }, [
+    guidedFlowActive,
+    viewMode,
+    hasInstanceSelected,
+    isAssemblyMode,
+    hasTwoSelected,
+    hasSelection,
+    toolbarTab,
+    setToolbarTab,
+  ]);
+
+  // Run auto-switch on relevant state changes
+  useEffect(() => {
+    autoSwitchTab();
+  }, [selectedPartIds.size, viewMode, hasInstanceSelected, autoSwitchTab]);
 
   function handleAddPrimitive(kind: PrimitiveKind) {
     const partId = addPrimitive(kind);
@@ -302,16 +475,414 @@ export function BottomToolbar() {
     }
   }
 
+  // Render tab content based on displayed tab (hovered or active)
+  const renderTabContent = () => {
+    const color = TAB_COLORS[displayedTab];
+
+    switch (displayedTab) {
+      case "create":
+        return (
+          <>
+            {PRIMITIVES.map(({ kind, icon: Icon, label }) => (
+              <ToolbarButton
+                key={kind}
+                tooltip={`Add ${label}`}
+                disabled={sketchActive}
+                onClick={() => handleAddPrimitive(kind)}
+                pulse={
+                  (kind === "cube" && shouldPulse("add-cube")) ||
+                  (kind === "cylinder" && shouldPulse("add-cylinder"))
+                }
+                expanded={toolbarExpanded}
+                label={label}
+                iconColor={color}
+              >
+                <Icon size={20} />
+              </ToolbarButton>
+            ))}
+            <ToolbarButton
+              tooltip="New Sketch (S)"
+              active={faceSelectionMode}
+              disabled={sketchActive}
+              onClick={() => {
+                if (parts.length > 0) {
+                  enterFaceSelectionMode();
+                } else {
+                  enterSketchMode("XY");
+                }
+              }}
+              expanded={toolbarExpanded}
+              label="Sketch"
+              shortcut="S"
+              iconColor={color}
+            >
+              <PencilSimple size={20} />
+            </ToolbarButton>
+          </>
+        );
+
+      case "transform":
+        return (
+          <>
+            <ToolbarButton
+              tooltip={!hasSelection ? "Move (select a part)" : "Move (M)"}
+              active={hasSelection && transformMode === "translate"}
+              disabled={!hasSelection || viewMode === "2d"}
+              onClick={() => setTransformMode("translate")}
+              expanded={toolbarExpanded}
+              label="Move"
+              shortcut="M"
+              iconColor={color}
+            >
+              <ArrowsOutCardinal size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasSelection ? "Rotate (select a part)" : "Rotate (R)"}
+              active={hasSelection && transformMode === "rotate"}
+              disabled={!hasSelection || viewMode === "2d"}
+              onClick={() => setTransformMode("rotate")}
+              expanded={toolbarExpanded}
+              label="Rotate"
+              shortcut="R"
+              iconColor={color}
+            >
+              <ArrowsClockwise size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasSelection ? "Scale (select a part)" : "Scale (S)"}
+              active={hasSelection && transformMode === "scale"}
+              disabled={!hasSelection || viewMode === "2d"}
+              onClick={() => setTransformMode("scale")}
+              expanded={toolbarExpanded}
+              label="Scale"
+              shortcut="S"
+              iconColor={color}
+            >
+              <ArrowsOut size={20} />
+            </ToolbarButton>
+          </>
+        );
+
+      case "combine":
+        return (
+          <>
+            {BOOLEANS.map(({ type, icon: Icon, label, shortcut }) => (
+              <ToolbarButton
+                key={type}
+                tooltip={!hasTwoSelected ? `${label} (select 2 parts)` : `${label} (${shortcut})`}
+                disabled={!hasTwoSelected}
+                onClick={() => handleBoolean(type)}
+                pulse={type === "difference" && shouldPulse("subtract")}
+                expanded={toolbarExpanded}
+                label={label}
+                shortcut={shortcut}
+                iconColor={color}
+              >
+                <Icon size={20} />
+              </ToolbarButton>
+            ))}
+          </>
+        );
+
+      case "modify":
+        return (
+          <>
+            <ToolbarButton
+              tooltip={!hasOnePartSelected ? "Fillet (select a part)" : "Fillet"}
+              disabled={!hasOnePartSelected || sketchActive}
+              onClick={() => setFilletDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Fillet"
+              iconColor={color}
+            >
+              <Circle size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasOnePartSelected ? "Chamfer (select a part)" : "Chamfer"}
+              disabled={!hasOnePartSelected || sketchActive}
+              onClick={() => setChamferDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Chamfer"
+              iconColor={color}
+            >
+              <Octagon size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasOnePartSelected ? "Shell (select a part)" : "Shell"}
+              disabled={!hasOnePartSelected || sketchActive}
+              onClick={() => setShellDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Shell"
+              iconColor={color}
+            >
+              <CubeTransparent size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasOnePartSelected ? "Pattern (select a part)" : "Pattern"}
+              disabled={!hasOnePartSelected || sketchActive}
+              onClick={() => setPatternDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Pattern"
+              iconColor={color}
+            >
+              <DotsThree size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasOnePartSelected ? "Mirror (select a part)" : "Mirror"}
+              disabled={!hasOnePartSelected || sketchActive}
+              onClick={() => setMirrorDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Mirror"
+              iconColor={color}
+            >
+              <ArrowsHorizontal size={20} />
+            </ToolbarButton>
+          </>
+        );
+
+      case "assembly":
+        return (
+          <>
+            <ToolbarButton
+              tooltip={!hasOnePartSelected ? "Create Part Definition (select a part)" : "Create Part Definition"}
+              disabled={!hasOnePartSelected || sketchActive}
+              onClick={handleCreatePartDef}
+              expanded={toolbarExpanded}
+              label="Create Part"
+              iconColor={color}
+            >
+              <Package size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasPartDefs ? "Insert Instance (create a part def first)" : "Insert Instance"}
+              disabled={!hasPartDefs || sketchActive}
+              onClick={() => setInsertDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Insert"
+              iconColor={color}
+            >
+              <PlusSquare size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasTwoInstancesSelected ? "Add Joint (select 2 instances)" : "Add Joint"}
+              disabled={!hasTwoInstancesSelected || sketchActive}
+              onClick={() => setJointDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Joint"
+              iconColor={color}
+            >
+              <LinkSimple size={20} />
+            </ToolbarButton>
+          </>
+        );
+
+      case "simulate":
+        return (
+          <>
+            <ToolbarButton
+              tooltip={
+                !hasJoints
+                  ? "Play (add joints to simulate)"
+                  : simMode === "running"
+                  ? "Pause Simulation"
+                  : "Play Simulation"
+              }
+              active={simMode === "running"}
+              disabled={!hasJoints || !physicsAvailable || sketchActive}
+              onClick={() => {
+                if (simMode === "running") {
+                  pauseSim();
+                } else {
+                  playSim();
+                }
+              }}
+              expanded={toolbarExpanded}
+              label={simMode === "running" ? "Pause" : "Play"}
+              iconColor={color}
+            >
+              {simMode === "running" ? <Pause size={20} /> : <Play size={20} />}
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasJoints ? "Stop (add joints to simulate)" : "Stop Simulation"}
+              disabled={!hasJoints || simMode === "off" || sketchActive}
+              onClick={stopSim}
+              expanded={toolbarExpanded}
+              label="Stop"
+              iconColor={color}
+            >
+              <Stop size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!hasJoints ? "Step (add joints to simulate)" : "Step Simulation"}
+              disabled={!hasJoints || simMode === "running" || !physicsAvailable || sketchActive}
+              onClick={stepSim}
+              expanded={toolbarExpanded}
+              label="Step"
+              iconColor={color}
+            >
+              <FastForward size={20} />
+            </ToolbarButton>
+            <div className="flex items-center gap-0.5 px-1">
+              <span className="text-xs text-text-muted">{playbackSpeed.toFixed(1)}x</span>
+              <input
+                type="range"
+                min="0.1"
+                max="2"
+                step="0.1"
+                value={playbackSpeed}
+                onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                className="w-16 h-1 accent-accent"
+                title="Playback Speed"
+                disabled={!hasJoints}
+              />
+            </div>
+          </>
+        );
+
+      case "view":
+        return (
+          <>
+            <ToolbarButton
+              tooltip="3D View"
+              active={viewMode === "3d"}
+              onClick={() => setViewMode("3d")}
+              expanded={toolbarExpanded}
+              label="3D"
+              iconColor={color}
+            >
+              <Cube3D size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip="2D Drawing View"
+              active={viewMode === "2d"}
+              onClick={() => setViewMode("2d")}
+              expanded={toolbarExpanded}
+              label="2D"
+              iconColor={color}
+            >
+              <Blueprint size={20} />
+            </ToolbarButton>
+
+            {viewMode === "2d" && (
+              <>
+                <Divider />
+                <select
+                  value={viewDirection}
+                  onChange={(e) => setViewDirection(e.target.value as ViewDirection)}
+                  className="h-7 px-1.5 text-xs bg-surface border border-border text-text"
+                >
+                  {VIEW_DIRECTIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <ToolbarButton
+                  tooltip={showHiddenLines ? "Hide Hidden Lines" : "Show Hidden Lines"}
+                  active={showHiddenLines}
+                  onClick={toggleHiddenLines}
+                  expanded={toolbarExpanded}
+                  label="Hidden"
+                  iconColor={color}
+                >
+                  {showHiddenLines ? <Eye size={20} /> : <EyeSlash size={20} />}
+                </ToolbarButton>
+                <ToolbarButton
+                  tooltip={showDimensions ? "Hide Dimensions" : "Show Dimensions"}
+                  active={showDimensions}
+                  onClick={toggleDimensions}
+                  expanded={toolbarExpanded}
+                  label="Dims"
+                  iconColor={color}
+                >
+                  <Ruler size={20} />
+                </ToolbarButton>
+                <Divider />
+                <ToolbarButton
+                  tooltip="Add Detail View (drag to select region)"
+                  disabled={!scene?.parts?.length}
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("vcad:start-detail-view"));
+                  }}
+                  expanded={toolbarExpanded}
+                  label="Detail"
+                  iconColor={color}
+                >
+                  <MagnifyingGlassPlus size={20} />
+                </ToolbarButton>
+                {detailViews.length > 0 && (
+                  <ToolbarButton
+                    tooltip="Clear Detail Views"
+                    onClick={clearDetailViews}
+                    expanded={toolbarExpanded}
+                    label="Clear"
+                    iconColor={color}
+                  >
+                    <X size={20} />
+                  </ToolbarButton>
+                )}
+                <Divider />
+                <ToolbarButton
+                  tooltip="Export DXF"
+                  disabled={!scene?.parts?.length || !engine}
+                  onClick={() => {
+                    if (!scene?.parts?.length || !engine) return;
+                    try {
+                      const mesh = scene.parts[0]!.mesh;
+                      const projectedView = engine.projectMesh(mesh, viewDirection);
+                      if (!projectedView) {
+                        useNotificationStore.getState().addToast("Failed to project view", "error");
+                        return;
+                      }
+                      const dxfData = engine.exportDrawingToDxf(projectedView);
+                      downloadDxf(dxfData, `drawing-${viewDirection}.dxf`);
+                      useNotificationStore.getState().addToast("DXF exported", "success");
+                    } catch (err) {
+                      console.error("DXF export failed:", err);
+                      useNotificationStore.getState().addToast("DXF export failed", "error");
+                    }
+                  }}
+                  expanded={toolbarExpanded}
+                  label="Export"
+                  iconColor={color}
+                >
+                  <Download size={20} />
+                </ToolbarButton>
+              </>
+            )}
+          </>
+        );
+
+      case "print":
+        return (
+          <>
+            <ToolbarButton
+              tooltip={!scene?.parts?.length ? "Print (add geometry first)" : "Open Print Settings"}
+              disabled={!scene?.parts?.length || sketchActive}
+              onClick={() => {
+                useSlicerStore.getState().openPrintPanel();
+              }}
+              expanded={toolbarExpanded}
+              label="Print Settings"
+              iconColor={color}
+            >
+              <Printer size={20} />
+            </ToolbarButton>
+          </>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <>
       <InsertInstanceDialog
         open={insertDialogOpen}
         onOpenChange={setInsertDialogOpen}
       />
-      <AddJointDialog
-        open={jointDialogOpen}
-        onOpenChange={setJointDialogOpen}
-      />
+      <AddJointDialog open={jointDialogOpen} onOpenChange={setJointDialogOpen} />
       {selectedPartId && (
         <>
           <FilletChamferDialog
@@ -343,333 +914,33 @@ export function BottomToolbar() {
           />
         </>
       )}
-    {/* Mobile: full-width fixed at bottom; Desktop: centered floating */}
-    <div className="fixed bottom-0 inset-x-0 sm:absolute sm:bottom-4 sm:left-1/2 sm:-translate-x-1/2 sm:inset-auto z-20 pb-[var(--safe-bottom)]">
+      {/* Centered at top, floating with no background */}
       <div
-        className={cn(
-          "flex items-center gap-1 px-2 py-1.5",
-          "bg-surface",
-          // Mobile: border only on top, full width; Desktop: full border
-          "border-t sm:border border-border",
-          "shadow-lg shadow-black/30",
-          // Mobile: horizontal scroll
-          "overflow-x-auto scrollbar-thin",
-        )}
+        className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-auto"
+        onMouseLeave={() => setHoveredTab(null)}
       >
-        {/* Primitives */}
-        {PRIMITIVES.map(({ kind, icon: Icon, label }) => (
-          <ToolbarButton
-            key={kind}
-            tooltip={`Add ${label}`}
-            disabled={sketchActive}
-            onClick={() => handleAddPrimitive(kind)}
-            pulse={
-              (kind === "cube" && shouldPulse("add-cube")) ||
-              (kind === "cylinder" && shouldPulse("add-cylinder"))
-            }
-          >
-            <Icon size={20} />
-          </ToolbarButton>
-        ))}
+        {/* Tabs - floating pills, hover to preview */}
+        <div className="flex items-center gap-1">
+          {TABS.map(({ id, label, icon }) => (
+            <TabButton
+              key={id}
+              id={id}
+              label={label}
+              icon={icon}
+              active={toolbarTab === id}
+              previewing={hoveredTab === id && toolbarTab !== id}
+              onClick={() => handleTabClick(id)}
+              onMouseEnter={() => setHoveredTab(id)}
+              expanded={toolbarExpanded}
+            />
+          ))}
+        </div>
 
-        {/* Sketch */}
-        <ToolbarButton
-          tooltip="New Sketch (S)"
-          active={faceSelectionMode}
-          disabled={sketchActive}
-          onClick={() => {
-            if (parts.length > 0) {
-              enterFaceSelectionMode();
-            } else {
-              enterSketchMode("XY");
-            }
-          }}
-        >
-          <PencilSimple size={20} />
-        </ToolbarButton>
-
-        <Divider />
-
-        {/* Boolean operations */}
-        {BOOLEANS.map(({ type, icon: Icon, label, shortcut }) => (
-          <ToolbarButton
-            key={type}
-            tooltip={!hasTwoSelected ? `${label} (select 2 parts)` : `${label} (${shortcut})`}
-            disabled={!hasTwoSelected}
-            onClick={() => handleBoolean(type)}
-            pulse={type === "difference" && shouldPulse("subtract")}
-          >
-            <Icon size={20} />
-          </ToolbarButton>
-        ))}
-
-        <Divider />
-
-        {/* Assembly operations */}
-        <ToolbarButton
-          tooltip="Create Part Definition"
-          disabled={!hasOnePartSelected || sketchActive}
-          onClick={handleCreatePartDef}
-        >
-          <Package size={20} />
-        </ToolbarButton>
-        {isAssemblyMode && (
-          <>
-            <ToolbarButton
-              tooltip="Insert Instance"
-              disabled={!hasPartDefs || sketchActive}
-              onClick={() => setInsertDialogOpen(true)}
-            >
-              <PlusSquare size={20} />
-            </ToolbarButton>
-            <ToolbarButton
-              tooltip="Add Joint"
-              disabled={!hasTwoInstancesSelected || sketchActive}
-              onClick={() => setJointDialogOpen(true)}
-            >
-              <LinkSimple size={20} />
-            </ToolbarButton>
-          </>
-        )}
-
-        {/* Simulation controls (when in assembly mode with joints) */}
-        {isAssemblyMode && hasJoints && (
-          <>
-            <Divider />
-            <ToolbarButton
-              tooltip={simMode === "running" ? "Pause Simulation" : "Play Simulation"}
-              active={simMode === "running"}
-              disabled={!physicsAvailable || sketchActive}
-              onClick={() => {
-                if (simMode === "running") {
-                  pauseSim();
-                } else {
-                  playSim();
-                }
-              }}
-            >
-              {simMode === "running" ? <Pause size={20} /> : <Play size={20} />}
-            </ToolbarButton>
-            <ToolbarButton
-              tooltip="Stop Simulation"
-              disabled={simMode === "off" || sketchActive}
-              onClick={stopSim}
-            >
-              <Stop size={20} />
-            </ToolbarButton>
-            <ToolbarButton
-              tooltip="Step Simulation"
-              disabled={simMode === "running" || !physicsAvailable || sketchActive}
-              onClick={stepSim}
-            >
-              <FastForward size={20} />
-            </ToolbarButton>
-            {/* Playback speed slider */}
-            <div className="flex items-center gap-1 px-2">
-              <span className="text-xs text-text-muted">{playbackSpeed.toFixed(1)}x</span>
-              <input
-                type="range"
-                min="0.1"
-                max="2"
-                step="0.1"
-                value={playbackSpeed}
-                onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
-                className="w-16 h-1 accent-accent"
-                title="Playback Speed"
-              />
-            </div>
-          </>
-        )}
-
-        <Divider />
-
-        {/* Modify operations */}
-        <ToolbarButton
-          tooltip={!hasOnePartSelected ? "Fillet (select a part)" : "Fillet"}
-          disabled={!hasOnePartSelected || sketchActive}
-          onClick={() => setFilletDialogOpen(true)}
-        >
-          <Circle size={20} />
-        </ToolbarButton>
-        <ToolbarButton
-          tooltip={!hasOnePartSelected ? "Chamfer (select a part)" : "Chamfer"}
-          disabled={!hasOnePartSelected || sketchActive}
-          onClick={() => setChamferDialogOpen(true)}
-        >
-          <Octagon size={20} />
-        </ToolbarButton>
-        <ToolbarButton
-          tooltip={!hasOnePartSelected ? "Shell (select a part)" : "Shell"}
-          disabled={!hasOnePartSelected || sketchActive}
-          onClick={() => setShellDialogOpen(true)}
-        >
-          <CubeTransparent size={20} />
-        </ToolbarButton>
-        <ToolbarButton
-          tooltip={!hasOnePartSelected ? "Pattern (select a part)" : "Pattern"}
-          disabled={!hasOnePartSelected || sketchActive}
-          onClick={() => setPatternDialogOpen(true)}
-        >
-          <DotsThree size={20} />
-        </ToolbarButton>
-        <ToolbarButton
-          tooltip={!hasOnePartSelected ? "Mirror (select a part)" : "Mirror"}
-          disabled={!hasOnePartSelected || sketchActive}
-          onClick={() => setMirrorDialogOpen(true)}
-        >
-          <ArrowsHorizontal size={20} />
-        </ToolbarButton>
-
-        <Divider />
-
-        {/* Transform mode */}
-        <ToolbarButton
-          tooltip={!hasSelection ? "Move (select a part)" : "Move (M)"}
-          active={hasSelection && transformMode === "translate"}
-          disabled={!hasSelection || viewMode === "2d"}
-          onClick={() => setTransformMode("translate")}
-        >
-          <ArrowsOutCardinal size={20} />
-        </ToolbarButton>
-        <ToolbarButton
-          tooltip={!hasSelection ? "Rotate (select a part)" : "Rotate (R)"}
-          active={hasSelection && transformMode === "rotate"}
-          disabled={!hasSelection || viewMode === "2d"}
-          onClick={() => setTransformMode("rotate")}
-        >
-          <ArrowsClockwise size={20} />
-        </ToolbarButton>
-        <ToolbarButton
-          tooltip={!hasSelection ? "Scale (select a part)" : "Scale (S)"}
-          active={hasSelection && transformMode === "scale"}
-          disabled={!hasSelection || viewMode === "2d"}
-          onClick={() => setTransformMode("scale")}
-        >
-          <ArrowsOut size={20} />
-        </ToolbarButton>
-
-        <Divider />
-
-        {/* View mode toggle */}
-        <ToolbarButton
-          tooltip="3D View"
-          active={viewMode === "3d"}
-          onClick={() => setViewMode("3d")}
-        >
-          <Cube3D size={20} />
-        </ToolbarButton>
-        <ToolbarButton
-          tooltip="2D Drawing View"
-          active={viewMode === "2d"}
-          onClick={() => setViewMode("2d")}
-        >
-          <Blueprint size={20} />
-        </ToolbarButton>
-
-        {/* 2D view options (shown when in 2D mode) */}
-        {viewMode === "2d" && (
-          <>
-            <Divider />
-
-            {/* View direction selector */}
-            <select
-              value={viewDirection}
-              onChange={(e) => setViewDirection(e.target.value as ViewDirection)}
-              className="h-8 px-2 text-sm bg-surface border border-border rounded text-text"
-            >
-              {VIEW_DIRECTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-
-            {/* Hidden lines toggle */}
-            <ToolbarButton
-              tooltip={showHiddenLines ? "Hide Hidden Lines" : "Show Hidden Lines"}
-              active={showHiddenLines}
-              onClick={toggleHiddenLines}
-            >
-              {showHiddenLines ? <Eye size={20} /> : <EyeSlash size={20} />}
-            </ToolbarButton>
-
-            {/* Dimensions toggle */}
-            <ToolbarButton
-              tooltip={showDimensions ? "Hide Dimensions" : "Show Dimensions"}
-              active={showDimensions}
-              onClick={toggleDimensions}
-            >
-              <Ruler size={20} />
-            </ToolbarButton>
-
-            <Divider />
-
-            {/* Detail view tools */}
-            <ToolbarButton
-              tooltip="Add Detail View (drag to select region)"
-              disabled={!scene?.parts?.length}
-              onClick={() => {
-                // Dispatch event to DrawingView to start detail creation mode
-                window.dispatchEvent(new CustomEvent("vcad:start-detail-view"));
-              }}
-            >
-              <MagnifyingGlassPlus size={20} />
-            </ToolbarButton>
-
-            {detailViews.length > 0 && (
-              <ToolbarButton
-                tooltip="Clear Detail Views"
-                onClick={clearDetailViews}
-              >
-                <X size={20} />
-              </ToolbarButton>
-            )}
-
-            <Divider />
-
-            {/* DXF Export */}
-            <ToolbarButton
-              tooltip="Export DXF"
-              disabled={!scene?.parts?.length || !engine}
-              onClick={() => {
-                if (!scene?.parts?.length || !engine) return;
-                try {
-                  // Project the first part's mesh
-                  const mesh = scene.parts[0]!.mesh;
-                  const projectedView = engine.projectMesh(mesh, viewDirection);
-                  if (!projectedView) {
-                    useNotificationStore.getState().addToast("Failed to project view", "error");
-                    return;
-                  }
-                  const dxfData = engine.exportDrawingToDxf(projectedView);
-                  downloadDxf(dxfData, `drawing-${viewDirection}.dxf`);
-                  useNotificationStore.getState().addToast("DXF exported", "success");
-                } catch (err) {
-                  console.error("DXF export failed:", err);
-                  useNotificationStore.getState().addToast("DXF export failed", "error");
-                }
-              }}
-            >
-              <Download size={20} />
-            </ToolbarButton>
-          </>
-        )}
-
-        <Divider />
-
-        {/* Print button */}
-        <ToolbarButton
-          tooltip="Print (3D Print Settings)"
-          disabled={!scene?.parts?.length || sketchActive}
-          onClick={() => {
-            useSlicerStore.getState().openPrintPanel();
-          }}
-        >
-          <Printer size={20} />
-        </ToolbarButton>
-
+        {/* Tools - appear below active tab */}
+        <div className="flex items-center gap-1 px-2 py-1.5">
+          {renderTabContent()}
+        </div>
       </div>
-    </div>
     </>
   );
 }

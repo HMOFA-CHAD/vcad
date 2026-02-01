@@ -142,6 +142,7 @@ Closing the loop from design to reality — and beyond.
 
 | Feature | Status | Priority | Spec |
 |---------|--------|----------|------|
+| [Bottom Toolbar](./toolbar.md) | `shipped` | p0 | Tab-based tools with auto-switch |
 | [Selection](./selection.md) | `shipped` | p0 | Multi-part selection |
 | [Command Palette](./command-palette.md) | `shipped` | p1 | Quick command access |
 | [Undo/Redo](./undo-redo.md) | `shipped` | p0 | 50-step history |
@@ -289,12 +290,12 @@ Make vcad's feature tree legendary — better than SolidWorks, Fusion, Onshape.
 | Drafting | 1 | 0 | 0 |
 | Import/Export | 2 | 0 | 0 |
 | Visualization | 3 | 0 | 0 |
-| UI/Interaction | 3 | 0 | 0 |
+| UI/Interaction | 4 | 0 | 0 |
 | Data/Storage | 1 | 0 | 0 |
 | Foundation | 1 | 0 | 1 |
 | Feature Tree UX | 0 | 0 | 10 |
 | **Strategic Vision** | **2** | **7** | **13** |
-| **Total** | **21** | **7** | **25** |
+| **Total** | **22** | **7** | **25** |
 
 ### Strategic Vision Breakdown
 
