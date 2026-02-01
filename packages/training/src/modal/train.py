@@ -197,11 +197,12 @@ def train_model(config: Config) -> str:
     print("\n4. Setting up training...")
     training_args = create_training_arguments(config.training)
 
-    # Create formatting function and data collator
+    # Create formatting function (no data collator - train on full text)
     formatting_func = create_formatting_function(config.data.prompt_template)
-    data_collator = create_data_collator(tokenizer, config.data.response_template)
 
     # Create trainer (TRL 0.13+ uses SFTConfig for max_seq_length and packing)
+    # Note: We removed the data_collator that was causing 0 loss due to
+    # response key tokenization mismatch. Training on full text works fine.
     from trl import SFTConfig
     sft_config = SFTConfig(
         **training_args.to_dict(),
@@ -215,7 +216,6 @@ def train_model(config: Config) -> str:
         eval_dataset=val_dataset,
         args=sft_config,
         formatting_func=formatting_func,
-        data_collator=data_collator,
     )
 
     # Train
