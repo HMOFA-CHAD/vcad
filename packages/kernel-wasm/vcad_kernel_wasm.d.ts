@@ -2,86 +2,15 @@
 /* eslint-disable */
 
 /**
- * Physics simulation environment for robotics and RL.
- *
- * This provides a gym-style interface for simulating robot assemblies
- * with physics, joints, and collision detection.
+ * Stub PhysicsSim when physics feature is not enabled.
  */
 export class PhysicsSim {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Get the action dimension.
+     * Returns an error when physics feature is not enabled.
      */
-    actionDim(): number;
-    /**
-     * Create a new physics simulation from a vcad document JSON.
-     *
-     * # Arguments
-     * * `doc_json` - JSON string representing a vcad IR Document
-     * * `end_effector_ids` - Array of instance IDs to track as end effectors
-     * * `dt` - Simulation timestep in seconds (default: 1/240)
-     * * `substeps` - Number of physics substeps per step (default: 4)
-     */
-    constructor(doc_json: string, end_effector_ids: string[], dt?: number | null, substeps?: number | null);
-    /**
-     * Get the number of joints in the environment.
-     */
-    numJoints(): number;
-    /**
-     * Get the observation dimension.
-     */
-    observationDim(): number;
-    /**
-     * Get current observation without stepping.
-     *
-     * Returns observation as JSON.
-     */
-    observe(): any;
-    /**
-     * Reset the environment to initial state.
-     *
-     * Returns the initial observation as JSON.
-     */
-    reset(): any;
-    /**
-     * Set the maximum episode length.
-     */
-    setMaxSteps(max_steps: number): void;
-    /**
-     * Set the random seed.
-     */
-    setSeed(seed: bigint): void;
-    /**
-     * Step the simulation with position targets.
-     *
-     * # Arguments
-     * * `targets` - Array of position targets for each joint (degrees or mm)
-     *
-     * # Returns
-     * Object with { observation, reward, done }
-     */
-    stepPosition(targets: Float64Array): any;
-    /**
-     * Step the simulation with a torque action.
-     *
-     * # Arguments
-     * * `torques` - Array of torques/forces for each joint (Nm or N)
-     *
-     * # Returns
-     * Object with { observation, reward, done }
-     */
-    stepTorque(torques: Float64Array): any;
-    /**
-     * Step the simulation with velocity targets.
-     *
-     * # Arguments
-     * * `targets` - Array of velocity targets for each joint (deg/s or mm/s)
-     *
-     * # Returns
-     * Object with { observation, reward, done }
-     */
-    stepVelocity(targets: Float64Array): any;
+    constructor(_doc_json: string, _end_effector_ids: string[], _dt?: number | null, _substeps?: number | null);
 }
 
 /**
@@ -111,6 +40,13 @@ export class Solid {
      * Get the bounding box as [minX, minY, minZ, maxX, maxY, maxZ].
      */
     boundingBox(): Float64Array;
+    /**
+     * Check if the solid can be exported to STEP format.
+     *
+     * Returns `true` if the solid has B-rep data available for STEP export.
+     * Returns `false` for mesh-only or empty solids.
+     */
+    canExportStep(): boolean;
     /**
      * Get the center of mass as [x, y, z].
      */
@@ -261,6 +197,16 @@ export class Solid {
      * Takes a sketch profile and path endpoints.
      */
     static sweepLine(profile_js: any, start: Float64Array, end: Float64Array, twist_angle?: number | null, scale_start?: number | null, scale_end?: number | null): Solid;
+    /**
+     * Export the solid to STEP format.
+     *
+     * # Returns
+     * A byte buffer containing the STEP file data.
+     *
+     * # Errors
+     * Returns an error if the solid has no B-rep data (e.g., mesh-only after certain operations).
+     */
+    toStepBuffer(): Uint8Array;
     /**
      * Translate the solid by (x, y, z).
      */
@@ -612,7 +558,6 @@ export interface InitOutput {
     readonly importStepBuffer: (a: number, b: number) => [number, number, number];
     readonly initGpu: () => any;
     readonly isGpuAvailable: () => number;
-    readonly isPhysicsAvailable: () => number;
     readonly op_chamfer: (a: number, b: number) => number;
     readonly op_circular_pattern: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
     readonly op_fillet: (a: number, b: number) => number;
@@ -623,21 +568,13 @@ export interface InitOutput {
     readonly op_sweep_helix: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
     readonly op_sweep_line: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
     readonly parseCompactIR: (a: number, b: number) => [number, number, number, number];
-    readonly physicssim_actionDim: (a: number) => number;
     readonly physicssim_new: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
-    readonly physicssim_observationDim: (a: number) => number;
-    readonly physicssim_observe: (a: number) => any;
-    readonly physicssim_reset: (a: number) => any;
-    readonly physicssim_setMaxSteps: (a: number, b: number) => void;
-    readonly physicssim_setSeed: (a: number, b: bigint) => void;
-    readonly physicssim_stepPosition: (a: number, b: number, c: number) => any;
-    readonly physicssim_stepTorque: (a: number, b: number, c: number) => any;
-    readonly physicssim_stepVelocity: (a: number, b: number, c: number) => any;
     readonly processGeometryGpu: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly projectMesh: (a: any, b: number, c: number) => any;
     readonly raytracer_create: () => [number, number, number];
     readonly sectionMesh: (a: any, b: number, c: number, d: number, e: number) => any;
     readonly solid_boundingBox: (a: number) => [number, number];
+    readonly solid_canExportStep: (a: number) => number;
     readonly solid_centerOfMass: (a: number) => [number, number];
     readonly solid_cone: (a: number, b: number, c: number, d: number) => number;
     readonly solid_cube: (a: number, b: number, c: number) => number;
@@ -659,6 +596,7 @@ export interface InitOutput {
     readonly solid_surfaceArea: (a: number) => number;
     readonly solid_sweepHelix: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
     readonly solid_sweepLine: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
+    readonly solid_toStepBuffer: (a: number) => [number, number, number, number];
     readonly solid_translate: (a: number, b: number, c: number, d: number) => number;
     readonly solid_union: (a: number, b: number) => number;
     readonly solid_volume: (a: number) => number;
@@ -674,10 +612,10 @@ export interface InitOutput {
     readonly wasmannotationlayer_isEmpty: (a: number) => number;
     readonly wasmannotationlayer_new: () => number;
     readonly wasmannotationlayer_renderAll: (a: number, b: number, c: number) => any;
-    readonly physicssim_numJoints: (a: number) => number;
     readonly solid_linearPattern: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly init: () => void;
     readonly solid_revolve: (a: any, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+    readonly isPhysicsAvailable: () => number;
     readonly solid_chamfer: (a: number, b: number) => number;
     readonly solid_fillet: (a: number, b: number) => number;
     readonly solid_shell: (a: number, b: number) => number;

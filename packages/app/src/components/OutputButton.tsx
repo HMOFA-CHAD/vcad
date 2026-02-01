@@ -14,6 +14,7 @@ import {
   useDocumentStore,
   exportStlBlob,
   exportGltfBlob,
+  exportStepBlob,
 } from "@vcad/core";
 
 interface OutputOption {
@@ -81,7 +82,6 @@ export function OutputButton() {
       id: "step",
       label: "Export STEP",
       icon: <Export size={14} />,
-      disabled: true, // Not yet wired up
     },
   ];
 
@@ -99,6 +99,20 @@ export function OutputButton() {
     const blob = exportGltfBlob(scene);
     downloadBlob(blob, "model.glb");
     useNotificationStore.getState().addToast("Exported model.glb", "success");
+  }
+
+  function handleExportStep() {
+    if (!scene) return;
+    try {
+      const blob = exportStepBlob(scene);
+      downloadBlob(blob, "model.step");
+      useNotificationStore.getState().addToast("Exported model.step", "success");
+    } catch (e) {
+      useNotificationStore.getState().addToast(
+        e instanceof Error ? e.message : "STEP export failed",
+        "error"
+      );
+    }
   }
 
   function handleManufacture() {
@@ -120,7 +134,7 @@ export function OutputButton() {
         handleExportGlb();
         break;
       case "step":
-        useNotificationStore.getState().addToast("STEP export coming soon", "info");
+        handleExportStep();
         break;
     }
   }

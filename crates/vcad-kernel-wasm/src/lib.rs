@@ -716,6 +716,29 @@ impl Solid {
         let view = project_mesh(&mesh, view_dir);
         serde_wasm_bindgen::to_value(&view).unwrap_or(JsValue::NULL)
     }
+
+    /// Export the solid to STEP format.
+    ///
+    /// # Returns
+    /// A byte buffer containing the STEP file data.
+    ///
+    /// # Errors
+    /// Returns an error if the solid has no B-rep data (e.g., mesh-only after certain operations).
+    #[wasm_bindgen(js_name = toStepBuffer)]
+    pub fn to_step_buffer(&self) -> Result<Vec<u8>, JsError> {
+        self.inner
+            .to_step_buffer()
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Check if the solid can be exported to STEP format.
+    ///
+    /// Returns `true` if the solid has B-rep data available for STEP export.
+    /// Returns `false` for mesh-only or empty solids.
+    #[wasm_bindgen(js_name = canExportStep)]
+    pub fn can_export_step(&self) -> bool {
+        self.inner.can_export_step()
+    }
 }
 
 // =========================================================================
