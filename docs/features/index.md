@@ -2,6 +2,90 @@
 
 Product management source of truth for vcad features. See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to write and maintain feature specs.
 
+**Mission: Become the best free CAD of all time — better than SolidWorks, Parasolid, CATIA.**
+
+---
+
+## Strategic Vision Features
+
+These are the category-defining capabilities that will make vcad legendary. Scored using a weighted algorithm optimizing for CAD impact, differentiation, user pull, defensibility, and feasibility.
+
+**Scoring: (CAD×3) + (Diff×2.5) + (Pull×2) + (Moat×1.5) + (Feas×1) — Max 100**
+
+### Architecture Advantages (The Moat)
+
+Capabilities uniquely enabled by our Rust/WASM architecture that competitors cannot easily replicate.
+
+| Rank | Score | Feature | Status | Spec |
+|------|-------|---------|--------|------|
+| 1 | **91** | [Zero-Latency Parametric Editing](./zero-latency-parametric-editing.md) | `planned` | 60fps editing, <5ms booleans, no server |
+| 5 | **85** | [Isomorphic Kernel](./isomorphic-kernel.md) | `partial` | Same Rust → WASM, native, WASI |
+| 7 | **83** | [Browser-Native CAD](./browser-native.md) | `shipped` | Full CAD in browser, no install |
+| 8 | **82** | [Offline-First Privacy](./offline-first-privacy.md) | `shipped` | Geometry never leaves browser |
+| 9 | **81** | [Parallel WASM Workers](./parallel-wasm-workers.md) | `planned` | Background compute, responsive UI |
+| 10 | **80** | [WASM Physics Integration](./wasm-physics-integration.md) | `planned` | Rapier3d in browser — **P0** |
+
+### Physics-First CAD (The Paradigm Shift)
+
+Redefining CAD as design in a physical world, not static geometry.
+
+| Rank | Score | Feature | Status | Spec |
+|------|-------|---------|--------|------|
+| 2 | **89** | [Physics Always On](./physics-always-on.md) | `planned` | No "run simulation" button |
+| 3 | **87** | [CAD ↔ Physics Round-Trip](./cad-physics-roundtrip.md) | `planned` | Change dimension → physics updates |
+| 13 | **77** | [Time as Dimension](./time-as-dimension.md) | `planned` | Scrub simulation like video |
+| 22 | **68** | [Parametric Time Machine](./parametric-time-machine.md) | `proposed` | Drag sliders → feel the physics |
+
+### AI-Native Design (The Differentiator)
+
+Intelligence that understands geometry, physics, and intent.
+
+| Rank | Score | Feature | Status | Spec |
+|------|-------|---------|--------|------|
+| 4 | **86** | [Unified Canvas](./unified-canvas.md) | `planned` | Geometry + physics + chat in one |
+| 6 | **84** | [Intent-Based Modeling](./intent-based-modeling.md) | `proposed` | "Hinge here" → system infers |
+| 12 | **78** | [AI Co-Designer](./ai-co-designer.md) | `proposed` | AI that thinks with you |
+| 15 | **75** | [10-Second Robot](./ten-second-robot.md) | `proposed` | "3-DOF arm" → simulating instantly |
+| 19 | **71** | ["Why Did It Fail?" Button](./why-did-it-fail.md) | `proposed` | One-click failure diagnosis |
+| 24 | **66** | [Fork Reality](./fork-reality.md) | `proposed` | Paste image → parametric model |
+
+### Robotics & RL (The Market)
+
+First-class robotics simulation and machine learning.
+
+| Rank | Score | Feature | Status | Spec |
+|------|-------|---------|--------|------|
+| 20 | **70** | [Multiplayer Physics](./multiplayer-physics.md) | `proposed` | Real-time collaborative simulation |
+| 23 | **67** | [One-Click RL Training](./one-click-rl-training.md) | `proposed` | `vcad train` — no Isaac setup |
+
+### The End Game
+
+Closing the loop from design to reality — and beyond.
+
+| Rank | Score | Feature | Status | Spec |
+|------|-------|---------|--------|------|
+| 16 | **74** | [Living Spec](./living-spec.md) | `proposed` | .vcad = executable specification |
+| 21 | **75** | [CAD-Native World Model](./cad-native-world-model.md) | `proposed` | Train world models on parametric CAD + physics |
+| 29 | **61** | [Instant Physicality](./instant-physicality.md) | `proposed` | Click "Order Parts" → quote |
+
+### Implementation Priority
+
+**P0 (Now):**
+1. [WASM Physics Integration](./wasm-physics-integration.md) — Foundation for browser simulation
+2. [Zero-Latency Parametric Editing](./zero-latency-parametric-editing.md) — Core UX differentiator
+
+**P1 (Next):**
+3. [Physics Always On](./physics-always-on.md) — Paradigm shift
+4. [CAD ↔ Physics Round-Trip](./cad-physics-roundtrip.md) — Unique capability
+5. [Unified Canvas](./unified-canvas.md) — Single workspace
+
+**P2 (After):**
+6. [Intent-Based Modeling](./intent-based-modeling.md) — AI-native UX
+7. [AI Co-Designer](./ai-co-designer.md) — Deep understanding
+8. [Time as Dimension](./time-as-dimension.md) — Novel interaction
+
+---
+
 ## Feature Index
 
 ### Core Modeling (Shipped)
@@ -150,50 +234,74 @@ Make vcad's feature tree legendary — better than SolidWorks, Fusion, Onshape.
 
 ## Implementation Priority
 
-### Now
+### Now (P0)
 
-1. **[Compact IR Format](./compact-ir.md)** — Parser/serializer for cad0 (2-3 days)
-2. **[URDF Import/Export](./urdf-support.md)** — Opens robotics market (1 week)
+1. **[WASM Physics Integration](./wasm-physics-integration.md)** — Foundation for browser simulation
+2. **[Zero-Latency Parametric Editing](./zero-latency-parametric-editing.md)** — Core UX differentiator
+3. **[Compact IR Format](./compact-ir.md)** — Parser/serializer for cad0
 
-### Next (7 weeks)
+### Next (P1)
 
-3. **[Text-to-CAD (cad0)](./text-to-cad.md)** — THE hero feature
+4. **[Physics Always On](./physics-always-on.md)** — Paradigm shift
+5. **[CAD ↔ Physics Round-Trip](./cad-physics-roundtrip.md)** — Unique capability
+6. **[Unified Canvas](./unified-canvas.md)** — Single workspace
+7. **[Text-to-CAD (cad0)](./text-to-cad.md)** — THE hero feature
+
+### After (P2)
+
+8. **[Intent-Based Modeling](./intent-based-modeling.md)** — AI-native UX
+9. **[AI Co-Designer](./ai-co-designer.md)** — Deep understanding
+10. **[Time as Dimension](./time-as-dimension.md)** — Novel interaction
+11. **[Parallel WASM Workers](./parallel-wasm-workers.md)** — Background compute
 
 ### Done
 
 - ~~[Technical Debt Cleanup](./technical-debt.md)~~ — ✅ Shipped
+- ~~[Browser-Native CAD](./browser-native.md)~~ — ✅ Shipped
+- ~~[Offline-First Privacy](./offline-first-privacy.md)~~ — ✅ Shipped
 
-### Later (After cad0)
+### Future (Proposed)
 
-5. **[Fillets & Chamfers UI](./fillets-chamfers.md)** — Kernel done, needs UI
-6. **Feature Tree UX** — Hover preview, smart names, timeline scrubber
-7. **[Physics Simulation](./physics-simulation.md)** — Wait for user demand
+**High-Impact Proposed Features:**
+- **[10-Second Robot](./ten-second-robot.md)** — Instant robot generation
+- **[Fork Reality](./fork-reality.md)** — Image → parametric model
+- **[One-Click RL Training](./one-click-rl-training.md)** — `vcad train`
+- **[Living Spec](./living-spec.md)** — Executable specifications
+- **[Multiplayer Physics](./multiplayer-physics.md)** — Real-time collaboration
+- **[Instant Physicality](./instant-physicality.md)** — Order parts in one click
+- **[CAD-Native World Model](./cad-native-world-model.md)** — Foundation model training platform
 
-### Future (From ROADMAP.md)
-
-See [ROADMAP.md](./ROADMAP.md) for:
+**From [ROADMAP.md](./ROADMAP.md):**
 - Point Cloud → CAD
 - PCB Integration
-- Real-time Collaboration (CRDT)
 - Topology Optimization
 
 ---
 
 ## Quick Stats
 
-| Category | Shipped | Proposed | Planned |
-|----------|---------|----------|---------|
+| Category | Shipped | Planned | Proposed |
+|----------|---------|---------|----------|
 | Core Modeling | 5 | 0 | 0 |
 | Sketch System | 2 | 0 | 0 |
-| Surface Ops | 0 | 1 | 0 |
+| Surface Ops | 0 | 0 | 1 |
 | Assembly | 1 | 0 | 0 |
 | Drafting | 1 | 0 | 0 |
 | Import/Export | 2 | 0 | 0 |
 | Visualization | 3 | 0 | 0 |
 | UI/Interaction | 3 | 0 | 0 |
 | Data/Storage | 1 | 0 | 0 |
-| Foundation | 1 | 1 | 0 |
-| AI-Native | 0 | 1 | 0 |
-| Feature Tree UX | 0 | 10 | 0 |
-| Robotics | 0 | 1 | 1 |
-| **Total** | **19** | **14** | **1** |
+| Foundation | 1 | 0 | 1 |
+| Feature Tree UX | 0 | 0 | 10 |
+| **Strategic Vision** | **2** | **7** | **13** |
+| **Total** | **21** | **7** | **25** |
+
+### Strategic Vision Breakdown
+
+| Sub-Category | Shipped | Planned | Proposed |
+|--------------|---------|---------|----------|
+| Architecture Advantages | 2 | 4 | 0 |
+| Physics-First CAD | 0 | 3 | 1 |
+| AI-Native Design | 0 | 1 | 5 |
+| Robotics & RL | 0 | 0 | 2 |
+| The End Game | 0 | 0 | 3 |
