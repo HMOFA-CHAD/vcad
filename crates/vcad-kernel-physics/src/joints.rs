@@ -102,10 +102,11 @@ fn create_revolute_joint(
         builder = builder.limits(JointAxis::AngX, [lower, upper]);
     }
 
-    // Enable motor for position control
+    // Configure motor for control (will be activated when torque/position/velocity is set)
+    // Motor starts disabled (max_force = 0) so joint moves freely under gravity
     builder = builder
         .motor_model(JointAxis::AngX, MotorModel::AccelerationBased)
-        .motor_max_force(JointAxis::AngX, DEFAULT_MAX_FORCE);
+        .motor_max_force(JointAxis::AngX, 0.0);
 
     builder.build()
 }
@@ -127,10 +128,11 @@ fn create_prismatic_joint(
         builder = builder.limits(JointAxis::LinX, [lower, upper]);
     }
 
-    // Enable motor for position control
+    // Configure motor for control (will be activated when force/position/velocity is set)
+    // Motor starts disabled (max_force = 0) so joint moves freely under gravity
     builder = builder
         .motor_model(JointAxis::LinX, MotorModel::AccelerationBased)
-        .motor_max_force(JointAxis::LinX, DEFAULT_MAX_FORCE);
+        .motor_max_force(JointAxis::LinX, 0.0);
 
     builder.build()
 }

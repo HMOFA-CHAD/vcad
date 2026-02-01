@@ -96,6 +96,12 @@ export function useEngine() {
       const engine = globalEngine;
       if (!engine) return;
 
+      // Only re-evaluate if the actual document content changed
+      // Skip metadata-only changes (isDirty, lastSavedAt, etc.)
+      if (state.document === prevState?.document) {
+        return;
+      }
+
       // Debounce to next animation frame
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
