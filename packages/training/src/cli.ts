@@ -14,7 +14,12 @@ import {
   type GeneratedPart,
   type TrainingExample,
 } from "./generators/index.js";
-import { annotate, generateSyntheticExamples } from "./annotate.js";
+import {
+  annotate,
+  generateSyntheticExamples,
+  createAnthropicModel,
+  DEFAULT_MODEL,
+} from "./annotate.js";
 import {
   validateExamples,
   computeValidationStats,
@@ -92,6 +97,11 @@ program
   .option("-o, --output <path>", "Output JSONL file", "data/annotated/output.jsonl")
   .option("--synthetic", "Use synthetic descriptions instead of API", false)
   .option("--prompts <count>", "Number of prompts per part (1-5)", "5")
+  .option(
+    "-m, --model <model>",
+    "Anthropic model ID",
+    DEFAULT_MODEL,
+  )
   .action(async (options) => {
     const inputPath = path.resolve(options.input);
     const outputPath = path.resolve(options.output);
@@ -109,28 +119,30 @@ program
       console.log("Generating synthetic descriptions...");
       examples = generateSyntheticExamples(parts);
     } else {
-      // Use Claude API
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        console.error("Error: ANTHROPIC_API_KEY environment variable not set");
+      const modelId = options.model as string;
+
+      try {
+        const model = createAnthropicModel(modelId);
+        console.log(`Annotating with ${modelId}...`);
+
+        const promptsPerPart = Math.min(
+          5,
+          Math.max(1, parseInt(options.prompts, 10)),
+        );
+
+        examples = await annotate(parts, {
+          model,
+          promptsPerPart,
+          onProgress: (completed, total) => {
+            process.stdout.write(`\r  Progress: ${completed}/${total}`);
+          },
+        });
+        console.log("");
+      } catch (error) {
+        console.error(`Error: ${(error as Error).message}`);
         console.error("Use --synthetic flag for testing without API");
         process.exit(1);
       }
-
-      const Anthropic = (await import("@anthropic-ai/sdk")).default;
-      const client = new Anthropic({ apiKey });
-
-      console.log("Annotating with Claude API...");
-      const promptsPerPart = Math.min(5, Math.max(1, parseInt(options.prompts, 10)));
-
-      examples = await annotate(parts, {
-        client,
-        promptsPerPart,
-        onProgress: (completed, total) => {
-          process.stdout.write(`\r  Progress: ${completed}/${total}`);
-        },
-      });
-      console.log("");
     }
 
     // Write output
@@ -207,6 +219,11 @@ program
   .option("-o, --output <dir>", "Output directory", "data")
   .option("--synthetic", "Use synthetic descriptions instead of API", false)
   .option("--validate", "Validate examples before splitting", false)
+  .option(
+    "-m, --model <model>",
+    "Anthropic model ID",
+    DEFAULT_MODEL,
+  )
   .action(async (options) => {
     const totalCount = parseInt(options.count, 10);
     const outputDir = path.resolve(options.output);
@@ -246,22 +263,24 @@ program
       console.log("  Using synthetic descriptions");
       examples = generateSyntheticExamples(parts);
     } else {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        console.log("  ANTHROPIC_API_KEY not set, falling back to synthetic");
-        examples = generateSyntheticExamples(parts);
-      } else {
-        const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic({ apiKey });
+      const modelId = options.model as string;
+
+      try {
+        const model = createAnthropicModel(modelId);
+        console.log(`  Using ${modelId}`);
 
         examples = await annotate(parts, {
-          client,
+          model,
           promptsPerPart: 5,
           onProgress: (completed, total) => {
             process.stdout.write(`\r  Progress: ${completed}/${total}`);
           },
         });
         console.log("");
+      } catch (error) {
+        console.log(`  ${(error as Error).message}`);
+        console.log("  Falling back to synthetic descriptions");
+        examples = generateSyntheticExamples(parts);
       }
     }
 

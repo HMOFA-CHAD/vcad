@@ -1,24 +1,52 @@
 /**
- * Annotation pipeline - uses Claude API to generate diverse text descriptions.
+ * Annotation pipeline - uses Anthropic API to generate diverse text descriptions.
+ * Default: Claude 3.5 Haiku for speed and cost efficiency.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { generateText } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import type { GeneratedPart, TrainingExample } from "./generators/types.js";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LanguageModel = any;
+
+/** Default Anthropic model. */
+export const DEFAULT_MODEL = "claude-3-5-haiku-20241022";
+
+/** System prompt explaining the Compact IR format. */
+const SYSTEM_PROMPT = `You are describing CAD (Computer-Aided Design) mechanical parts.
+
+The input is in "Compact IR" format - a text representation of 3D geometry:
+- C x y z = Cube with dimensions x×y×z mm
+- Y r h = Cylinder with radius r mm and height h mm
+- S r = Sphere with radius r mm
+- T n x y z = Translate node n by (x,y,z) mm
+- R n x y z = Rotate node n by (x,y,z) degrees
+- U a b = Union (combine) nodes a and b
+- D a b = Difference (subtract b from a)
+
+Output ONLY a brief description of the physical part (1-2 sentences max). Do NOT explain the IR format or mention "Compact IR".`;
 
 /** Prompts for generating diverse text descriptions. */
 const ANNOTATION_PROMPTS = [
-  "Describe this CAD part technically, mentioning exact dimensions in mm:",
-  "Describe this part casually as a hobbyist maker would:",
-  "What would someone search to find this part?",
-  "Write a one-line manufacturing specification:",
-  "Describe what this part could be used for:",
+  "Describe this mechanical part technically with dimensions:",
+  "Describe this part as a maker/hobbyist would:",
+  "What search terms would find this part?",
+  "One-line manufacturing spec:",
+  "What could this part be used for?",
 ];
 
 /** Rate limit delay between batches (ms). */
-const RATE_LIMIT_DELAY = 3000;
+const RATE_LIMIT_DELAY = 300;
 
 /** Batch size for parallel API calls. */
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 20;
+
+/** Max retries per request. */
+const MAX_RETRIES = 5;
+
+/** Base delay for exponential backoff (ms). */
+const RETRY_BASE_DELAY = 500;
 
 /** Split array into chunks. */
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -34,20 +62,38 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Create an Anthropic language model.
+ *
+ * @param modelId - Model ID (e.g., "claude-3-5-haiku-20241022")
+ * @param apiKey - Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+ */
+export function createAnthropicModel(
+  modelId: string = DEFAULT_MODEL,
+  apiKey?: string,
+): LanguageModel {
+  const key = apiKey || process.env.ANTHROPIC_API_KEY;
+
+  if (!key) {
+    throw new Error("ANTHROPIC_API_KEY environment variable not set");
+  }
+
+  const anthropic = createAnthropic({ apiKey: key });
+  return anthropic(modelId);
+}
+
 /** Options for annotation. */
 export interface AnnotateOptions {
-  /** Anthropic API client. */
-  client: Anthropic;
+  /** Language model to use. */
+  model: LanguageModel;
   /** Number of prompts to use per part (1-5, default 5). */
   promptsPerPart?: number;
   /** Callback for progress updates. */
   onProgress?: (completed: number, total: number) => void;
-  /** Model to use (default: claude-3-haiku-20240307). */
-  model?: string;
 }
 
 /**
- * Annotate generated parts with text descriptions using Claude API.
+ * Annotate generated parts with text descriptions using AI SDK.
  *
  * @param parts - Array of generated parts to annotate
  * @param options - Annotation options
@@ -57,12 +103,7 @@ export async function annotate(
   parts: GeneratedPart[],
   options: AnnotateOptions,
 ): Promise<TrainingExample[]> {
-  const {
-    client,
-    promptsPerPart = 5,
-    onProgress,
-    model = "claude-3-haiku-20240307",
-  } = options;
+  const { model, promptsPerPart = 5, onProgress } = options;
 
   const examples: TrainingExample[] = [];
   const prompts = ANNOTATION_PROMPTS.slice(0, promptsPerPart);
@@ -81,25 +122,38 @@ export async function annotate(
       })),
     );
 
-    // Execute API calls in parallel within batch
+    // Execute API calls in parallel within batch with retry logic
     const responses = await Promise.all(
       tasks.map(async (task) => {
-        try {
-          const response = await client.messages.create({
-            model,
-            max_tokens: 150,
-            messages: [{ role: "user", content: task.prompt }],
-          });
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          try {
+            const response = await generateText({
+              model,
+              system: SYSTEM_PROMPT,
+              prompt: task.prompt,
+              maxOutputTokens: 150,
+            });
 
-          const text =
-            response.content[0].type === "text"
-              ? response.content[0].text.trim()
-              : "";
+            return { task, text: response.text.trim(), error: null };
+          } catch (error) {
+            const isRateLimit =
+              error instanceof Error &&
+              (error.message.includes("429") ||
+                error.message.includes("rate") ||
+                error.message.includes("Too Many"));
 
-          return { task, text, error: null };
-        } catch (error) {
-          return { task, text: null, error };
+            if (isRateLimit && attempt < MAX_RETRIES - 1) {
+              // Exponential backoff with jitter
+              const delay =
+                RETRY_BASE_DELAY * Math.pow(2, attempt) +
+                Math.random() * 1000;
+              await sleep(delay);
+              continue;
+            }
+            return { task, text: null, error };
+          }
         }
+        return { task, text: null, error: new Error("Max retries exceeded") };
       }),
     );
 
