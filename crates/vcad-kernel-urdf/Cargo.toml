@@ -1,0 +1,16 @@
+[package]
+name = "vcad-kernel-urdf"
+description = "URDF robot description format import/export for vcad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-ir = { workspace = true }
+vcad-kernel = { workspace = true }
+quick-xml = { version = "0.37", features = ["serialize"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
