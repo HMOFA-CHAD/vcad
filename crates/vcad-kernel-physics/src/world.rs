@@ -232,11 +232,53 @@ impl PhysicsWorld {
         for (joint_id, &handle) in &self.joint_to_impulse {
             if let Some(joint) = self.impulse_joints.get(handle) {
                 let kind = self.joint_kinds.get(joint_id).unwrap();
-                let axis = get_joint_axis(kind);
 
-                // Get position and velocity from joint motor
-                let position = joint.data.motor(axis).map(|m| m.target_pos).unwrap_or(0.0);
-                let velocity = joint.data.motor(axis).map(|m| m.target_vel).unwrap_or(0.0);
+                // Get actual joint position from body transforms
+                let body1 = self.bodies.get(joint.body1).unwrap();
+                let body2 = self.bodies.get(joint.body2).unwrap();
+
+                // Compute relative transform between bodies using joint frames
+                let frame1 = body1.position() * joint.data.local_frame1;
+                let frame2 = body2.position() * joint.data.local_frame2;
+                let relative = frame1.inverse() * frame2;
+
+                // Extract position and velocity based on joint type
+                let (position, velocity) = match kind {
+                    JointKind::Revolute { axis, .. } => {
+                        // Get rotation angle around the joint axis
+                        let axis_vec = Vector3::new(axis.x as f32, axis.y as f32, axis.z as f32).normalize();
+                        let (axis_angle, angle) = relative.rotation.axis_angle().unwrap_or((
+                            nalgebra::Unit::new_normalize(axis_vec),
+                            0.0,
+                        ));
+                        // Check if rotation is around the expected axis (might be flipped)
+                        let sign = if axis_angle.dot(&axis_vec) >= 0.0 { 1.0 } else { -1.0 };
+                        let joint_angle = sign * angle;
+
+                        // Get angular velocity from bodies
+                        let angvel1 = body1.angvel();
+                        let angvel2 = body2.angvel();
+                        let rel_angvel = angvel2 - angvel1;
+                        let joint_vel = rel_angvel.dot(&axis_vec);
+
+                        (joint_angle, joint_vel)
+                    }
+                    JointKind::Slider { axis, .. } => {
+                        // Get translation along the joint axis
+                        let axis_vec = Vector3::new(axis.x as f32, axis.y as f32, axis.z as f32).normalize();
+                        let translation = relative.translation.vector;
+                        let joint_pos = translation.dot(&axis_vec);
+
+                        // Get linear velocity along axis
+                        let linvel1 = body1.linvel();
+                        let linvel2 = body2.linvel();
+                        let rel_linvel = linvel2 - linvel1;
+                        let joint_vel = rel_linvel.dot(&axis_vec);
+
+                        (joint_pos, joint_vel)
+                    }
+                    JointKind::Fixed | JointKind::Cylindrical { .. } | JointKind::Ball => (0.0, 0.0),
+                };
 
                 states.insert(
                     joint_id.clone(),

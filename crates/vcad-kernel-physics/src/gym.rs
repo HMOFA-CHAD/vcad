@@ -140,9 +140,10 @@ impl RobotEnv {
 
         for joint_id in &self.joint_ids {
             if let Some(state) = joint_states.get(joint_id) {
-                // Convert to physics units (radians/meters)
-                positions.push(state.position.to_radians());
-                velocities.push(state.velocity.to_radians());
+                // Values are already in vcad units (degrees/mm) from get_joint_states()
+                // which calls convert_state_from_physics() internally
+                positions.push(state.position);
+                velocities.push(state.velocity);
             } else {
                 positions.push(0.0);
                 velocities.push(0.0);

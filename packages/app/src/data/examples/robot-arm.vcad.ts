@@ -3,7 +3,7 @@ import type { Document } from "@vcad/ir";
 import type { PartInfo } from "@vcad/core";
 
 // 2-DOF Robot Arm with joints for physics simulation
-// A simple SCARA-style arm that rotates around Y axis
+// Articulated arm with horizontal joint axes - falls under gravity
 // Parts are defined at origin, FK positions them via joint chain
 const document: Document = {
   version: "0.1",
@@ -134,7 +134,8 @@ const document: Document = {
       childAnchor: { x: 0, y: 10, z: 10 },
       kind: {
         type: "Revolute",
-        axis: { x: 0, y: 1, z: 0 },
+        // Horizontal axis - gravity creates torque on this joint
+        axis: { x: 0, y: 0, z: 1 },
         limits: [-120, 120],
       },
       state: 0,
@@ -150,7 +151,8 @@ const document: Document = {
       childAnchor: { x: 0, y: 8, z: 8 },
       kind: {
         type: "Revolute",
-        axis: { x: 0, y: 1, z: 0 },
+        // Horizontal axis - gravity creates torque on this joint
+        axis: { x: 0, y: 0, z: 1 },
         limits: [-135, 135],
       },
       state: 0,

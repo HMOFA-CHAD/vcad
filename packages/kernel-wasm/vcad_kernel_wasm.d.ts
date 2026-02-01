@@ -2,127 +2,99 @@
 /* eslint-disable */
 
 /**
- * Stub PhysicsSim when physics feature is not enabled.
+ * Physics simulation environment for robotics and RL.
+ *
+ * This provides a gym-style interface for simulating robot assemblies
+ * with physics, joints, and collision detection.
  */
 export class PhysicsSim {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Returns an error when physics feature is not enabled.
+     * Get the action dimension.
      */
-    constructor(_doc_json: string, _end_effector_ids: string[], _dt?: number | null, _substeps?: number | null);
+    actionDim(): number;
+    /**
+     * Create a new physics simulation from a vcad document JSON.
+     *
+     * # Arguments
+     * * `doc_json` - JSON string representing a vcad IR Document
+     * * `end_effector_ids` - Array of instance IDs to track as end effectors
+     * * `dt` - Simulation timestep in seconds (default: 1/240)
+     * * `substeps` - Number of physics substeps per step (default: 4)
+     */
+    constructor(doc_json: string, end_effector_ids: string[], dt?: number | null, substeps?: number | null);
+    /**
+     * Get the number of joints in the environment.
+     */
+    numJoints(): number;
+    /**
+     * Get the observation dimension.
+     */
+    observationDim(): number;
+    /**
+     * Get current observation without stepping.
+     *
+     * Returns observation as JSON.
+     */
+    observe(): any;
+    /**
+     * Reset the environment to initial state.
+     *
+     * Returns the initial observation as JSON.
+     */
+    reset(): any;
+    /**
+     * Set the maximum episode length.
+     */
+    setMaxSteps(max_steps: number): void;
+    /**
+     * Set the random seed.
+     */
+    setSeed(seed: bigint): void;
+    /**
+     * Step the simulation with position targets.
+     *
+     * # Arguments
+     * * `targets` - Array of position targets for each joint (degrees or mm)
+     *
+     * # Returns
+     * Object with { observation, reward, done }
+     */
+    stepPosition(targets: Float64Array): any;
+    /**
+     * Step the simulation with a torque action.
+     *
+     * # Arguments
+     * * `torques` - Array of torques/forces for each joint (Nm or N)
+     *
+     * # Returns
+     * Object with { observation, reward, done }
+     */
+    stepTorque(torques: Float64Array): any;
+    /**
+     * Step the simulation with velocity targets.
+     *
+     * # Arguments
+     * * `targets` - Array of velocity targets for each joint (deg/s or mm/s)
+     *
+     * # Returns
+     * Object with { observation, reward, done }
+     */
+    stepVelocity(targets: Float64Array): any;
 }
 
 /**
- * GPU-accelerated ray tracer for direct BRep rendering.
- *
- * This ray tracer renders BRep surfaces directly without tessellation,
- * achieving pixel-perfect silhouettes at any zoom level.
+ * Stub RayTracer when raytrace feature is not enabled.
  */
 export class RayTracer {
     private constructor();
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Check if a solid can be ray traced.
-     *
-     * Returns true if the solid has a BRep representation.
-     */
-    static canRaytrace(solid: Solid): boolean;
-    /**
-     * Create a new ray tracer.
-     *
-     * Requires WebGPU to be available and initialized.
-     * Call `initGpu()` before calling this method.
+     * Returns an error when raytrace feature is not enabled.
      */
     static create(): RayTracer;
-    /**
-     * Get the current debug render mode.
-     */
-    getDebugMode(): number;
-    /**
-     * Get whether edge detection is enabled.
-     */
-    getEdgeDetectionEnabled(): boolean;
-    /**
-     * Get the current frame index for progressive rendering.
-     */
-    getFrameIndex(): number;
-    /**
-     * Check if the ray tracer has a scene loaded.
-     */
-    hasScene(): boolean;
-    /**
-     * Pick a face at the given pixel coordinates.
-     *
-     * # Arguments
-     * * `camera`, `target`, `up` - Camera parameters
-     * * `width`, `height`, `fov` - View parameters
-     * * `pixel_x`, `pixel_y` - Pixel coordinates to pick
-     *
-     * # Returns
-     * Face index if a face was hit, or -1 if background was hit.
-     */
-    pick(camera: Float64Array, target: Float64Array, up: Float64Array, width: number, height: number, fov: number, pixel_x: number, pixel_y: number): number;
-    /**
-     * Render the scene to an RGBA image with progressive anti-aliasing.
-     *
-     * Each call accumulates another sample. Call `resetAccumulation()` when the
-     * camera moves to restart the accumulation.
-     *
-     * # Arguments
-     * * `camera` - Camera position [x, y, z]
-     * * `target` - Look-at target [x, y, z]
-     * * `up` - Up vector [x, y, z]
-     * * `width` - Image width in pixels
-     * * `height` - Image height in pixels
-     * * `fov` - Field of view in radians
-     *
-     * # Returns
-     * RGBA pixel data as a byte array (width * height * 4 bytes).
-     *
-     * # Note
-     * This function is async to support WASM's single-threaded environment.
-     * In JavaScript, it returns a Promise<Uint8Array>.
-     */
-    render(camera: Float64Array, target: Float64Array, up: Float64Array, width: number, height: number, fov: number): Promise<Uint8Array>;
-    /**
-     * Reset the progressive accumulation (call when camera moves).
-     */
-    resetAccumulation(): void;
-    /**
-     * Set the debug render mode.
-     *
-     * # Arguments
-     * * `mode` - Debug mode: 0=normal, 1=normals as RGB, 2=face_id colors, 3=N·L grayscale, 4=orientation
-     *
-     * Call resetAccumulation() after changing mode to see immediate effect.
-     */
-    setDebugMode(mode: number): void;
-    /**
-     * Set edge detection settings.
-     *
-     * # Arguments
-     * * `enabled` - Whether to show edge detection overlay
-     * * `depth_threshold` - Depth discontinuity threshold (default: 0.1)
-     * * `normal_threshold` - Normal angle threshold in degrees (default: 30.0)
-     */
-    setEdgeDetection(enabled: boolean, depth_threshold: number, normal_threshold: number): void;
-    /**
-     * Set the material for all faces in the scene.
-     *
-     * # Arguments
-     * * `r`, `g`, `b` - RGB color components (0-1 range, linear)
-     * * `metallic` - Metallic factor (0 = dielectric, 1 = metal)
-     * * `roughness` - Roughness factor (0 = smooth/mirror, 1 = rough/diffuse)
-     */
-    setMaterial(r: number, g: number, b: number, metallic: number, roughness: number): void;
-    /**
-     * Upload a solid's BRep representation for ray tracing.
-     *
-     * This extracts the BRep surfaces and builds the GPU scene data.
-     */
-    uploadSolid(solid: Solid): void;
 }
 
 /**
@@ -403,17 +375,9 @@ export class WasmAnnotationLayer {
 }
 
 /**
- * Compute creased normals using GPU acceleration.
- *
- * # Arguments
- * * `positions` - Flat array of vertex positions (x, y, z, ...)
- * * `indices` - Triangle indices
- * * `crease_angle` - Angle in radians; faces meeting at sharper angles get hard edges
- *
- * # Returns
- * Flat array of normals (nx, ny, nz, ...), same length as positions.
+ * Compute creased normals (CPU fallback when GPU feature is disabled).
  */
-export function computeCreasedNormalsGpu(positions: Float32Array, indices: Uint32Array, crease_angle: number): Promise<Float32Array>;
+export function computeCreasedNormalsGpu(_positions: Float32Array, _indices: Uint32Array, _crease_angle: number): Promise<Float32Array>;
 
 /**
  * Create a detail view from a projected view.
@@ -436,17 +400,9 @@ export function computeCreasedNormalsGpu(positions: Float32Array, indices: Uint3
 export function createDetailView(parent_json: string, center_x: number, center_y: number, scale: number, width: number, height: number, label: string): any;
 
 /**
- * Decimate a mesh to reduce triangle count.
- *
- * # Arguments
- * * `positions` - Flat array of vertex positions
- * * `indices` - Triangle indices
- * * `target_ratio` - Target ratio of triangles to keep (0.5 = 50%)
- *
- * # Returns
- * A JS object with decimated positions, indices, and normals.
+ * Decimate a mesh (CPU fallback when GPU feature is disabled).
  */
-export function decimateMeshGpu(positions: Float32Array, indices: Uint32Array, target_ratio: number): Promise<any>;
+export function decimateMeshGpu(_positions: Float32Array, _indices: Uint32Array, _target_ratio: number): Promise<any>;
 
 /**
  * Evaluate compact IR and return a Solid for rendering.
@@ -495,10 +451,7 @@ export function importStepBuffer(data: Uint8Array): any;
 export function init(): void;
 
 /**
- * Initialize the GPU context for accelerated geometry processing.
- *
- * Returns `true` if WebGPU is available and initialized, `false` otherwise.
- * This should be called once at application startup.
+ * Initialize the GPU context (stub when GPU feature is disabled).
  */
 export function initGpu(): Promise<boolean>;
 
@@ -597,21 +550,9 @@ export function op_sweep_line(profile_js: any, start: Float64Array, end: Float64
 export function parseCompactIR(compact_ir: string): string;
 
 /**
- * Process geometry with GPU acceleration.
- *
- * Computes creased normals and optionally generates LOD meshes.
- *
- * # Arguments
- * * `positions` - Flat array of vertex positions (x, y, z, ...)
- * * `indices` - Triangle indices
- * * `crease_angle` - Angle in radians for creased normal computation
- * * `generate_lod` - If true, returns multiple LOD levels
- *
- * # Returns
- * A JS array of geometry results. If `generate_lod` is true, returns
- * [full, 50%, 25%] detail levels. Otherwise returns a single mesh.
+ * Process geometry (CPU fallback when GPU feature is disabled).
  */
-export function processGeometryGpu(positions: Float32Array, indices: Uint32Array, crease_angle: number, generate_lod: boolean): Promise<any>;
+export function processGeometryGpu(_positions: Float32Array, _indices: Uint32Array, _crease_angle: number, _generate_lod: boolean): Promise<any>;
 
 /**
  * Project a triangle mesh to a 2D view.
@@ -682,22 +623,19 @@ export interface InitOutput {
     readonly op_sweep_helix: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
     readonly op_sweep_line: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
     readonly parseCompactIR: (a: number, b: number) => [number, number, number, number];
+    readonly physicssim_actionDim: (a: number) => number;
     readonly physicssim_new: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+    readonly physicssim_observationDim: (a: number) => number;
+    readonly physicssim_observe: (a: number) => any;
+    readonly physicssim_reset: (a: number) => any;
+    readonly physicssim_setMaxSteps: (a: number, b: number) => void;
+    readonly physicssim_setSeed: (a: number, b: bigint) => void;
+    readonly physicssim_stepPosition: (a: number, b: number, c: number) => any;
+    readonly physicssim_stepTorque: (a: number, b: number, c: number) => any;
+    readonly physicssim_stepVelocity: (a: number, b: number, c: number) => any;
     readonly processGeometryGpu: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly projectMesh: (a: any, b: number, c: number) => any;
-    readonly raytracer_canRaytrace: (a: number) => number;
     readonly raytracer_create: () => [number, number, number];
-    readonly raytracer_getDebugMode: (a: number) => number;
-    readonly raytracer_getEdgeDetectionEnabled: (a: number) => number;
-    readonly raytracer_getFrameIndex: (a: number) => number;
-    readonly raytracer_hasScene: (a: number) => number;
-    readonly raytracer_pick: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number];
-    readonly raytracer_render: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => any;
-    readonly raytracer_resetAccumulation: (a: number) => void;
-    readonly raytracer_setDebugMode: (a: number, b: number) => void;
-    readonly raytracer_setEdgeDetection: (a: number, b: number, c: number, d: number) => void;
-    readonly raytracer_setMaterial: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
-    readonly raytracer_uploadSolid: (a: number, b: number) => [number, number];
     readonly sectionMesh: (a: any, b: number, c: number, d: number, e: number) => any;
     readonly solid_boundingBox: (a: number) => [number, number];
     readonly solid_centerOfMass: (a: number) => [number, number];
@@ -736,6 +674,7 @@ export interface InitOutput {
     readonly wasmannotationlayer_isEmpty: (a: number) => number;
     readonly wasmannotationlayer_new: () => number;
     readonly wasmannotationlayer_renderAll: (a: number, b: number, c: number) => any;
+    readonly physicssim_numJoints: (a: number) => number;
     readonly solid_linearPattern: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly init: () => void;
     readonly solid_revolve: (a: any, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
@@ -743,11 +682,9 @@ export interface InitOutput {
     readonly solid_fillet: (a: number, b: number) => number;
     readonly solid_shell: (a: number, b: number) => number;
     readonly solid_circularPattern: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
-    readonly wasm_bindgen__closure__destroy__ha8b73a36ae48e470: (a: number, b: number) => void;
-    readonly wasm_bindgen__closure__destroy__h250d7189f9770b99: (a: number, b: number) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h60f25fed64173f82: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h4488ad9b37e81000: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__ha8b3f1b8e67fad08: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__closure__destroy__ha1c57de1520edab9: (a: number, b: number) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h90946713c829438a: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h4889c924fd29fd81: (a: number, b: number, c: any) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
