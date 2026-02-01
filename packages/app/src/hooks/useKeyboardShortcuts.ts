@@ -53,10 +53,10 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // AI panel: Cmd+J
+      // AI / Command palette: Cmd+J (same as Cmd+K)
       if (mod && e.key === "j") {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("vcad:ai-panel"));
+        toggleCommandPalette();
         return;
       }
 

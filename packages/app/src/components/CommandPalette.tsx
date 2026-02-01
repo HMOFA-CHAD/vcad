@@ -28,11 +28,20 @@ import {
   PlusSquare,
   Anchor,
   ArrowsHorizontal,
+  Sparkle,
+  SpinnerGap,
+  Play,
+  Plus,
 } from "@phosphor-icons/react";
-import type { Command } from "@vcad/core";
-import { createCommandRegistry, useUiStore, useDocumentStore, useEngineStore, exportStlBlob, exportGltfBlob } from "@vcad/core";
+import { fromCompact, type Document } from "@vcad/ir";
+import { generateCAD, isModelLoaded } from "@/lib/browser-inference";
+import { useToastStore } from "@/stores/toast-store";
+import { useOnboardingStore } from "@/stores/onboarding-store";
+import type { Command, VcadFile } from "@vcad/core";
+import { createCommandRegistry, useUiStore, useDocumentStore, useEngineStore, exportStlBlob, exportGltfBlob, parseVcadFile } from "@vcad/core";
 import { downloadBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
+import { examples, type Example } from "@/data/examples";
 
 const ICONS: Record<string, typeof Cube> = {
   Cube,
@@ -61,7 +70,52 @@ const ICONS: Record<string, typeof Cube> = {
   Anchor,
   ArrowsClockwise: ArrowClockwise,
   ArrowsHorizontal,
+  Sparkle,
 };
+
+/** Contextual AI suggestions based on current state */
+interface AISuggestion {
+  id: string;
+  label: string;
+  prompt: string;
+}
+
+function getContextualSuggestions(
+  selectionCount: number,
+  hasParts: boolean,
+): AISuggestion[] {
+  if (!hasParts) {
+    // Empty scene - suggest starting points
+    return [
+      { id: "ai-bracket", label: "Create a mounting bracket", prompt: "mounting bracket with 4 corner holes, 50mm wide" },
+      { id: "ai-enclosure", label: "Create an electronics enclosure", prompt: "electronics enclosure box 80x60x40mm with ventilation slots" },
+      { id: "ai-standoff", label: "Create standoffs", prompt: "M3 standoff 10mm tall with mounting holes" },
+    ];
+  }
+
+  if (selectionCount === 1) {
+    // One part selected - suggest modifications
+    return [
+      { id: "ai-holes", label: "Add mounting holes", prompt: "add 4 M3 mounting holes to the corners" },
+      { id: "ai-taller", label: "Make it taller", prompt: "make this part twice as tall" },
+      { id: "ai-fillet", label: "Add rounded edges", prompt: "add 2mm fillets to all edges" },
+    ];
+  }
+
+  if (selectionCount === 2) {
+    // Two parts selected - suggest combinations
+    return [
+      { id: "ai-connect", label: "Connect these parts", prompt: "create a connector between these two parts" },
+      { id: "ai-align", label: "Align and join", prompt: "align these parts and join them" },
+    ];
+  }
+
+  // Has parts but nothing selected
+  return [
+    { id: "ai-complement", label: "Add a matching part", prompt: "create a complementary part that fits with the existing geometry" },
+    { id: "ai-base", label: "Create a base plate", prompt: "create a base plate to mount the existing parts" },
+  ];
+}
 
 function highlightMatch(text: string, query: string): React.ReactNode {
   if (!query) return text;
@@ -86,8 +140,15 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiStatus, setAiStatus] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadDocument = useDocumentStore((s) => s.loadDocument);
+  const startGuidedFlow = useOnboardingStore((s) => s.startGuidedFlow);
+  const incrementProjectsCreated = useOnboardingStore((s) => s.incrementProjectsCreated);
 
   // Get store actions
   const addPrimitive = useDocumentStore((s) => s.addPrimitive);
@@ -289,6 +350,110 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
     undoStack.length,
   ]);
 
+  // AI generation handler
+  const handleAIGenerate = useCallback(async (prompt: string) => {
+    setAiGenerating(true);
+    setAiStatus("Loading AI model...");
+
+    try {
+      const result = await generateCAD(
+        prompt,
+        undefined,
+        (_loaded, _total, status) => {
+          setAiStatus(status);
+        }
+      );
+
+      setAiStatus("Building geometry...");
+
+      // Parse the Compact IR to a Document
+      const generatedDoc: Document = fromCompact(result.ir);
+
+      // Wrap in VcadFile format
+      const vcadFile: VcadFile = {
+        document: generatedDoc,
+        parts: [],
+        nextNodeId: Object.keys(generatedDoc.nodes).length,
+        nextPartNum: 1,
+      };
+
+      loadDocument(vcadFile);
+      useToastStore.getState().addToast(
+        `Generated in ${(result.durationMs / 1000).toFixed(1)}s`,
+        "success"
+      );
+      onOpenChange(false);
+    } catch (err) {
+      console.error("AI generation failed:", err);
+      useToastStore.getState().addToast(
+        err instanceof Error ? err.message : "Generation failed",
+        "error"
+      );
+    } finally {
+      setAiGenerating(false);
+      setAiStatus("");
+    }
+  }, [loadDocument, onOpenChange]);
+
+  // Get contextual AI suggestions
+  const aiSuggestions = useMemo(() => {
+    return getContextualSuggestions(
+      selectedPartIds.size,
+      parts.length > 0
+    );
+  }, [selectedPartIds.size, parts.length]);
+
+  // Welcome mode: show when canvas is empty and no query
+  const isWelcomeMode = parts.length === 0 && !query.trim();
+
+  // Handle new project (start guided flow)
+  const handleNewProject = useCallback(() => {
+    incrementProjectsCreated();
+    startGuidedFlow();
+    onOpenChange(false);
+  }, [incrementProjectsCreated, startGuidedFlow, onOpenChange]);
+
+  // Handle skip tutorial - just add a cube
+  const handleSkipTutorial = useCallback(() => {
+    incrementProjectsCreated();
+    const partId = addPrimitive("cube");
+    select(partId);
+    setTransformMode("translate");
+    onOpenChange(false);
+  }, [incrementProjectsCreated, addPrimitive, select, setTransformMode, onOpenChange]);
+
+  // Handle open file
+  const handleOpenFile = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  // Handle file input change
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const vcadFile = parseVcadFile(content);
+        loadDocument(vcadFile);
+        onOpenChange(false);
+      } catch (err) {
+        console.error("Failed to parse file:", err);
+        useToastStore.getState().addToast("Failed to load file", "error");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }, [loadDocument, onOpenChange]);
+
+  // Handle example load
+  const handleOpenExample = useCallback((example: Example) => {
+    loadDocument(example.file);
+    onOpenChange(false);
+  }, [loadDocument, onOpenChange]);
+
   const filteredCommands = useMemo(() => {
     if (!query.trim()) return commands;
     const q = query.toLowerCase();
@@ -297,6 +462,10 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
       return cmd.keywords.some((kw) => kw.includes(q));
     });
   }, [commands, query]);
+
+  // Determine if we should show AI section
+  const showAISection = query.trim().length > 2 || filteredCommands.length === 0;
+  const aiPrompt = query.trim();
 
   // Reset selection when query changes
   useEffect(() => {
@@ -330,6 +499,13 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
   );
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (aiGenerating) {
+      if (e.key === "Escape") {
+        // TODO: Cancel generation
+      }
+      return;
+    }
+
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -341,8 +517,15 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
         break;
       case "Enter":
         e.preventDefault();
-        const cmd = filteredCommands[selectedIndex];
-        if (cmd) executeCommand(cmd);
+        // If we have a matching command, execute it
+        if (filteredCommands.length > 0 && selectedIndex < filteredCommands.length) {
+          const cmd = filteredCommands[selectedIndex];
+          if (cmd) executeCommand(cmd);
+        }
+        // Otherwise, if we have a query, generate with AI
+        else if (aiPrompt) {
+          handleAIGenerate(aiPrompt);
+        }
         break;
       case "Escape":
         onOpenChange(false);
@@ -353,7 +536,7 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30" />
         <Dialog.Content
           className="fixed left-1/2 top-[20%] z-50 w-full max-w-md -translate-x-1/2  border border-border bg-card shadow-2xl"
           onKeyDown={handleKeyDown}
@@ -369,46 +552,201 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type a command..."
+              placeholder="Type a command or describe what to create..."
               className="flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-muted"
               autoFocus
             />
             <kbd className=" bg-border/50 px-1.5 py-0.5 text-[10px] text-text-muted">esc</kbd>
           </div>
-          <div ref={listRef} className="max-h-[300px] overflow-y-auto p-1">
-            {filteredCommands.length === 0 ? (
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".vcad,.json"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
+          <div ref={listRef} className="max-h-[400px] overflow-y-auto p-1">
+            {/* AI generating state */}
+            {aiGenerating && (
+              <div className="flex items-center gap-3 px-3 py-4 border-b border-border mb-1">
+                <SpinnerGap size={16} className="text-accent animate-spin" />
+                <span className="text-sm text-text-muted">{aiStatus || "Generating..."}</span>
+              </div>
+            )}
+
+            {/* Welcome mode - show when canvas is empty and no query */}
+            {!aiGenerating && isWelcomeMode && (
+              <>
+                {/* Branding */}
+                <div className="flex flex-col items-center py-4 border-b border-border mb-1">
+                  <h1 className="text-xl font-bold tracking-tighter text-text">
+                    vcad<span className="text-accent">.</span>
+                  </h1>
+                  <p className="text-[10px] text-text-muted">
+                    free parametric cad for everyone
+                  </p>
+                </div>
+
+                {/* Quick actions */}
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                    Get Started
+                  </span>
+                </div>
+                <button
+                  onClick={handleNewProject}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-border/30"
+                >
+                  <Plus size={16} className="shrink-0 text-accent" />
+                  <span className="flex-1">New Project</span>
+                  <span className="text-[10px] text-text-muted">guided tutorial</span>
+                </button>
+                <button
+                  onClick={handleSkipTutorial}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-border/30"
+                >
+                  <Cube size={16} className="shrink-0 text-text-muted" />
+                  <span className="flex-1">Blank Project</span>
+                  <span className="text-[10px] text-text-muted">skip tutorial</span>
+                </button>
+                <button
+                  onClick={handleOpenFile}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-border/30"
+                >
+                  <FolderOpen size={16} className="shrink-0 text-text-muted" />
+                  <span className="flex-1">Open File</span>
+                  <kbd className="bg-border/50 px-1.5 py-0.5 text-[10px] text-text-muted">⌘O</kbd>
+                </button>
+
+                {/* Examples */}
+                <div className="border-t border-border my-1" />
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                    Examples
+                  </span>
+                </div>
+                {examples.map((example) => (
+                  <button
+                    key={example.id}
+                    onClick={() => handleOpenExample(example)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-border/30"
+                  >
+                    <Play size={16} className="shrink-0 text-text-muted" />
+                    <span className="flex-1 text-text-muted">{example.name}</span>
+                  </button>
+                ))}
+
+                {/* AI suggestions */}
+                <div className="border-t border-border my-1" />
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                    Or describe what to create
+                  </span>
+                </div>
+                {aiSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    onClick={() => handleAIGenerate(suggestion.prompt)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-border/30"
+                  >
+                    <Sparkle size={16} className="shrink-0 text-accent/60" />
+                    <span className="flex-1 text-text-muted">{suggestion.label}</span>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* Commands section - hide in welcome mode */}
+            {!aiGenerating && !isWelcomeMode && filteredCommands.length > 0 && (
+              <>
+                {filteredCommands.map((cmd, idx) => {
+                  const Icon = ICONS[cmd.icon] ?? Cube;
+                  const isDisabled = cmd.enabled && !cmd.enabled();
+                  const isSelected = idx === selectedIndex;
+
+                  return (
+                    <button
+                      key={cmd.id}
+                      data-selected={isSelected}
+                      disabled={isDisabled}
+                      onClick={() => executeCommand(cmd)}
+                      className={cn(
+                        "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                        isSelected && !isDisabled && "bg-accent/20",
+                        isDisabled && "opacity-40 cursor-not-allowed",
+                        !isSelected && !isDisabled && "hover:bg-border/30",
+                      )}
+                    >
+                      <Icon size={16} className="shrink-0 text-text-muted" />
+                      <span className="flex-1">{highlightMatch(cmd.label, query)}</span>
+                      {cmd.shortcut && (
+                        <kbd className="bg-border/50 px-1.5 py-0.5 text-[10px] text-text-muted">
+                          {cmd.shortcut}
+                        </kbd>
+                      )}
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {/* AI Generation section - hide in welcome mode */}
+            {!aiGenerating && !isWelcomeMode && showAISection && (
+              <>
+                {filteredCommands.length > 0 && (
+                  <div className="border-t border-border my-1" />
+                )}
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                    AI Generate
+                  </span>
+                </div>
+
+                {/* Custom prompt option */}
+                {aiPrompt && (
+                  <button
+                    onClick={() => handleAIGenerate(aiPrompt)}
+                    className={cn(
+                      "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                      filteredCommands.length === 0 && selectedIndex === 0
+                        ? "bg-accent/20"
+                        : "hover:bg-border/30",
+                    )}
+                  >
+                    <Sparkle size={16} className="shrink-0 text-accent" />
+                    <span className="flex-1">
+                      Generate: <span className="text-accent">{aiPrompt}</span>
+                    </span>
+                    <kbd className="bg-border/50 px-1.5 py-0.5 text-[10px] text-text-muted">
+                      {isModelLoaded() ? "ready" : "↓350MB"}
+                    </kbd>
+                  </button>
+                )}
+
+                {/* Contextual suggestions */}
+                {!aiPrompt && aiSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    onClick={() => handleAIGenerate(suggestion.prompt)}
+                    className={cn(
+                      "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                      "hover:bg-border/30",
+                    )}
+                  >
+                    <Sparkle size={16} className="shrink-0 text-accent/60" />
+                    <span className="flex-1 text-text-muted">{suggestion.label}</span>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* Empty state - hide in welcome mode */}
+            {!aiGenerating && !isWelcomeMode && filteredCommands.length === 0 && !showAISection && (
               <div className="px-3 py-6 text-center text-xs text-text-muted">
                 No commands found
               </div>
-            ) : (
-              filteredCommands.map((cmd, idx) => {
-                const Icon = ICONS[cmd.icon] ?? Cube;
-                const isDisabled = cmd.enabled && !cmd.enabled();
-                const isSelected = idx === selectedIndex;
-
-                return (
-                  <button
-                    key={cmd.id}
-                    data-selected={isSelected}
-                    disabled={isDisabled}
-                    onClick={() => executeCommand(cmd)}
-                    className={cn(
-                      "flex w-full items-center gap-3  px-3 py-2 text-left text-sm transition-colors",
-                      isSelected && !isDisabled && "bg-accent/20",
-                      isDisabled && "opacity-40 cursor-not-allowed",
-                      !isSelected && !isDisabled && "hover:bg-border/30",
-                    )}
-                  >
-                    <Icon size={16} className="shrink-0 text-text-muted" />
-                    <span className="flex-1">{highlightMatch(cmd.label, query)}</span>
-                    {cmd.shortcut && (
-                      <kbd className=" bg-border/50 px-1.5 py-0.5 text-[10px] text-text-muted">
-                        {cmd.shortcut}
-                      </kbd>
-                    )}
-                  </button>
-                );
-              })
             )}
           </div>
         </Dialog.Content>
