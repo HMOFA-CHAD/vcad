@@ -1292,13 +1292,15 @@ mod tests {
         let cube = Solid::cube(10.0, 10.0, 10.0);
         assert!(cube.can_export_step(), "primitive should be exportable");
 
-        // After boolean, may lose B-rep
+        // After boolean, B-rep is preserved (canExportStep returns true)
+        // Note: More complex boolean chains may produce invalid topology
+        // that causes toStepBuffer to fail, but canExportStep still returns true
         let hole = Solid::cylinder(3.0, 15.0, 32);
         let result = cube.difference(&hole);
-        // After boolean operations, the result may be mesh-only
-        // so can_export_step may return false (depending on implementation)
-        // This is expected behavior - just verify the method works
-        let _ = result.can_export_step();
+        assert!(
+            result.can_export_step(),
+            "boolean result should preserve B-rep marker"
+        );
     }
 
     #[test]

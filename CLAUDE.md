@@ -30,8 +30,8 @@ npm run dev -w @vcad/app           # run web app locally
 
 ```
 vcad/
-├── crates/                        # Rust workspace (~27K LOC)
-│   ├── vcad-kernel-math/          # Linear algebra, transforms
+├── crates/                        # Rust workspace (~35K LOC)
+│   ├── vcad-kernel-math/          # Linear algebra, transforms, exact predicates
 │   ├── vcad-kernel-topo/          # Half-edge BRep topology
 │   ├── vcad-kernel-geom/          # Curves and surfaces
 │   ├── vcad-kernel-primitives/    # Box, cylinder, sphere, cone
@@ -45,6 +45,10 @@ vcad/
 │   ├── vcad-kernel-shell/         # Shell and pattern ops
 │   ├── vcad-kernel-step/          # STEP AP214 import/export
 │   ├── vcad-kernel-drafting/      # 2D drawings, projections, GD&T
+│   ├── vcad-kernel-gpu/           # wgpu compute shaders (normals, decimation)
+│   ├── vcad-kernel-raytrace/      # Direct BRep ray tracing
+│   ├── vcad-kernel-physics/       # Rapier3D physics simulation
+│   ├── vcad-kernel-urdf/          # URDF robot description import
 │   ├── vcad-kernel/               # Unified kernel API
 │   ├── vcad-kernel-wasm/          # WASM bindings for browser
 │   ├── vcad-ir/                   # Intermediate representation
@@ -52,11 +56,12 @@ vcad/
 │   └── vcad/                      # Legacy CSG library (manifold-based)
 ├── packages/                      # TypeScript workspace
 │   ├── app/                       # Web app (React + Three.js + Zustand)
-│   ├── engine/                    # WASM engine wrapper
+│   ├── engine/                    # WASM engine wrapper + physics
 │   ├── ir/                        # TypeScript IR types
-│   ├── core/                      # Shared utilities
+│   ├── core/                      # Shared utilities and stores
 │   ├── kernel-wasm/               # Kernel WASM package
 │   ├── mcp/                       # MCP server for AI agents
+│   ├── training/                  # ML training pipeline
 │   ├── cli/                       # JS CLI (TUI)
 │   └── docs/                      # Documentation site
 └── web/                           # Landing page (vcad.io)
@@ -76,6 +81,13 @@ The kernel uses **half-edge topology** (arena-based with `slotmap`) for boundary
 
 Surfaces: Plane, Cylinder, Cone, Sphere, Torus, NURBS
 
+### Exact Predicates
+
+Shewchuk's adaptive-precision predicates via `robust` crate for robust geometric decisions:
+- `orient2d`, `orient3d` — orientation tests
+- `incircle`, `insphere` — containment tests
+- Used in boolean face classification, trimming, mesh point-in-solid
+
 ### Boolean Pipeline (4-stage)
 
 1. **AABB Filter** — broadphase candidate detection
@@ -87,9 +99,27 @@ Surfaces: Plane, Cylinder, Cone, Sphere, Torus, NURBS
 
 Levenberg-Marquardt with adaptive damping. Constraints: Coincident, Horizontal, Vertical, Parallel, Perpendicular, Tangent, Distance, Length, Radius, Angle, Equal Length, Fixed.
 
+### Direct BRep Ray Tracing
+
+Pixel-perfect rendering without tessellation via `vcad-kernel-raytrace`:
+- Analytic ray-surface intersection for all surface types
+- WebGPU compute shader pipeline
+- BVH acceleration with SAH construction
+- Trimmed surface handling
+- App toggle between standard (tessellated) and ray-traced modes
+
+### Physics Simulation
+
+Rapier3D-based physics via `vcad-kernel-physics`:
+- BRep-to-physics conversion (rigid bodies, collision shapes)
+- Joint support: Revolute, Prismatic, Cylindrical, Ball, Fixed
+- Gym-style RL interface: `reset()`, `step(action)`, `observe()`
+- Three action types: torque, position targets, velocity targets
+- MCP tools for AI agent training
+
 ### Web App
 
-- **Viewport:** React Three Fiber with custom shaders
+- **Viewport:** React Three Fiber with custom shaders, ray-traced mode
 - **State:** Zustand stores (document, selection, UI)
 - **Feature tree:** Hierarchical part/instance/joint view
 - **Property panel:** Scrub inputs for parameters
@@ -120,9 +150,12 @@ Levenberg-Marquardt with adaptive damping. Constraints: Coincident, Horizontal, 
 | Shell operation | ✅ |
 | Assembly with joints | ✅ |
 | Forward kinematics | ✅ |
+| Physics simulation (Rapier3D) | ✅ |
 | 2D drafting views | ✅ |
-| STEP import/export | ✅ |
+| DXF export | ✅ |
+| STEP import (drag-drop, file picker) | ✅ |
 | STL/GLB export | ✅ |
+| Direct BRep ray tracing | ✅ |
 | Undo/redo | ✅ |
 
 ## Headless Interfaces
@@ -138,6 +171,11 @@ vcad info input.vcad                # Show document info
 - `create_cad_document` — create parts from primitives + operations
 - `export_cad` — export to STL or GLB
 - `inspect_cad` — get volume, area, bbox, center of mass
+- `create_robot_env` — create physics simulation from assembly
+- `gym_step` — step simulation with torque/position/velocity actions
+- `gym_reset` — reset simulation to initial state
+- `gym_observe` — get current observation without stepping
+- `gym_close` — clean up simulation environment
 
 ## Conventions
 

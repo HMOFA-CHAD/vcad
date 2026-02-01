@@ -36,13 +36,19 @@ This isn't incremental improvement. This is **category creation**.
 | 13 | Assembly + Joints | ✅ |
 | 14 | 2D Drafting | ✅ |
 | 15 | Headless Mode + API | ✅ |
+| 16 | Exact Predicates (Shewchuk) | ✅ |
+| 17 | GPU Acceleration (wgpu) | ✅ |
+| 18 | Direct BRep Ray Tracing | ✅ |
+| 19 | Physics Simulation (Rapier3D) | ✅ |
+| 20 | URDF Import | ✅ |
+| 21 | Text-to-CAD Training Pipeline | ✅ |
 
-**Kernel crates:** math, topo, geom, primitives, tessellate, booleans, nurbs, fillet, sketch, sweep, shell, constraints, step, drafting
+**Kernel crates:** math, topo, geom, primitives, tessellate, booleans, nurbs, fillet, sketch, sweep, shell, constraints, step, drafting, gpu, raytrace, physics, urdf
 
-**Kernel stats:** ~29K lines Rust, ~5.4K lines in booleans alone
+**Kernel stats:** ~35K lines Rust
 
 **App features:**
-- React + Three.js viewport
+- React + Three.js viewport with standard and ray-traced render modes
 - Parametric DAG with undo/redo
 - Feature tree with part hierarchy
 - Property panel with scrub inputs
@@ -52,10 +58,13 @@ This isn't incremental improvement. This is **category creation**.
 - Boolean operations (union, difference, intersection)
 - Assembly mode with instances, joints, and forward kinematics
 - 2D drawing mode with orthographic projections
+- Physics simulation with Rapier3D (play/pause/step, joint control)
+- Direct BRep ray tracing (pixel-perfect rendering without tessellation)
+- STEP import via drag-drop or file picker
 
-**Export:** STL, GLB, STEP, USD, DXF | **Import:** .vcad, STEP
+**Export:** STL, GLB, STEP, DXF | **Import:** .vcad, STEP, URDF
 
-**Headless:** Rust CLI (`vcad export/import-step/info`), JS CLI (TUI), MCP server (`create_cad_document`, `export_cad`, `inspect_cad`)
+**Headless:** Rust CLI (`vcad export/import-step/info`), JS CLI (TUI), MCP server (`create_cad_document`, `export_cad`, `inspect_cad`, `create_robot_env`, `gym_step/reset/observe/close`)
 
 ---
 
@@ -194,20 +203,22 @@ vcad-pcb/
 
 ---
 
-## Competitive Matrix (Post-Implementation)
+## Competitive Matrix (Current State)
 
 | Feature | Fusion | CATIA | NX | Onshape | Shapr3D | FreeCAD | **vcad** |
 |---------|--------|-------|-----|---------|---------|---------|----------|
 | AI Text-to-CAD | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅** |
-| Point Cloud → CAD | 🔶 | 🔶 | 🔶 | ❌ | ❌ | ❌ | **✅** |
-| Generative Design | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | **✅** |
-| Real-Time Collab | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | **✅** |
+| Point Cloud → CAD | 🔶 | 🔶 | 🔶 | ❌ | ❌ | ❌ | ❌ |
+| Generative Design | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Real-Time Collab | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Local-First | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | **✅** |
 | Open Source | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅** |
 | API-First | 🔶 | ❌ | ❌ | ✅ | ❌ | 🔶 | **✅** |
-| PCB Integration | 🔶 | ❌ | ❌ | ❌ | ❌ | 🔶 | **✅** |
+| PCB Integration | 🔶 | ❌ | ❌ | ❌ | ❌ | 🔶 | ❌ |
 | GPU Acceleration | ❌ | ❌ | 🔶 | ❌ | ❌ | ❌ | **✅** |
 | Direct BRep Rendering | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅** |
+| Physics Simulation | 🔶 | ❌ | ✅ | ❌ | ❌ | ❌ | **✅** |
+| RL Training Interface | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅** |
 | Self-Hosted | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅** |
 | Price | $$$$ | $$$$$ | $$$$$ | $$$ | $$ | Free | **Free** |
 
@@ -215,26 +226,42 @@ vcad-pcb/
 
 ## Research-to-Implementation Priorities
 
-### Phase A: Robustness Foundation (Now)
-1. **Exact predicates** for boolean operations — Shewchuk's adaptive arithmetic
+### Phase A: Robustness Foundation ✅ COMPLETE
+1. ✅ **Exact predicates** for boolean operations — Shewchuk's adaptive arithmetic via `robust` crate
 2. ✅ **Parallel boolean pipeline** with `rayon` — 7-8% improvement on cylinder ops
 3. ✅ **Performance benchmarking** suite — criterion benchmarks for all pipeline stages
 
-### Phase B: AI Core (Q2)
-4. **CAD-MLLM integration** — text/image → parametric CAD
-5. **Sketch constraint inference** — ML-based suggestion
-6. **P2CADNet** — point cloud reconstruction
+### Phase B: GPU & Rendering ✅ COMPLETE
+4. ✅ **GPU acceleration** — wgpu 23 with WebGPU/WebGL backends
+5. ✅ **Direct BRep ray tracing** — WebGPU compute shader for analytic surfaces (plane, cylinder, sphere, cone, torus, bilinear)
+6. ✅ **GPU mesh processing** — Creased normals, mesh decimation via compute shaders
 
-### Phase C: PCB MVP (Q3)
-7. **PCB IR types** — components, nets, layers
-8. **Basic autorouter** — A* with congestion
-9. **KiCad import** — leverage existing designs
+### Phase C: Physics & Robotics ✅ COMPLETE
+7. ✅ **Physics simulation** — Rapier3D integration with gym-style RL interface
+8. ✅ **URDF import** — Robot description format support
+9. ✅ **MCP gym tools** — `create_robot_env`, `gym_step/reset/observe/close` for AI training
 
-### Phase D: Performance (Q4)
-10. **Direct BRep ray tracing** — WebGPU renderer for analytic surfaces (pixel-perfect, no tessellation)
-11. **GPU tessellation** — wgpu compute shaders (fallback for complex NURBS)
-12. **CRDT collaboration** — Collabs-inspired sync
-13. **Topology optimization** — SIMP + marching cubes
+### Phase D: AI/ML (In Progress)
+10. ✅ **Text-to-CAD training pipeline** — 16+ part generators, annotation, validation
+11. ✅ **Browser inference** — Transformers.js with Qwen2.5-0.5B-Instruct
+12. 🔄 **Model fine-tuning** — LoRA/QLoRA on Qwen2.5-Coder-7B (Modal cloud training)
+13. ❌ **Sketch constraint inference** — ML-based suggestion (not started)
+14. ❌ **Point cloud → CAD** — P2CADNet (not started)
+
+### Phase E: Collaboration (Not Started)
+15. ❌ **CRDT collaboration** — Yjs/Collabs-inspired sync
+16. ❌ **Presence indicators** — cursors, selections
+17. ❌ **Version branching** — git-like history
+
+### Phase F: PCB MVP (Not Started)
+18. ❌ **PCB IR types** — components, nets, layers
+19. ❌ **Basic autorouter** — A* with congestion
+20. ❌ **KiCad import** — leverage existing designs
+
+### Phase G: Future
+21. ❌ **Topology optimization** — SIMP + marching cubes
+22. ❌ **PDF export** — from 2D drafting views
+23. ❌ **Plugin system** — Rust traits + WASM
 
 ---
 
@@ -294,9 +321,10 @@ vcad already incorporates arXiv research:
 - High-level API: `Part::from_step()`, `Part::from_step_all()`, `Part::to_step()`
 - CLI: `vcad export input.vcad output.step` and `vcad import-step input.step output.vcad`
 - CLI supports STL, GLB, and STEP export formats
+- ✅ Web app STEP import UI — drag-drop and file picker with GPU-accelerated processing
 
 **Remaining:**
-- Web app STEP import UI (kernel support exists via WASM)
+- STEP export button in web app (shows "coming soon" toast)
 
 ### Phase 13: Assembly + Joints ✅
 
@@ -325,11 +353,12 @@ vcad already incorporates arXiv research:
 - GD&T support: Feature control frames, datum symbols, material conditions
 - Dimension styles with customizable fonts, arrows, tolerances
 - App integration: DrawingView component, drawing-store, view direction toolbar
+- ✅ DXF export — Full DXF R12 format with visible/hidden layers, download button in UI
 
 **Remaining:**
 - Detail views (magnified regions)
 - Notes, balloons, BOM generation
-- DXF/PDF export of drawings
+- PDF export of drawings
 
 ### Phase 15: Headless Mode + API ✅
 
@@ -343,47 +372,127 @@ vcad already incorporates arXiv research:
 - GitHub Actions integration
 - Batch processing mode
 
-### Phase 16: Plugin System
+### Phase 16: Exact Predicates ✅
+
+**Complete:**
+- Shewchuk's adaptive-precision predicates via `robust` crate (v1.2)
+- `orient2d`, `orient3d`, `incircle`, `insphere` predicates
+- Integrated in boolean face classification, trimming, mesh point-in-solid
+- Derived predicates: `point_on_segment_2d`, `point_on_plane`, `are_coplanar`, `are_collinear_2d`
+- Comprehensive test suite with edge cases
+
+### Phase 17: GPU Acceleration ✅
+
+**Complete:**
+- `vcad-kernel-gpu` crate with wgpu 23 (WebGPU + WebGL backends)
+- GPU creased normal computation (WGSL compute shader)
+- GPU mesh decimation with quadric error metrics
+- Global GPU context with cross-platform support (native + WASM)
+- Feature-gated compilation for smaller bundles
+
+### Phase 18: Direct BRep Ray Tracing ✅
+
+**Complete:**
+- `vcad-kernel-raytrace` crate (~4K lines Rust)
+- Analytic ray-surface intersection for all surface types:
+  - Plane (closed-form), Cylinder/Sphere/Cone (quadratic), Torus (quartic via Ferrari)
+  - Bilinear surfaces (Newton iteration), B-spline/NURBS (Newton + subdivision)
+- BVH acceleration with SAH construction
+- Trimmed surface handling with point-in-polygon tests
+- WebGPU compute shader pipeline (`raytrace.wgsl`)
+- App integration: `RayTracedViewport.tsx`, render mode toggle, quality settings
+- Materials: color, metallic, roughness
+- Edge detection, debug visualization modes
+
+### Phase 19: Physics Simulation ✅
+
+**Complete:**
+- `vcad-kernel-physics` crate with Rapier3D 0.23
+- BRep-to-physics conversion (rigid bodies, collision shapes, mass estimation)
+- Joint support: Revolute, Prismatic, Cylindrical, Ball, Fixed with limits and motors
+- `RobotEnv` gym-style interface: `reset()`, `step(action)`, `observe()`
+- Three action types: torque, position targets, velocity targets
+- WASM bindings: `PhysicsSim` class with full API
+- TypeScript wrapper: `packages/engine/src/physics.ts`
+- React hook: `usePhysicsSimulation.ts` with fixed-timestep accumulator
+- Simulation store: mode, joint states, playback speed
+- MCP tools: `create_robot_env`, `gym_step`, `gym_reset`, `gym_observe`, `gym_close`
+- Example: Robot arm assembly with shoulder/elbow/wrist joints
+
+### Phase 20: URDF Import ✅
+
+**Complete:**
+- `vcad-kernel-urdf` crate for robot description format
+- Parses URDF XML into vcad assembly structure
+- Converts URDF joints to vcad joint types
+- Mesh loading from URDF references
+
+### Phase 21: Text-to-CAD Training Pipeline ✅
+
+**Complete:**
+- `packages/training/` with full ML infrastructure
+- 16+ part generators: plate, spacer, bracket, flange, shaft, enclosure, mount, ball, funnel, clip, scaled, array, radial, hollow, profile, turned
+- Compact IR format for efficient text representation
+- Annotation pipeline with multiple backends (Anthropic, Ollama, Vercel Gateway)
+- Validation with optional geometry checking
+- Train/val/test splitting with stratification
+- Modal cloud training setup (2x H100, LoRA on Qwen2.5-Coder-7B)
+- Browser inference with Transformers.js
+- Multimodal training data (image-IR pairs, conversation format)
+
+**Remaining:**
+- Published fine-tuned model on HuggingFace
+- Sketch constraint inference
+- Point cloud → CAD
+
+### Future: Plugin System
 
 - Plugin API (Rust traits + WASM)
 - Custom primitives, operations, exporters
 - Plugin marketplace
 - Example plugins: gear generator, thread creator, sheet metal
 
-### Phase 17: Real-Time Collaboration
+### Future: Real-Time Collaboration
 
-- CRDT-based document sync
+- CRDT-based document sync (Yjs)
 - Presence indicators (cursors, selections)
 - Comments on geometry
 - Version history with branching
+- Currently: Basic Supabase sync with last-write-wins
 
-### Phase 18: AI-Assisted Design
+### Future: Topology Optimization
 
-- Natural language → sketch constraints
-- "Make this fit inside a 100mm cube"
-- Design suggestions based on manufacturing constraints
-- Auto-fillet for printability
+- SIMP structural optimization
+- Lattice structures for lightweighting
+- FEA integration via `nalgebra-sparse`
+- Marching cubes → B-rep reconstruction
 
 ---
 
 ## Immediate Next Steps
 
-### Performance (In Progress)
-1. ✅ Add `rayon` to parallelize boolean face-pair processing (7-8% improvement)
-2. ✅ Create criterion benchmark suite for booleans
-3. Integrate Shewchuk's exact predicates for containment queries
-4. GPU acceleration via wgpu for SSI computation
-5. **Direct BRep ray tracing** — WebGPU compute shader renderer that ray-traces analytic surfaces (planes, cylinders, spheres, cones, tori, NURBS) instead of tessellating to triangles
+### AI/ML (Current Focus)
+1. 🔄 Complete model fine-tuning on Modal (Qwen2.5-Coder-7B with LoRA)
+2. ❌ Publish trained model to HuggingFace
+3. ❌ Sketch constraint inference — ML layer on top of existing solver
 
-### Web App Enhancements
-1. STEP import UI in web app (kernel support exists)
-2. Drawing export (DXF/PDF) from 2D drafting views
-3. Detail views in drafting mode
+### Export Gaps
+1. ❌ **PDF export** from 2D drafting views (DXF works, PDF doesn't)
+2. ❌ **STEP export UI** — kernel supports it, button shows "coming soon"
 
-### PCB Foundation
-1. Create `vcad-pcb-ir` crate with component/net/layer types
-2. Implement basic DRC (clearance checking)
-3. KiCad footprint import
+### Web App Polish
+1. ❌ Detail views in drafting mode (magnified regions)
+2. ❌ Notes, balloons, BOM generation in drawings
+
+### Collaboration Foundation
+1. ❌ Add Yjs dependency for CRDT document sync
+2. ❌ WebSocket server for presence
+3. ❌ Conflict resolution beyond LWW
+
+### PCB Foundation (Future)
+1. ❌ Create `vcad-pcb-ir` crate with component/net/layer types
+2. ❌ Implement basic DRC (clearance checking)
+3. ❌ KiCad footprint import
 
 ---
 
