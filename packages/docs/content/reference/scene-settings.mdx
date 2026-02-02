@@ -1,0 +1,223 @@
+---
+title: "Scene Settings"
+description: "Configure lighting, environment, backgrounds, and post-processing effects"
+order: 10
+---
+
+Scene settings control the visual environment in vcad—lighting, backgrounds, and post-processing effects. Settings are stored in the document, ensuring consistent rendering in the viewport and exports.
+
+## Accessing Scene Settings
+
+1. Click the **menu** button (top-right hamburger icon)
+2. Select **Scene** → opens the scene panel
+3. Choose a preset or customize individual settings
+
+## Environment
+
+The environment provides ambient lighting via HDR maps.
+
+### Presets
+
+| Preset | Description |
+|--------|-------------|
+| `studio` | Professional photo studio (default) |
+| `warehouse` | Industrial space with skylights |
+| `apartment` | Modern interior with natural light |
+| `park` | Outdoor park environment |
+| `city` | Urban cityscape |
+| `dawn` | Dawn/dusk warm sky |
+| `night` | Night with artificial lights |
+| `sunset` | Golden hour sunset |
+| `forest` | Dappled forest light |
+| `neutral` | Flat gray for technical review |
+
+### Intensity
+
+Adjust environment brightness with the intensity slider (0.0 – 2.0).
+
+<Callout type="tip">
+Lower intensity (0.2 – 0.4) gives more control via custom lights. Higher intensity (0.6 – 1.0) lets the environment dominate lighting.
+</Callout>
+
+## Background
+
+Choose how the scene backdrop renders:
+
+| Type | Description |
+|------|-------------|
+| **Environment** | Uses the HDR environment map as the backdrop |
+| **Solid** | Single color (choose with color picker) |
+| **Gradient** | Vertical gradient from top to bottom color |
+| **Transparent** | Alpha channel for compositing in external tools |
+
+<Callout type="info">
+**Transparent** backgrounds are useful when exporting renders to composite with other images or video.
+</Callout>
+
+## Lights
+
+Beyond environment lighting, add custom light sources for precise control.
+
+### Light Types
+
+**Directional Light**
+- Parallel rays like sunlight
+- Defined by direction vector
+- Good for key/fill lighting setups
+
+**Point Light**
+- Omnidirectional from a position
+- Intensity falls off with distance
+- Good for localized illumination
+
+**Spot Light**
+- Cone of light from a point
+- Angle and penumbra control spread
+- Good for highlighting specific features
+
+### Light Properties
+
+| Property | Description |
+|----------|-------------|
+| Color | RGB light color (click to pick) |
+| Intensity | Brightness (0.0 – 3.0) |
+| Enabled | Toggle light on/off |
+| Cast Shadow | Whether light casts shadows (directional only) |
+
+### Adding Lights
+
+1. Expand the **Lights** section
+2. Click **+ Add Light**
+3. Adjust type, direction/position, color, and intensity
+4. Toggle enable/disable with the light icon
+
+## Post-Processing
+
+Screen-space effects that enhance visual quality.
+
+### Ambient Occlusion
+
+Darkens crevices and corners for depth perception.
+
+| Setting | Range | Description |
+|---------|-------|-------------|
+| Enabled | on/off | Toggle AO effect |
+| Intensity | 0.0 – 3.0 | Strength of darkening |
+| Radius | scene units | How far AO spreads |
+
+<Callout type="tip">
+Higher intensity (1.5 – 2.0) works well for dark themes. Lower (0.8 – 1.2) for light themes.
+</Callout>
+
+### Vignette
+
+Darkens corners to focus attention on the center.
+
+| Setting | Range | Description |
+|---------|-------|-------------|
+| Enabled | on/off | Toggle vignette effect |
+| Offset | 0.0 – 1.0 | How far from edge darkening starts |
+| Darkness | 0.0 – 1.0 | Intensity of corner darkening |
+
+## Scene Presets
+
+One-click configurations for common use cases:
+
+| Preset | Best For |
+|--------|----------|
+| **Technical** | Engineering review, documentation |
+| **Hero Shot** | Presentations, marketing renders |
+| **Lifestyle** | Product photography style |
+| **Workshop** | Industrial, workshop environments |
+
+## Code Examples
+
+### Setting Environment
+
+```typescript
+import { useDocumentStore } from "@vcad/core";
+
+const updateEnvironment = useDocumentStore((s) => s.updateEnvironment);
+
+// Use studio preset at 50% intensity
+updateEnvironment({
+  type: "Preset",
+  preset: "studio",
+  intensity: 0.5
+});
+```
+
+### Adding a Key Light
+
+```typescript
+const addLight = useDocumentStore((s) => s.addLight);
+
+addLight({
+  id: "key-light",
+  kind: {
+    type: "Directional",
+    direction: { x: 0.5, y: -0.8, z: 0.4 }
+  },
+  color: [1, 0.98, 0.95],  // Warm white
+  intensity: 1.2,
+  castShadow: true
+});
+```
+
+### Setting Gradient Background
+
+```typescript
+const updateBackground = useDocumentStore((s) => s.updateBackground);
+
+updateBackground({
+  type: "Gradient",
+  top: [0.15, 0.15, 0.18],     // Dark gray-blue
+  bottom: [0.05, 0.05, 0.06]   // Near black
+});
+```
+
+### Configuring Post-Processing
+
+```typescript
+const updatePostProcessing = useDocumentStore((s) => s.updatePostProcessing);
+
+updatePostProcessing({
+  ambientOcclusion: {
+    enabled: true,
+    intensity: 1.8,
+    radius: 0.5
+  },
+  vignette: {
+    enabled: true,
+    offset: 0.3,
+    darkness: 0.4
+  }
+});
+```
+
+## Document Schema
+
+Scene settings are optional in the document root:
+
+```typescript
+interface Document {
+  // ... other fields
+  scene?: SceneSettings;
+}
+
+interface SceneSettings {
+  environment?: Environment;
+  lights?: Light[];
+  background?: Background;
+  postProcessing?: PostProcessing;
+  cameraPresets?: CameraPreset[];
+}
+```
+
+Documents without `scene` use smart defaults that adapt to light/dark theme.
+
+## Related Topics
+
+- [Materials](/reference/materials) – Configure part appearance
+- [Viewport Camera](/reference/viewport-camera) – Camera controls and views
+- [Export](/reference/export) – Export with current scene settings
