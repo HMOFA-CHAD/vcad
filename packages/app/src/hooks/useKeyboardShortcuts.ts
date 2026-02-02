@@ -23,7 +23,6 @@ export function useKeyboardShortcuts() {
         toggleWireframe,
         toggleGridSnap,
         copyToClipboard,
-        toggleCommandPalette,
         toggleFeatureTree,
       } = useUiStore.getState();
       const { undo, redo, removePart, duplicateParts, applyBoolean } =
@@ -31,10 +30,10 @@ export function useKeyboardShortcuts() {
 
       const mod = e.ctrlKey || e.metaKey;
 
-      // Command palette: Cmd+K
+      // Chat: Cmd+K
       if (mod && e.key === "k") {
         e.preventDefault();
-        toggleCommandPalette();
+        window.dispatchEvent(new CustomEvent("vcad:open-chat"));
         return;
       }
 
@@ -53,10 +52,10 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // AI / Command palette: Cmd+J (same as Cmd+K)
+      // AI / Chat: Cmd+J (same as Cmd+K)
       if (mod && e.key === "j") {
         e.preventDefault();
-        toggleCommandPalette();
+        window.dispatchEvent(new CustomEvent("vcad:open-chat"));
         return;
       }
 

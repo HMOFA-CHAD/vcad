@@ -27,7 +27,6 @@ import {
   Stop,
   FastForward,
   Printer,
-  CaretDown,
   MagnifyingGlass,
   FloppyDisk,
   FolderOpen,
@@ -56,6 +55,7 @@ import {
   createCommandRegistry,
   exportStlBlob,
   exportGltfBlob,
+  exportStepBlob,
   type ToolbarTab,
   type Command as CommandType,
 } from "@vcad/core";
@@ -102,7 +102,7 @@ const TAB_COLORS: Record<ToolbarTab, string> = {
   modify: "text-amber-400",
   assembly: "text-rose-400",
   simulate: "text-cyan-400",
-  output: "text-slate-400",
+  build: "text-slate-400",
 };
 
 // All tabs in priority order (higher priority = shown first when space is limited)
@@ -113,7 +113,7 @@ const ALL_TABS: { id: ToolbarTab; label: string; icon: typeof Cube }[] = [
   { id: "modify", label: "Modify", icon: Circle },
   { id: "assembly", label: "Assembly", icon: Package },
   { id: "simulate", label: "Simulate", icon: Play },
-  { id: "output", label: "Output", icon: Export },
+  { id: "build", label: "Export", icon: Export },
 ];
 
 // Responsive breakpoints and widths
@@ -160,12 +160,48 @@ const COMMAND_ICONS: Record<string, typeof Cube> = {
 
 function CommandDropdown() {
   const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiStatus, setAiStatus] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleMouseEnter = useCallback(() => {
+    clearTimeout(hoverTimeoutRef.current);
+    setOpen(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (!pinned) {
+      hoverTimeoutRef.current = setTimeout(() => setOpen(false), 100);
+    }
+  }, [pinned]);
+
+  const handleClick = useCallback(() => {
+    setPinned((p) => !p);
+    setOpen(true);
+  }, []);
+
+  const handleOpenChange = useCallback((newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) setPinned(false);
+  }, []);
+
+  // Track mobile state for tooltip visibility
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => {
+      mq.removeEventListener("change", handler);
+      clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
 
   // Store actions
   const addPrimitive = useDocumentStore((s) => s.addPrimitive);
@@ -466,6 +502,15 @@ function CommandDropdown() {
     });
   }, [commands, query]);
 
+  // Listen for keyboard shortcut to open chat
+  useEffect(() => {
+    function handleOpenChat() {
+      setOpen(true);
+    }
+    window.addEventListener("vcad:open-chat", handleOpenChat);
+    return () => window.removeEventListener("vcad:open-chat", handleOpenChat);
+  }, []);
+
   // Reset when opening/closing
   useEffect(() => {
     if (open) {
@@ -548,34 +593,54 @@ function CommandDropdown() {
     );
   }
 
+  const triggerButton = (
+    <button
+      className={cn(
+        "relative flex items-center justify-center gap-1 text-xs",
+        "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
+        "hover:bg-hover/50 transition-all",
+        (pinned || aiGenerating) && "bg-hover/50",
+      )}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {aiGenerating ? (
+        <SpinnerGap size={18} className="text-accent animate-spin" />
+      ) : (
+        <ChatCircle
+          size={18}
+          weight={pinned ? "fill" : "regular"}
+          className={cn("text-accent", "transition-transform")}
+        />
+      )}
+      <span className={cn(
+        "hidden sm:inline font-medium transition-colors",
+        pinned ? "text-text" : "text-text-muted"
+      )}>
+        Chat
+      </span>
+    </button>
+  );
+
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Tooltip content="Chat (⌘K)">
-        <Popover.Trigger asChild>
-          <button
-            className={cn(
-              "flex items-center justify-center gap-1 text-xs",
-              "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
-              "hover:bg-hover/50 transition-all",
-              aiGenerating && "bg-accent/20",
-            )}
-          >
-            {aiGenerating ? (
-              <SpinnerGap size={18} className="text-accent animate-spin" />
-            ) : (
-              <ChatCircle size={18} weight="fill" className="text-accent" />
-            )}
-            <span className="hidden sm:inline font-medium text-text-muted">Chat</span>
-          </button>
-        </Popover.Trigger>
-      </Tooltip>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      {isMobile ? (
+        <Tooltip content="Chat (⌘K)" side="top">
+          <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
+        </Tooltip>
+      ) : (
+        <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
+      )}
       <Popover.Portal>
         <Popover.Content
-          className="z-50 w-80 border border-border bg-surface shadow-xl"
-          sideOffset={12}
+          className="z-50 w-80 bg-surface"
+          sideOffset={4}
           side="top"
           align="start"
           onKeyDown={handleKeyDown}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           {/* Search input */}
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -695,7 +760,7 @@ function ToolbarButton({
   iconColor?: string;
 }) {
   return (
-    <Tooltip content={tooltip}>
+    <Tooltip content={tooltip} side="top">
       <button
         className={cn(
           "flex items-center justify-center relative gap-1",
@@ -703,8 +768,7 @@ function ToolbarButton({
           "sm:h-8 sm:min-w-0",
           expanded ? "sm:px-2" : "sm:px-1.5",
           "disabled:opacity-30 disabled:cursor-not-allowed",
-          active && "drop-shadow-lg",
-          pulse && "animate-pulse",
+                    pulse && "animate-pulse",
         )}
         disabled={disabled}
         onClick={onClick}
@@ -735,7 +799,6 @@ function TabDropdown({
   id,
   label,
   icon: Icon,
-  active,
   index,
   children,
   onSelect,
@@ -743,59 +806,95 @@ function TabDropdown({
   id: ToolbarTab;
   label: string;
   icon: typeof Cube;
-  active: boolean;
   index: number;
   children: React.ReactNode;
   onSelect: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleMouseEnter = useCallback(() => {
+    clearTimeout(hoverTimeoutRef.current);
+    setOpen(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (!pinned) {
+      hoverTimeoutRef.current = setTimeout(() => setOpen(false), 100);
+    }
+  }, [pinned]);
+
+  const handleClick = useCallback(() => {
+    setPinned((p) => !p);
+    setOpen(true);
+    onSelect();
+  }, [onSelect]);
+
+  const handleOpenChange = useCallback((newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) setPinned(false);
+  }, []);
+
+  // Track mobile state for tooltip visibility
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => {
+      mq.removeEventListener("change", handler);
+      clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
+
+  const triggerButton = (
+    <button
+      className={cn(
+        "relative flex items-center justify-center gap-1 text-xs",
+        "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
+        "hover:bg-hover/50 transition-all",
+        pinned && "bg-hover/50",
+      )}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <Icon
+        size={18}
+        weight={pinned ? "fill" : "regular"}
+        className={cn(
+          TAB_COLORS[id],
+          "transition-transform"
+        )}
+      />
+      <span className={cn(
+        "hidden sm:inline font-medium transition-colors",
+        pinned ? "text-text" : "text-text-muted"
+      )}>
+        {label}
+      </span>
+    </button>
+  );
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Tooltip content={`${index + 1}. ${label}`}>
-        <Popover.Trigger asChild>
-          <button
-            className={cn(
-              "relative flex items-center justify-center gap-1 text-xs",
-              "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
-              "hover:bg-hover/50 transition-all",
-              active && "bg-hover/50",
-            )}
-            onClick={() => {
-              onSelect();
-            }}
-          >
-            <Icon
-              size={18}
-              weight={active ? "fill" : "regular"}
-              className={cn(
-                TAB_COLORS[id],
-                active && "drop-shadow-sm",
-                "transition-transform"
-              )}
-            />
-            <span className={cn(
-              "hidden sm:inline font-medium transition-colors",
-              active ? "text-text" : "text-text-muted"
-            )}>
-              {label}
-            </span>
-            <CaretDown
-              size={10}
-              className={cn(
-                "hidden sm:inline text-text-muted transition-transform",
-                open && "rotate-180"
-              )}
-            />
-          </button>
-        </Popover.Trigger>
-      </Tooltip>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      {isMobile ? (
+        <Tooltip content={`${index + 1}. ${label}`} side="top">
+          <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
+        </Tooltip>
+      ) : (
+        <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
+      )}
       <Popover.Portal>
         <Popover.Content
-          className="z-50 border border-border bg-surface p-2 shadow-xl"
-          sideOffset={12}
+          className="z-50 bg-surface p-2"
+          sideOffset={4}
           side="top"
           align="center"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           <div className="flex items-center gap-1">
             {children}
@@ -818,65 +917,106 @@ function MoreDropdown({
   children: (tab: ToolbarTab) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const [selectedSubTab, setSelectedSubTab] = useState<ToolbarTab | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleMouseEnter = useCallback(() => {
+    clearTimeout(hoverTimeoutRef.current);
+    setOpen(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (!pinned) {
+      hoverTimeoutRef.current = setTimeout(() => setOpen(false), 100);
+    }
+  }, [pinned]);
+
+  const handleClick = useCallback(() => {
+    setPinned((p) => !p);
+    setOpen(true);
+  }, []);
+
+  const handleOpenChange = useCallback((newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) setPinned(false);
+  }, []);
+
+  // Track mobile state for tooltip visibility
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => {
+      mq.removeEventListener("change", handler);
+      clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
 
   // Check if the active tab is in the "More" section
   const isMoreTabActive = tabs.some(t => t.id === activeTab);
   const activeMoreTab = tabs.find(t => t.id === activeTab);
 
+  const triggerButton = (
+    <button
+      className={cn(
+        "relative flex items-center justify-center gap-1 text-xs",
+        "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
+        "hover:bg-hover/50 transition-all",
+        pinned && "bg-hover/50",
+      )}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {pinned && activeMoreTab ? (
+        <activeMoreTab.icon
+          size={18}
+          weight="fill"
+          className={TAB_COLORS[activeMoreTab.id]}
+        />
+      ) : (
+        <DotsThree size={18} weight={pinned ? "fill" : "bold"} className="text-text-muted" />
+      )}
+      <span className={cn(
+        "hidden sm:inline font-medium transition-colors",
+        pinned ? "text-text" : "text-text-muted"
+      )}>
+        {pinned && activeMoreTab ? activeMoreTab.label : "More"}
+      </span>
+    </button>
+  );
+
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Tooltip content="More">
-        <Popover.Trigger asChild>
-          <button
-            className={cn(
-              "relative flex items-center justify-center gap-1 text-xs",
-              "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
-              "hover:bg-hover/50 transition-all",
-              isMoreTabActive && "bg-hover/50",
-            )}
-          >
-            {isMoreTabActive && activeMoreTab ? (
-              <activeMoreTab.icon
-                size={18}
-                weight="fill"
-                className={cn(TAB_COLORS[activeMoreTab.id], "drop-shadow-sm")}
-              />
-            ) : (
-              <DotsThree size={18} weight="bold" className="text-text-muted" />
-            )}
-            <span className={cn(
-              "hidden sm:inline font-medium transition-colors",
-              isMoreTabActive ? "text-text" : "text-text-muted"
-            )}>
-              {isMoreTabActive && activeMoreTab ? activeMoreTab.label : "More"}
-            </span>
-            <CaretDown
-              size={10}
-              className={cn(
-                "hidden sm:inline text-text-muted transition-transform",
-                open && "rotate-180"
-              )}
-            />
-          </button>
-        </Popover.Trigger>
-      </Tooltip>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      {isMobile ? (
+        <Tooltip content="More" side="top">
+          <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
+        </Tooltip>
+      ) : (
+        <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
+      )}
       <Popover.Portal>
         <Popover.Content
-          className="z-50 border border-border bg-surface p-2 shadow-xl"
-          sideOffset={12}
+          className="z-50 bg-surface p-2"
+          sideOffset={4}
           side="top"
           align="center"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           {/* Tab selector row */}
           <div className="flex items-center gap-1 border-b border-border pb-2 mb-2">
-            {tabs.map((tab) => (
-              <Tooltip key={tab.id} content={tab.label}>
+            {tabs.map((tab) => {
+              const isActive = selectedSubTab === tab.id || (!selectedSubTab && activeTab === tab.id);
+              const tabButton = (
                 <button
                   className={cn(
                     "flex items-center gap-1.5 px-2 py-1.5 text-xs",
                     "hover:bg-hover transition-colors",
-                    (selectedSubTab === tab.id || (!selectedSubTab && activeTab === tab.id)) && "bg-hover/50",
+                    isActive && "bg-hover/50",
                   )}
                   onClick={() => {
                     setSelectedSubTab(tab.id);
@@ -885,18 +1025,25 @@ function MoreDropdown({
                 >
                   <tab.icon
                     size={14}
-                    weight={(selectedSubTab === tab.id || (!selectedSubTab && activeTab === tab.id)) ? "fill" : "regular"}
+                    weight={isActive ? "fill" : "regular"}
                     className={TAB_COLORS[tab.id]}
                   />
                   <span className={cn(
                     "hidden sm:inline",
-                    (selectedSubTab === tab.id || (!selectedSubTab && activeTab === tab.id)) ? "text-text" : "text-text-muted"
+                    isActive ? "text-text" : "text-text-muted"
                   )}>
                     {tab.label}
                   </span>
                 </button>
-              </Tooltip>
-            ))}
+              );
+              return isMobile ? (
+                <Tooltip key={tab.id} content={tab.label} side="top">
+                  {tabButton}
+                </Tooltip>
+              ) : (
+                <span key={tab.id}>{tabButton}</span>
+              );
+            })}
           </div>
           {/* Tools for selected tab */}
           <div className="flex items-center gap-1">
@@ -1112,9 +1259,9 @@ export function BottomToolbar() {
     // Don't auto-switch during guided flow or if user manually changed tabs recently
     if (guidedFlowActive || manualOverrideRef.current) return;
 
-    // Switch to output tab when entering 2D mode
+    // Switch to build tab when entering 2D mode
     if (viewMode === "2d") {
-      setToolbarTab("output");
+      setToolbarTab("build");
       return;
     }
 
@@ -1137,7 +1284,7 @@ export function BottomToolbar() {
     }
 
     // Default to create when nothing selected
-    if (!hasSelection && toolbarTab !== "modify" && toolbarTab !== "simulate" && toolbarTab !== "output") {
+    if (!hasSelection && toolbarTab !== "modify" && toolbarTab !== "simulate" && toolbarTab !== "build") {
       setToolbarTab("create");
     }
   }, [
@@ -1461,7 +1608,7 @@ export function BottomToolbar() {
           </>
         );
 
-      case "output":
+      case "build":
         return (
           <>
             <ToolbarButton
@@ -1491,6 +1638,7 @@ export function BottomToolbar() {
                 if (scene) {
                   const blob = exportStlBlob(scene);
                   downloadBlob(blob, "model.stl");
+                  useNotificationStore.getState().addToast("Exported model.stl", "success");
                 }
               }}
               expanded={toolbarExpanded}
@@ -1506,10 +1654,34 @@ export function BottomToolbar() {
                 if (scene) {
                   const blob = exportGltfBlob(scene);
                   downloadBlob(blob, "model.glb");
+                  useNotificationStore.getState().addToast("Exported model.glb", "success");
                 }
               }}
               expanded={toolbarExpanded}
               label="GLB"
+              iconColor={color}
+            >
+              <Download size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!scene?.parts?.length ? "Export STEP (add geometry first)" : "Export STEP"}
+              disabled={!scene?.parts?.length}
+              onClick={() => {
+                if (scene) {
+                  try {
+                    const blob = exportStepBlob(scene);
+                    downloadBlob(blob, "model.step");
+                    useNotificationStore.getState().addToast("Exported model.step", "success");
+                  } catch (e) {
+                    useNotificationStore.getState().addToast(
+                      e instanceof Error ? e.message : "STEP export failed",
+                      "error"
+                    );
+                  }
+                }
+              }}
+              expanded={toolbarExpanded}
+              label="STEP"
               iconColor={color}
             >
               <Download size={20} />
@@ -1578,8 +1750,7 @@ export function BottomToolbar() {
         className={cn(
           "fixed bottom-4 left-1/2 -translate-x-1/2 z-50",
           "flex items-center gap-0.5 pointer-events-auto",
-          "bg-surface/95 backdrop-blur-sm shadow-lg",
-          "px-1 py-1",
+          "bg-surface/95 backdrop-blur-sm",
           "transition-all duration-200",
           isOrbiting && "opacity-0 pointer-events-none"
         )}
@@ -1594,7 +1765,6 @@ export function BottomToolbar() {
             id={id}
             label={label}
             icon={icon}
-            active={toolbarTab === id}
             index={index}
             onSelect={() => handleTabClick(id)}
           >

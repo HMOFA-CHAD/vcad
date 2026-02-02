@@ -124,7 +124,6 @@ function SettingsMenu({ onAboutOpen, onOpen }: { onAboutOpen: () => void; onOpen
   const setRaytraceQuality = useUiStore((s) => s.setRaytraceQuality);
   const setRaytraceDebugMode = useUiStore((s) => s.setRaytraceDebugMode);
   const setRaytraceEdgesEnabled = useUiStore((s) => s.setRaytraceEdgesEnabled);
-  const toggleCommandPalette = useUiStore((s) => s.toggleCommandPalette);
   const theme = useUiStore((s) => s.theme);
   const toggleTheme = useUiStore((s) => s.toggleTheme);
 
@@ -188,13 +187,13 @@ function SettingsMenu({ onAboutOpen, onOpen }: { onAboutOpen: () => void; onOpen
           </button>
           <button
             onClick={() => {
-              toggleCommandPalette();
+              window.dispatchEvent(new CustomEvent("vcad:open-chat"));
               setOpen(false);
             }}
             className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-text hover:bg-hover"
           >
             <Command size={14} />
-            <span>Command Palette</span>
+            <span>Chat</span>
             <span className="ml-auto text-text-muted text-[10px]">⌘K</span>
           </button>
 

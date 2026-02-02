@@ -1,98 +1,54 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { X } from "@phosphor-icons/react";
+import {
+  X,
+  Cube,
+  PencilSimple,
+  FolderOpen,
+  Play,
+  GithubLogo,
+  Book,
+  ChatCircle,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import type { ReactNode } from "react";
+import { useDocumentStore, useSketchStore, useUiStore } from "@vcad/core";
 
-const FEATURES = [
+const QUICK_ACTIONS = [
   {
-    title: "csg",
-    desc: "union, difference, intersection — as operators (+, -, &)",
+    id: "primitive",
+    icon: Cube,
+    label: "Add a shape",
+    desc: "Box, cylinder, sphere",
+    color: "text-emerald-400",
   },
   {
-    title: "export",
-    desc: "stl, gltf, usd, dxf, step. one model, every format.",
+    id: "sketch",
+    icon: PencilSimple,
+    label: "Start a sketch",
+    desc: "Draw 2D → extrude to 3D",
+    color: "text-blue-400",
   },
   {
-    title: "inspect",
-    desc: "volume, surface area, bounding box, center of mass",
+    id: "open",
+    icon: FolderOpen,
+    label: "Open file",
+    desc: ".vcad, .step, .stl",
+    color: "text-amber-400",
   },
   {
-    title: "transforms",
-    desc: "mirror, linear pattern, circular pattern, translate, rotate, scale",
-  },
-  {
-    title: "materials",
-    desc: "pbr from toml. metallic, roughness, color, density.",
-  },
-  {
-    title: "agents",
-    desc: "built for coding agents. api tables, cookbook, blender mcp.",
+    id: "tutorial",
+    icon: Play,
+    label: "Quick tutorial",
+    desc: "Learn the basics",
+    color: "text-violet-400",
   },
 ];
 
-const WHY = [
-  {
-    title: "not openscad",
-    desc: "no custom language. your models are real rust — cargo, crates, tests, ci.",
-  },
-  {
-    title: "native brep",
-    desc: "built on vcad-kernel. b-rep geometry with proper boolean operations.",
-  },
-  {
-    title: "every format",
-    desc: "stl, gltf, usd, dxf, step from one codebase. no conversion pipeline.",
-  },
-  {
-    title: "agent-native",
-    desc: "small api, operator overloads, consistent patterns. ai agents generate models.",
-  },
+const KEY_HINTS = [
+  { keys: "⌘K", desc: "Chat & commands" },
+  { keys: "1-7", desc: "Switch toolbar tabs" },
+  { keys: "M R S", desc: "Move, Rotate, Scale" },
+  { keys: "⌘⇧U D I", desc: "Boolean ops (2 selected)" },
 ];
-
-const SHORTCUTS = {
-  transform: [
-    { keys: "M", desc: "Move tool" },
-    { keys: "R", desc: "Rotate tool" },
-    { keys: "S", desc: "Scale tool" },
-  ],
-  editing: [
-    { keys: "Del", desc: "Delete selected" },
-    { keys: "⌘D", desc: "Duplicate" },
-    { keys: "⌘C", desc: "Copy" },
-    { keys: "⌘V", desc: "Paste" },
-    { keys: "⌘Z", desc: "Undo" },
-    { keys: "⌘⇧Z", desc: "Redo" },
-  ],
-  booleans: [
-    { keys: "⌘⇧U", desc: "Union (2 selected)" },
-    { keys: "⌘⇧D", desc: "Difference (2 selected)" },
-    { keys: "⌘⇧I", desc: "Intersection (2 selected)" },
-  ],
-  tools: [
-    { keys: "S", desc: "Sketch mode" },
-    { keys: "X", desc: "Toggle wireframe" },
-    { keys: "G", desc: "Toggle grid snap" },
-    { keys: "F", desc: "Focus selection" },
-    { keys: "Esc", desc: "Exit sketch / Deselect" },
-  ],
-  file: [
-    { keys: "⌘K", desc: "Command palette" },
-    { keys: "⌘S", desc: "Save" },
-    { keys: "⌘O", desc: "Open" },
-  ],
-  mouse: [{ keys: "Shift+Click", desc: "Multi-select" }],
-};
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div>
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-text-muted">
-        {title}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 export function AboutModal({
   open,
@@ -101,142 +57,120 @@ export function AboutModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const addPrimitive = useDocumentStore((s) => s.addPrimitive);
+  const select = useUiStore((s) => s.select);
+  const setTransformMode = useUiStore((s) => s.setTransformMode);
+  const enterSketchMode = useSketchStore((s) => s.enterSketchMode);
+
+  function handleAction(id: string) {
+    onOpenChange(false);
+
+    switch (id) {
+      case "primitive":
+        const partId = addPrimitive("cube");
+        select(partId);
+        setTransformMode("translate");
+        break;
+      case "sketch":
+        enterSketchMode("XY");
+        break;
+      case "open":
+        window.dispatchEvent(new CustomEvent("vcad:open"));
+        break;
+      case "tutorial":
+        window.dispatchEvent(new CustomEvent("vcad:start-tutorial"));
+        break;
+    }
+  }
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
         <Dialog.Content
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2",
-            " border border-border bg-card p-6 shadow-2xl",
-            "max-h-[85vh] overflow-y-auto",
+            "fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2",
+            "bg-surface p-8 shadow-2xl",
             "focus:outline-none",
           )}
         >
+          {/* Close button */}
+          <Dialog.Close className="absolute right-4 top-4 p-2 text-text-muted hover:text-text transition-colors cursor-pointer">
+            <X size={16} />
+          </Dialog.Close>
+
           {/* Header */}
-          <div className="mb-5 flex items-center justify-between">
-            <Dialog.Title className="text-2xl font-bold tracking-tight text-text">
+          <div className="text-center mb-8">
+            <Dialog.Title className="text-3xl font-bold tracking-tight text-text mb-2">
               vcad<span className="text-accent">.</span>
-              <span className="ml-2 text-[10px] font-normal text-text-muted">
-                v{__APP_VERSION__}
-              </span>
             </Dialog.Title>
-            <Dialog.Close className=" p-1 text-text-muted hover:bg-border/50 hover:text-text transition-colors cursor-pointer">
-              <X size={16} />
-            </Dialog.Close>
+            <p className="text-sm text-text-muted">
+              Parametric CAD for everyone
+            </p>
           </div>
 
-          <p className="mb-5 text-xs text-text-muted leading-relaxed">
-            free parametric cad for everyone. csg primitives, boolean operators,
-            multi-format export. built on{" "}
+          {/* Quick actions */}
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.id}
+                onClick={() => handleAction(action.id)}
+                className={cn(
+                  "flex flex-col items-start gap-1 p-4",
+                  "bg-bg hover:bg-hover transition-colors text-left",
+                )}
+              >
+                <action.icon size={20} className={action.color} />
+                <span className="text-sm font-medium text-text">{action.label}</span>
+                <span className="text-xs text-text-muted">{action.desc}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Keyboard hints */}
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mb-8 text-xs text-text-muted">
+            {KEY_HINTS.map((hint) => (
+              <div key={hint.keys} className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-bg text-[10px] font-mono">
+                  {hint.keys}
+                </kbd>
+                <span>{hint.desc}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer links */}
+          <div className="flex items-center justify-center gap-6 text-xs">
             <a
-              href="https://github.com/ecto/vcad/tree/main/crates/vcad-kernel"
+              href="https://github.com/nicholaschuayunzhi/vcad"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-accent hover:underline"
+              className="flex items-center gap-1.5 text-text-muted hover:text-text transition-colors"
             >
-              vcad-kernel
+              <GithubLogo size={14} />
+              <span>GitHub</span>
             </a>
-            . mit licensed.
-          </p>
-
-          <div className="flex flex-col gap-5">
-            {/* Install */}
-            <div className=" border border-border bg-surface px-3 py-2 text-xs font-mono text-text-muted">
-              <span className="text-text-muted/50">$</span> cargo add vcad
-            </div>
-
-            {/* Features */}
-            <Section title="features">
-              <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs">
-                {FEATURES.map((f) => (
-                  <div key={f.title}>
-                    <div className="font-bold text-text">{f.title}</div>
-                    <div className="text-text-muted/70 leading-relaxed">
-                      {f.desc}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Section>
-
-            {/* Why */}
-            <Section title="why vcad">
-              <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs">
-                {WHY.map((f) => (
-                  <div key={f.title}>
-                    <div className="font-bold text-text">{f.title}</div>
-                    <div className="text-text-muted/70 leading-relaxed">
-                      {f.desc}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Section>
-
-            {/* Keyboard shortcuts */}
-            <Section title="keyboard shortcuts">
-              <div className="grid grid-cols-2 gap-x-5 gap-y-3 text-xs">
-                {Object.entries(SHORTCUTS).map(([group, items]) => (
-                  <div key={group}>
-                    <div className="mb-1 text-[9px] font-medium uppercase tracking-wide text-text-muted/50">
-                      {group}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {items.map((s) => (
-                        <div key={s.keys} className="flex items-center gap-2">
-                          <kbd className="inline-flex h-5 min-w-5 items-center justify-center border border-border bg-surface px-1.5 text-[10px] font-bold text-text-muted">
-                            {s.keys}
-                          </kbd>
-                          <span className="text-text-muted/70">{s.desc}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Section>
-
-            {/* Build info */}
-            <div className="text-[10px] text-text-muted/50">
-              Built {new Date(__BUILD_TIME__).toLocaleDateString()}
-            </div>
-
-            {/* Links */}
-            <div className="flex gap-4 pt-1 text-xs">
-              <a
-                href="https://github.com/ecto/vcad"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-muted hover:text-accent transition-colors"
-              >
-                github
-              </a>
-              <a
-                href="https://crates.io/crates/vcad"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-muted hover:text-accent transition-colors"
-              >
-                crates.io
-              </a>
-              <a
-                href="https://docs.rs/vcad"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-muted hover:text-accent transition-colors"
-              >
-                docs.rs
-              </a>
-              <a
-                href="https://www.npmjs.com/package/@vcad/ir"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-muted hover:text-accent transition-colors"
-              >
-                npm
-              </a>
-            </div>
+            <a
+              href="https://vcad.io/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-text-muted hover:text-text transition-colors"
+            >
+              <Book size={14} />
+              <span>Docs</span>
+            </a>
+            <a
+              href="https://discord.gg/vcad"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-text-muted hover:text-text transition-colors"
+            >
+              <ChatCircle size={14} />
+              <span>Discord</span>
+            </a>
+            <span className="text-text-muted/50">
+              v{__APP_VERSION__}
+            </span>
           </div>
         </Dialog.Content>
       </Dialog.Portal>

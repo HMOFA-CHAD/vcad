@@ -17,7 +17,6 @@ import { GuidedFlowOverlay } from "@/components/GuidedFlowOverlay";
 import { GhostPromptController } from "@/components/GhostPromptController";
 import { CelebrationOverlay } from "@/components/CelebrationOverlay";
 import { AboutModal } from "@/components/AboutModal";
-import { CommandPalette } from "@/components/CommandPalette";
 import { SketchToolbar } from "@/components/SketchToolbar";
 import { DrawingToolbar } from "@/components/DrawingToolbar";
 import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
@@ -118,8 +117,6 @@ export function App() {
 
   const engineReady = useEngineStore((s) => s.engineReady);
   const error = useEngineStore((s) => s.error);
-  const commandPaletteOpen = useUiStore((s) => s.commandPaletteOpen);
-  const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const hasParts = useDocumentStore((s) => s.parts.length > 0);
   const sketchActive = useSketchStore((s) => s.active);
 
@@ -127,6 +124,7 @@ export function App() {
   const guidedFlowStep = useOnboardingStore((s) => s.guidedFlowStep);
   const advanceGuidedFlow = useOnboardingStore((s) => s.advanceGuidedFlow);
   const incrementSessions = useOnboardingStore((s) => s.incrementSessions);
+  const startGuidedFlow = useOnboardingStore((s) => s.startGuidedFlow);
   const parts = useDocumentStore((s) => s.parts);
   const selectMultiple = useUiStore((s) => s.selectMultiple);
   const printPanelOpen = useSlicerStore((s) => s.printPanelOpen);
@@ -321,23 +319,26 @@ export function App() {
     setDocumentPickerOpen(true);
   }, []);
 
-  // Listen for save/open/documents/about custom events from keyboard shortcuts
+  // Listen for save/open/documents/about/tutorial custom events from keyboard shortcuts
   useEffect(() => {
     const onSave = () => handleSave();
     const onOpen = () => handleOpen();
     const onDocuments = () => handleOpenDocuments();
     const onAbout = () => setAboutOpen(true);
+    const onStartTutorial = () => startGuidedFlow();
     window.addEventListener("vcad:save", onSave);
     window.addEventListener("vcad:open", onOpen);
     window.addEventListener("vcad:documents", onDocuments);
     window.addEventListener("vcad:about", onAbout);
+    window.addEventListener("vcad:start-tutorial", onStartTutorial);
     return () => {
       window.removeEventListener("vcad:save", onSave);
       window.removeEventListener("vcad:open", onOpen);
       window.removeEventListener("vcad:documents", onDocuments);
       window.removeEventListener("vcad:about", onAbout);
+      window.removeEventListener("vcad:start-tutorial", onStartTutorial);
     };
-  }, [handleSave, handleOpen, handleOpenDocuments]);
+  }, [handleSave, handleOpen, handleOpenDocuments, startGuidedFlow]);
 
   // Listen for load-example events from the menu
   useEffect(() => {
@@ -470,12 +471,12 @@ export function App() {
     }
   }, [guidedFlowActive, guidedFlowStep, parts, selectedPartIds, selectMultiple]);
 
-  // Auto-open command palette on startup when canvas is empty
+  // Auto-open welcome screen on startup when canvas is empty
   useEffect(() => {
     if (initialized && !hasParts && !guidedFlowActive && !sketchActive) {
-      setCommandPaletteOpen(true);
+      setAboutOpen(true);
     }
-  }, [initialized, hasParts, guidedFlowActive, sketchActive, setCommandPaletteOpen]);
+  }, [initialized, hasParts, guidedFlowActive, sketchActive]);
 
   // Only block on fatal error - let viewport render while engine loads
   if (error && !engineReady) return <ErrorScreen message={error} />;
@@ -540,11 +541,6 @@ export function App() {
         <DocumentPicker
           open={documentPickerOpen}
           onOpenChange={setDocumentPickerOpen}
-        />
-        <CommandPalette
-          open={commandPaletteOpen}
-          onOpenChange={setCommandPaletteOpen}
-          onAboutOpen={() => setAboutOpen(true)}
         />
         <input
           ref={fileInputRef}
