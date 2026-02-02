@@ -13,6 +13,12 @@ import type {
   Instance,
   Joint,
   PartDef,
+  SceneSettings,
+  Environment,
+  Light,
+  Background,
+  PostProcessing,
+  CameraPreset,
 } from "@vcad/ir";
 import { createDocument, identityTransform } from "@vcad/ir";
 import type {
@@ -211,6 +217,17 @@ export interface DocumentState {
   setPartVisible: (partId: string, visible: boolean) => void;
   // Reorder parts in tree
   reorderPart: (partId: string, newIndex: number) => void;
+  // Scene settings actions
+  setSceneSettings: (settings: SceneSettings) => void;
+  updateEnvironment: (environment: Environment) => void;
+  updateLights: (lights: Light[]) => void;
+  addLight: (light: Light) => void;
+  removeLight: (lightId: string) => void;
+  updateLight: (lightId: string, updates: Partial<Light>) => void;
+  updateBackground: (background: Background) => void;
+  updatePostProcessing: (postProcessing: PostProcessing) => void;
+  addCameraPreset: (preset: CameraPreset) => void;
+  removeCameraPreset: (presetId: string) => void;
 }
 
 function makeNode(id: NodeId, name: string | null, op: CsgOp): Node {
@@ -2265,5 +2282,94 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       isDirty: true,
       ...undoState,
     });
+  },
+
+  // Scene settings actions
+  setSceneSettings: (settings) => {
+    const state = get();
+    const undoState = pushUndo(state, "Update Scene Settings");
+    const newDoc = structuredClone(state.document);
+    newDoc.scene = settings;
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  updateEnvironment: (environment) => {
+    const state = get();
+    const undoState = pushUndo(state, "Update Environment");
+    const newDoc = structuredClone(state.document);
+    newDoc.scene = { ...newDoc.scene, environment };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  updateLights: (lights) => {
+    const state = get();
+    const undoState = pushUndo(state, "Update Lights");
+    const newDoc = structuredClone(state.document);
+    newDoc.scene = { ...newDoc.scene, lights };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  addLight: (light) => {
+    const state = get();
+    const undoState = pushUndo(state, "Add Light");
+    const newDoc = structuredClone(state.document);
+    const currentLights = newDoc.scene?.lights ?? [];
+    newDoc.scene = { ...newDoc.scene, lights: [...currentLights, light] };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  removeLight: (lightId) => {
+    const state = get();
+    const undoState = pushUndo(state, "Remove Light");
+    const newDoc = structuredClone(state.document);
+    const currentLights = newDoc.scene?.lights ?? [];
+    newDoc.scene = { ...newDoc.scene, lights: currentLights.filter((l) => l.id !== lightId) };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  updateLight: (lightId, updates) => {
+    const state = get();
+    const undoState = pushUndo(state, "Update Light");
+    const newDoc = structuredClone(state.document);
+    const currentLights = newDoc.scene?.lights ?? [];
+    newDoc.scene = {
+      ...newDoc.scene,
+      lights: currentLights.map((l) => (l.id === lightId ? { ...l, ...updates } : l)),
+    };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  updateBackground: (background) => {
+    const state = get();
+    const undoState = pushUndo(state, "Update Background");
+    const newDoc = structuredClone(state.document);
+    newDoc.scene = { ...newDoc.scene, background };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  updatePostProcessing: (postProcessing) => {
+    const state = get();
+    const undoState = pushUndo(state, "Update Post-Processing");
+    const newDoc = structuredClone(state.document);
+    newDoc.scene = { ...newDoc.scene, postProcessing };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  addCameraPreset: (preset) => {
+    const state = get();
+    const undoState = pushUndo(state, "Add Camera Preset");
+    const newDoc = structuredClone(state.document);
+    const currentPresets = newDoc.scene?.cameraPresets ?? [];
+    newDoc.scene = { ...newDoc.scene, cameraPresets: [...currentPresets, preset] };
+    set({ document: newDoc, isDirty: true, ...undoState });
+  },
+
+  removeCameraPreset: (presetId) => {
+    const state = get();
+    const undoState = pushUndo(state, "Remove Camera Preset");
+    const newDoc = structuredClone(state.document);
+    const currentPresets = newDoc.scene?.cameraPresets ?? [];
+    newDoc.scene = { ...newDoc.scene, cameraPresets: currentPresets.filter((p) => p.id !== presetId) };
+    set({ document: newDoc, isDirty: true, ...undoState });
   },
 }));
