@@ -36,6 +36,7 @@ import {
 import { fromCompact, type Document } from "@vcad/ir";
 import { generateCADServer } from "@/lib/server-inference";
 import { useNotificationStore } from "@/stores/notification-store";
+import { useRequireAuth, AuthModal, useAuthStore } from "@vcad/auth";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import type { Command, VcadFile } from "@vcad/core";
 import { createCommandRegistry, useUiStore, useDocumentStore, useEngineStore, exportStlBlob, exportGltfBlob, parseVcadFile } from "@vcad/core";
@@ -145,6 +146,9 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auth gating for AI features
+  const { requireAuth, showAuth, setShowAuth, feature } = useRequireAuth("ai");
 
   const loadDocument = useDocumentStore((s) => s.loadDocument);
   const startGuidedFlow = useOnboardingStore((s) => s.startGuidedFlow);
@@ -375,8 +379,8 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
     undoStack.length,
   ]);
 
-  // AI generation handler with progress tracking
-  const handleAIGenerate = useCallback(async (prompt: string) => {
+  // AI generation handler (inner function that does the actual work)
+  const doAIGenerate = useCallback(async (prompt: string) => {
     setAiGenerating(true);
     onOpenChange(false); // Close palette immediately
 
@@ -394,9 +398,12 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
       store.updateAIProgress(progressId, 0, 10);
       setAiStatus("Connecting to server...");
 
+      const currentSession = useAuthStore.getState().session;
+      if (!currentSession) {
+        throw new Error("Not authenticated");
+      }
       const result = await generateCADServer(prompt, {
-        temperature: 0.1,
-        maxTokens: 256,
+        authToken: currentSession.access_token,
       });
 
       // Stage 2: Building geometry
@@ -443,6 +450,11 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
       setAiStatus("");
     }
   }, [loadDocument, onOpenChange]);
+
+  // Wrapper that requires auth before generating
+  const handleAIGenerate = useCallback((prompt: string) => {
+    requireAuth(() => doAIGenerate(prompt));
+  }, [requireAuth, doAIGenerate]);
 
   // Get contextual AI suggestions
   const aiSuggestions = useMemo(() => {
@@ -800,6 +812,7 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
           </div>
         </Dialog.Content>
       </Dialog.Portal>
+      <AuthModal open={showAuth} onOpenChange={setShowAuth} feature={feature} />
     </Dialog.Root>
   );
 }

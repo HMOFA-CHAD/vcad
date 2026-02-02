@@ -64,6 +64,7 @@ import { downloadBlob } from "@/lib/download";
 import { useNotificationStore } from "@/stores/notification-store";
 import { generateCADServer } from "@/lib/server-inference";
 import { fromCompact, type Document } from "@vcad/ir";
+import { useRequireAuth, AuthModal, useAuthStore } from "@vcad/auth";
 import type { VcadFile } from "@vcad/core";
 import { cn } from "@/lib/utils";
 import {
@@ -170,6 +171,9 @@ function CommandDropdown() {
   const listRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // Auth gating for AI features
+  const { requireAuth, showAuth, setShowAuth, feature } = useRequireAuth("ai");
+
   const handleMouseEnter = useCallback(() => {
     clearTimeout(hoverTimeoutRef.current);
     setOpen(true);
@@ -230,8 +234,8 @@ function CommandDropdown() {
 
   const scene = useEngineStore((s) => s.scene);
 
-  // AI generation handler
-  const handleAIGenerate = useCallback(async (prompt: string) => {
+  // AI generation handler (inner function that does the actual work)
+  const doAIGenerate = useCallback(async (prompt: string) => {
     setAiGenerating(true);
     setOpen(false);
 
@@ -246,9 +250,12 @@ function CommandDropdown() {
       store.updateAIProgress(progressId, 0, 10);
       setAiStatus("Connecting to server...");
 
+      const currentSession = useAuthStore.getState().session;
+      if (!currentSession) {
+        throw new Error("Not authenticated");
+      }
       const result = await generateCADServer(prompt, {
-        temperature: 0.1,
-        maxTokens: 256,
+        authToken: currentSession.access_token,
       });
 
       store.updateAIProgress(progressId, 1, 80);
@@ -290,6 +297,11 @@ function CommandDropdown() {
       setAiStatus("");
     }
   }, [loadDocument]);
+
+  // Wrapper that requires auth before generating
+  const handleAIGenerate = useCallback((prompt: string) => {
+    requireAuth(() => doAIGenerate(prompt));
+  }, [requireAuth, doAIGenerate]);
 
   const commands = useMemo(() => {
     return createCommandRegistry({
@@ -616,6 +628,7 @@ function CommandDropdown() {
   );
 
   return (
+    <>
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       {isMobile ? (
         <Tooltip content="Chat (⌘K)" side="top">
@@ -725,6 +738,8 @@ function CommandDropdown() {
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+    <AuthModal open={showAuth} onOpenChange={setShowAuth} feature={feature} />
+  </>
   );
 }
 

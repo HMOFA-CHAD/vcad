@@ -31,7 +31,7 @@ export async function textToCAD(prompt: string): Promise<unknown> {
   }
 
   const apiBase = getApiBase();
-  const response = await fetch(`${apiBase}/api/ai/text-to-cad`, {
+  const response = await fetch(`${apiBase}/api/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

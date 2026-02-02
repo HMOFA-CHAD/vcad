@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { SpinnerGap, Sparkle, CloudArrowDown, Desktop, Warning } from "@phosphor-icons/react";
+import { SpinnerGap, Sparkle, CloudArrowDown, Desktop, Warning, Lock } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useDocumentStore } from "@vcad/core";
 import { useNotificationStore } from "@/stores/notification-store";
@@ -10,7 +10,8 @@ import {
   getInferenceStatus,
   type ProgressCallback,
 } from "@/lib/browser-inference";
-import { generateCADServer, checkServerHealth } from "@/lib/server-inference";
+import { generateCADServer } from "@/lib/server-inference";
+import { useRequireAuth, AuthModal, useAuthStore } from "@vcad/auth";
 
 interface AIPanelProps {
   open: boolean;
@@ -43,9 +44,10 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
     size: number;
   } | null>(null);
 
-  const [serverAvailable, setServerAvailable] = useState<boolean | null>(null);
+  // Auth gating for server inference
+  const { requireAuth, showAuth, setShowAuth, feature, isAuthenticated } = useRequireAuth("ai");
 
-  // Check browser and server inference availability on mount
+  // Check browser inference availability on mount
   useEffect(() => {
     if (open) {
       // Check browser inference
@@ -62,9 +64,6 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
         .catch(() => {
           setBrowserAvailable(false);
         });
-
-      // Check server inference
-      checkServerHealth().then(setServerAvailable);
     }
   }, [open]);
 
@@ -77,9 +76,7 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
     return "server";
   })();
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
-
+  const doGenerate = async () => {
     setLoading(true);
     setLoadingStatus("Initializing...");
     setLoadingProgress(0);
@@ -149,9 +146,12 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
         setLoadingStatus("Generating geometry...");
         store.updateAIProgress(progressId, 1, 30);
 
+        const currentSession = useAuthStore.getState().session;
+        if (!currentSession) {
+          throw new Error("Not authenticated");
+        }
         const result = await generateCADServer(prompt, {
-          temperature: 0.1,
-          maxTokens: 256,
+          authToken: currentSession.access_token,
         });
 
         store.updateAIProgress(progressId, 1, 80);
@@ -201,6 +201,17 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
       setLoading(false);
       setLoadingStatus("");
       setLoadingProgress(0);
+    }
+  };
+
+  const handleGenerate = () => {
+    if (!prompt.trim()) return;
+
+    // Server mode requires authentication
+    if (effectiveMode === "server") {
+      requireAuth(doGenerate);
+    } else {
+      doGenerate();
     }
   };
 
@@ -293,17 +304,16 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
             </button>
             <button
               onClick={() => setInferenceMode("server")}
-              disabled={loading || serverAvailable === false}
+              disabled={loading}
               className={cn(
                 "flex items-center gap-1 px-2 py-1 text-[10px] rounded transition-colors",
                 inferenceMode === "server"
                   ? "bg-accent text-white"
-                  : "bg-bg text-text-muted hover:text-text",
-                serverAvailable === false && "opacity-50 cursor-not-allowed"
+                  : "bg-bg text-text-muted hover:text-text"
               )}
-              title={serverAvailable === false ? "Server unavailable" : "Uses cad0 (7B model)"}
+              title={!isAuthenticated ? "Sign in required" : "Uses cad0 (7B model)"}
             >
-              <CloudArrowDown size={10} />
+              {!isAuthenticated ? <Lock size={10} /> : <CloudArrowDown size={10} />}
               Server
             </button>
           </div>
@@ -392,6 +402,7 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
           </p>
         </div>
       </div>
+      <AuthModal open={showAuth} onOpenChange={setShowAuth} feature={feature} />
     </>
   );
 }
