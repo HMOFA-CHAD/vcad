@@ -61,7 +61,7 @@ image = (
         modal.Secret.from_name("huggingface-secret"),
         modal.Secret.from_name("wandb-secret"),
     ],
-    timeout=60 * 60 * 8,  # 8 hours
+    timeout=60 * 60 * 10,  # 10 hours
 )
 def distill(
     teacher_path: str = "/data/checkpoints/merged",
@@ -94,7 +94,7 @@ def distill(
         max_seq_length: Maximum sequence length
         max_samples: Limit samples for debugging
     """
-    import os
+    import json
     import torch
     import torch.nn.functional as F
     from torch.utils.data import DataLoader
@@ -106,6 +106,7 @@ def distill(
     from datasets import Dataset
     from tqdm import tqdm
     import wandb
+    import time
 
     # Force reload volume
     volume.reload()
@@ -125,6 +126,8 @@ def distill(
             "max_seq_length": max_seq_length,
         },
     )
+
+    run_start = time.time()
 
     print(f"Loading teacher model from {teacher_path}...")
     teacher = AutoModelForCausalLM.from_pretrained(
@@ -163,7 +166,17 @@ def distill(
 
     # Load training data
     print("Loading training data...")
-    from data import load_jsonl, format_prompt
+    def load_jsonl(path: str) -> list[dict]:
+        data = []
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    data.append(json.loads(line))
+        return data
+
+    def format_prompt(text: str) -> str:
+        return f"Design: {text}\n\nCompact IR:\n"
 
     train_data = load_jsonl("/data/train.jsonl")
     if max_samples:
@@ -224,6 +237,10 @@ def distill(
         pin_memory=True,
     )
 
+    steps_per_epoch = len(dataloader)
+    total_steps = steps_per_epoch * num_epochs
+    print(f"Steps per epoch: {steps_per_epoch} (total: {total_steps})")
+
     # Optimizer and scheduler
     optimizer = torch.optim.AdamW(
         student.parameters(),
@@ -253,6 +270,7 @@ def distill(
         progress = tqdm(dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}")
 
         for batch in progress:
+            step_start = time.time()
             input_ids = batch["input_ids"].to("cuda")
             attention_mask = batch["attention_mask"].to("cuda")
             labels = batch["labels"].to("cuda")
@@ -303,6 +321,9 @@ def distill(
             epoch_distill_loss += distill_loss.item()
             epoch_task_loss += task_loss.item()
             global_step += 1
+            step_time = time.time() - step_start
+            tokens = input_ids.numel()
+            tokens_per_sec = tokens / step_time if step_time > 0 else 0.0
 
             progress.set_postfix({
                 "loss": f"{loss.item():.4f}",
@@ -310,7 +331,10 @@ def distill(
                 "task": f"{task_loss.item():.4f}",
             })
 
-            if global_step % 100 == 0:
+            if global_step % 50 == 0:
+                mem_alloc_gb = torch.cuda.memory_allocated() / (1024 ** 3)
+                mem_reserved_gb = torch.cuda.memory_reserved() / (1024 ** 3)
+                mem_max_alloc_gb = torch.cuda.max_memory_allocated() / (1024 ** 3)
                 wandb.log({
                     "loss": loss.item(),
                     "distill_loss": distill_loss.item(),
@@ -318,7 +342,25 @@ def distill(
                     "learning_rate": scheduler.get_last_lr()[0],
                     "epoch": epoch,
                     "step": global_step,
+                    "step_time_s": step_time,
+                    "tokens_per_sec": tokens_per_sec,
+                    "gpu_mem_alloc_gb": mem_alloc_gb,
+                    "gpu_mem_reserved_gb": mem_reserved_gb,
+                    "gpu_mem_max_alloc_gb": mem_max_alloc_gb,
                 })
+
+            if global_step % 200 == 0:
+                elapsed_min = (time.time() - run_start) / 60.0
+                print(
+                    "Heartbeat: "
+                    f"step={global_step}/{total_steps} "
+                    f"loss={loss.item():.4f} "
+                    f"distill={distill_loss.item():.4f} "
+                    f"task={task_loss.item():.4f} "
+                    f"step_time_s={step_time:.2f} "
+                    f"tokens_per_sec={tokens_per_sec:.0f} "
+                    f"elapsed_min={elapsed_min:.1f}"
+                )
 
         # Epoch summary
         avg_loss = epoch_loss / len(dataloader)
