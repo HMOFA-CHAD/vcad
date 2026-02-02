@@ -15,11 +15,7 @@ import {
   LinkSimple,
   Cube as Cube3D,
   Blueprint,
-  Eye,
-  EyeSlash,
-  Ruler,
   Download,
-  MagnifyingGlassPlus,
   X,
   Circle,
   Octagon,
@@ -65,7 +61,6 @@ import {
 } from "@vcad/core";
 import type { PrimitiveKind, BooleanType } from "@vcad/core";
 import { downloadBlob } from "@/lib/download";
-import { downloadDxf } from "@/lib/save-load";
 import { useNotificationStore } from "@/stores/notification-store";
 import { generateCAD, isModelLoaded } from "@/lib/browser-inference";
 import { fromCompact, type Document } from "@vcad/ir";
@@ -80,18 +75,8 @@ import {
   MirrorDialog,
 } from "@/components/dialogs";
 import { useOnboardingStore, type GuidedFlowStep } from "@/stores/onboarding-store";
-import { useDrawingStore, type ViewDirection } from "@/stores/drawing-store";
+import { useDrawingStore } from "@/stores/drawing-store";
 import { useSlicerStore } from "@/stores/slicer-store";
-
-const VIEW_DIRECTIONS: { value: ViewDirection; label: string }[] = [
-  { value: "front", label: "Front" },
-  { value: "back", label: "Back" },
-  { value: "top", label: "Top" },
-  { value: "bottom", label: "Bottom" },
-  { value: "left", label: "Left" },
-  { value: "right", label: "Right" },
-  { value: "isometric", label: "Isometric" },
-];
 
 const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] = [
   { kind: "cube", icon: Cube, label: "Box" },
@@ -117,8 +102,7 @@ const TAB_COLORS: Record<ToolbarTab, string> = {
   modify: "text-amber-400",
   assembly: "text-rose-400",
   simulate: "text-cyan-400",
-  view: "text-slate-400",
-  print: "text-orange-400",
+  output: "text-slate-400",
 };
 
 // All tabs in priority order (higher priority = shown first when space is limited)
@@ -129,8 +113,7 @@ const ALL_TABS: { id: ToolbarTab; label: string; icon: typeof Cube }[] = [
   { id: "modify", label: "Modify", icon: Circle },
   { id: "assembly", label: "Assembly", icon: Package },
   { id: "simulate", label: "Simulate", icon: Play },
-  { id: "view", label: "View", icon: Cube3D },
-  { id: "print", label: "Print", icon: Printer },
+  { id: "output", label: "Output", icon: Export },
 ];
 
 // Responsive breakpoints and widths
@@ -925,10 +908,6 @@ function MoreDropdown({
   );
 }
 
-function Divider() {
-  return <div className="w-3" />;
-}
-
 export function BottomToolbar() {
   const addPrimitive = useDocumentStore((s) => s.addPrimitive);
   const applyBoolean = useDocumentStore((s) => s.applyBoolean);
@@ -997,17 +976,8 @@ export function BottomToolbar() {
   // Drawing view state
   const viewMode = useDrawingStore((s) => s.viewMode);
   const setViewMode = useDrawingStore((s) => s.setViewMode);
-  const viewDirection = useDrawingStore((s) => s.viewDirection);
-  const setViewDirection = useDrawingStore((s) => s.setViewDirection);
-  const showHiddenLines = useDrawingStore((s) => s.showHiddenLines);
-  const toggleHiddenLines = useDrawingStore((s) => s.toggleHiddenLines);
-  const showDimensions = useDrawingStore((s) => s.showDimensions);
-  const toggleDimensions = useDrawingStore((s) => s.toggleDimensions);
-  const detailViews = useDrawingStore((s) => s.detailViews);
-  const clearDetailViews = useDrawingStore((s) => s.clearDetailViews);
 
-  // Engine for DXF export
-  const engine = useEngineStore((s) => s.engine);
+  // Engine state
   const scene = useEngineStore((s) => s.scene);
 
   // Simulation state
@@ -1142,9 +1112,9 @@ export function BottomToolbar() {
     // Don't auto-switch during guided flow or if user manually changed tabs recently
     if (guidedFlowActive || manualOverrideRef.current) return;
 
-    // Switch to view tab when entering 2D mode
+    // Switch to output tab when entering 2D mode
     if (viewMode === "2d") {
-      setToolbarTab("view");
+      setToolbarTab("output");
       return;
     }
 
@@ -1167,7 +1137,7 @@ export function BottomToolbar() {
     }
 
     // Default to create when nothing selected
-    if (!hasSelection && toolbarTab !== "modify" && toolbarTab !== "simulate" && toolbarTab !== "view") {
+    if (!hasSelection && toolbarTab !== "modify" && toolbarTab !== "simulate" && toolbarTab !== "output") {
       setToolbarTab("create");
     }
   }, [
@@ -1491,7 +1461,7 @@ export function BottomToolbar() {
           </>
         );
 
-      case "view":
+      case "output":
         return (
           <>
             <ToolbarButton
@@ -1514,100 +1484,36 @@ export function BottomToolbar() {
             >
               <Blueprint size={20} />
             </ToolbarButton>
-
-            {viewMode === "2d" && (
-              <>
-                <Divider />
-                <select
-                  value={viewDirection}
-                  onChange={(e) => setViewDirection(e.target.value as ViewDirection)}
-                  className="h-7 px-1.5 text-xs bg-surface border border-border text-text"
-                >
-                  {VIEW_DIRECTIONS.map(({ value, label }) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <ToolbarButton
-                  tooltip={showHiddenLines ? "Hide Hidden Lines" : "Show Hidden Lines"}
-                  active={showHiddenLines}
-                  onClick={toggleHiddenLines}
-                  expanded={toolbarExpanded}
-                  label="Hidden"
-                  iconColor={color}
-                >
-                  {showHiddenLines ? <Eye size={20} /> : <EyeSlash size={20} />}
-                </ToolbarButton>
-                <ToolbarButton
-                  tooltip={showDimensions ? "Hide Dimensions" : "Show Dimensions"}
-                  active={showDimensions}
-                  onClick={toggleDimensions}
-                  expanded={toolbarExpanded}
-                  label="Dims"
-                  iconColor={color}
-                >
-                  <Ruler size={20} />
-                </ToolbarButton>
-                <Divider />
-                <ToolbarButton
-                  tooltip="Add Detail View (drag to select region)"
-                  disabled={!scene?.parts?.length}
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent("vcad:start-detail-view"));
-                  }}
-                  expanded={toolbarExpanded}
-                  label="Detail"
-                  iconColor={color}
-                >
-                  <MagnifyingGlassPlus size={20} />
-                </ToolbarButton>
-                {detailViews.length > 0 && (
-                  <ToolbarButton
-                    tooltip="Clear Detail Views"
-                    onClick={clearDetailViews}
-                    expanded={toolbarExpanded}
-                    label="Clear"
-                    iconColor={color}
-                  >
-                    <X size={20} />
-                  </ToolbarButton>
-                )}
-                <Divider />
-                <ToolbarButton
-                  tooltip="Export DXF"
-                  disabled={!scene?.parts?.length || !engine}
-                  onClick={() => {
-                    if (!scene?.parts?.length || !engine) return;
-                    try {
-                      const mesh = scene.parts[0]!.mesh;
-                      const projectedView = engine.projectMesh(mesh, viewDirection);
-                      if (!projectedView) {
-                        useNotificationStore.getState().addToast("Failed to project view", "error");
-                        return;
-                      }
-                      const dxfData = engine.exportDrawingToDxf(projectedView);
-                      downloadDxf(dxfData, `drawing-${viewDirection}.dxf`);
-                      useNotificationStore.getState().addToast("DXF exported", "success");
-                    } catch (err) {
-                      console.error("DXF export failed:", err);
-                      useNotificationStore.getState().addToast("DXF export failed", "error");
-                    }
-                  }}
-                  expanded={toolbarExpanded}
-                  label="Export"
-                  iconColor={color}
-                >
-                  <Download size={20} />
-                </ToolbarButton>
-              </>
-            )}
-          </>
-        );
-
-      case "print":
-        return (
-          <>
+            <ToolbarButton
+              tooltip={!scene?.parts?.length ? "Export STL (add geometry first)" : "Export STL"}
+              disabled={!scene?.parts?.length}
+              onClick={() => {
+                if (scene) {
+                  const blob = exportStlBlob(scene);
+                  downloadBlob(blob, "model.stl");
+                }
+              }}
+              expanded={toolbarExpanded}
+              label="STL"
+              iconColor={color}
+            >
+              <Download size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip={!scene?.parts?.length ? "Export GLB (add geometry first)" : "Export GLB"}
+              disabled={!scene?.parts?.length}
+              onClick={() => {
+                if (scene) {
+                  const blob = exportGltfBlob(scene);
+                  downloadBlob(blob, "model.glb");
+                }
+              }}
+              expanded={toolbarExpanded}
+              label="GLB"
+              iconColor={color}
+            >
+              <Download size={20} />
+            </ToolbarButton>
             <ToolbarButton
               tooltip={!scene?.parts?.length ? "Print (add geometry first)" : "Open Print Settings"}
               disabled={!scene?.parts?.length || sketchActive}
@@ -1615,7 +1521,7 @@ export function BottomToolbar() {
                 useSlicerStore.getState().openPrintPanel();
               }}
               expanded={toolbarExpanded}
-              label="Print Settings"
+              label="Print"
               iconColor={color}
             >
               <Printer size={20} />

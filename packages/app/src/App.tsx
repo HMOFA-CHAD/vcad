@@ -19,6 +19,7 @@ import { CelebrationOverlay } from "@/components/CelebrationOverlay";
 import { AboutModal } from "@/components/AboutModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { SketchToolbar } from "@/components/SketchToolbar";
+import { DrawingToolbar } from "@/components/DrawingToolbar";
 import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
 import { QuotePanel } from "@/components/QuotePanel";
 import { LogViewer } from "@/components/LogViewer";
@@ -491,6 +492,7 @@ export function App() {
           {/* Full-bleed viewport */}
           <Viewport />
           <SketchToolbar />
+          <DrawingToolbar />
           <FaceSelectionOverlay />
 
           {/* Floating UI elements */}
