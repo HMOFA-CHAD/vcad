@@ -1,5 +1,5 @@
 import { useRef, useEffect, useMemo, useState, Suspense } from "react";
-import { Spherical, Vector3, Box3, Raycaster, Vector2, Quaternion, Matrix4 } from "three";
+import { Spherical, Vector3, Box3, Raycaster, Vector2, Quaternion, Matrix4, Color } from "three";
 import { useThree, useFrame } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -43,6 +43,92 @@ import {
   getOrbitControlsMouseButtons,
 } from "@/lib/camera-controls";
 import type { EvaluatedInstance } from "@vcad/engine";
+import type {
+  SceneSettings,
+  EnvironmentPreset,
+  Light as IrLight,
+} from "@vcad/ir";
+
+// Map IR environment presets to drei preset names
+const ENVIRONMENT_PRESET_MAP: Record<EnvironmentPreset, string> = {
+  studio: "studio",
+  warehouse: "warehouse",
+  apartment: "apartment",
+  park: "park",
+  city: "city",
+  dawn: "dawn",
+  night: "night",
+  sunset: "sunset",
+  forest: "forest",
+  neutral: "studio", // fallback for neutral
+};
+
+// Effective scene settings type (all fields required)
+interface EffectiveSceneSettings {
+  environment: NonNullable<SceneSettings["environment"]>;
+  lights: IrLight[];
+  background: NonNullable<SceneSettings["background"]>;
+  postProcessing: NonNullable<SceneSettings["postProcessing"]>;
+}
+
+// Default scene settings (smart defaults)
+const DEFAULT_SCENE_SETTINGS: EffectiveSceneSettings = {
+  environment: { type: "Preset", preset: "studio", intensity: 0.4 },
+  lights: [
+    {
+      id: "key",
+      kind: { type: "Directional", direction: { x: 0.5, y: -0.8, z: 0.4 } },
+      color: [1, 0.98, 0.95],
+      intensity: 1.2,
+      castShadow: true,
+    },
+    {
+      id: "fill",
+      kind: { type: "Directional", direction: { x: -0.3, y: -0.4, z: -0.2 } },
+      color: [0.95, 0.97, 1.0],
+      intensity: 0.4,
+    },
+    {
+      id: "rim",
+      kind: { type: "Directional", direction: { x: -0.5, y: -0.2, z: 0.5 } },
+      color: [1, 1, 1],
+      intensity: 0.2,
+    },
+  ],
+  background: { type: "Environment" },
+  postProcessing: {
+    ambientOcclusion: { enabled: true, intensity: 1.5, radius: 0.5 },
+    vignette: { enabled: true, offset: 0.3, darkness: 0.3 },
+  },
+};
+
+// Compute effective scene settings (merge document settings with defaults)
+function getEffectiveSceneSettings(scene: SceneSettings | undefined, isDark: boolean): EffectiveSceneSettings {
+  const base = DEFAULT_SCENE_SETTINGS;
+
+  // Adjust defaults for dark mode
+  const darkModePostProcessing = isDark ? {
+    ambientOcclusion: { enabled: true, intensity: 2, radius: 0.5 },
+    vignette: { enabled: true, offset: 0.3, darkness: 0.5 },
+  } : base.postProcessing;
+
+  if (!scene) {
+    return { ...base, postProcessing: darkModePostProcessing };
+  }
+
+  return {
+    environment: scene.environment ?? base.environment,
+    lights: scene.lights ?? base.lights,
+    background: scene.background ?? base.background,
+    postProcessing: scene.postProcessing ?? darkModePostProcessing,
+  };
+}
+
+// Convert IR light direction to Three.js position (lights point FROM position TO origin)
+function lightDirectionToPosition(direction: { x: number; y: number; z: number }, distance = 100): [number, number, number] {
+  // Negate and scale the direction to get a position
+  return [-direction.x * distance, -direction.y * distance, -direction.z * distance];
+}
 
 function getInstanceSelectionId(inst: EvaluatedInstance): string {
   const instance = inst as {
@@ -669,27 +755,89 @@ export function ViewportContent() {
     return () => window.removeEventListener("vcad:hero-view", handleHeroView);
   }, []);
 
+  // Get effective scene settings
+  const sceneSettings = useMemo(
+    () => getEffectiveSceneSettings(document.scene, isDark),
+    [document.scene, isDark]
+  );
+
+  // Get environment preset name for drei
+  const environmentPreset = useMemo(() => {
+    const env = sceneSettings.environment;
+    if (env.type === "Preset") {
+      return ENVIRONMENT_PRESET_MAP[env.preset] ?? "studio";
+    }
+    return "studio"; // Custom environments not yet supported by drei
+  }, [sceneSettings.environment]);
+
+  const environmentIntensity = useMemo(() => {
+    const env = sceneSettings.environment;
+    return env.intensity ?? 0.4;
+  }, [sceneSettings.environment]);
+
   return (
     <>
       {/* Engine-independent content - renders immediately */}
-      {/* Key light with shadows */}
-      <directionalLight
-        position={[50, 80, 40]}
-        intensity={1.2}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={200}
-        shadow-camera-left={-100}
-        shadow-camera-right={100}
-        shadow-camera-top={100}
-        shadow-camera-bottom={-100}
-        shadow-bias={-0.0001}
-      />
-      {/* Fill light */}
-      <directionalLight position={[-30, 40, -20]} intensity={0.4} />
-      {/* Rim light for edge definition */}
-      <directionalLight position={[-50, 20, 50]} intensity={0.2} />
+      {/* Scene lights from document settings */}
+      {sceneSettings.lights.map((light) => {
+        if (light.enabled === false) return null;
+        const color = new Color(light.color[0], light.color[1], light.color[2]);
+
+        if (light.kind.type === "Directional") {
+          const position = lightDirectionToPosition(light.kind.direction);
+          return light.castShadow ? (
+            <directionalLight
+              key={light.id}
+              position={position}
+              intensity={light.intensity}
+              color={color}
+              castShadow
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+              shadow-camera-far={200}
+              shadow-camera-left={-100}
+              shadow-camera-right={100}
+              shadow-camera-top={100}
+              shadow-camera-bottom={-100}
+              shadow-bias={-0.0001}
+            />
+          ) : (
+            <directionalLight
+              key={light.id}
+              position={position}
+              intensity={light.intensity}
+              color={color}
+            />
+          );
+        }
+
+        if (light.kind.type === "Point") {
+          return (
+            <pointLight
+              key={light.id}
+              position={[light.kind.position.x, light.kind.position.y, light.kind.position.z]}
+              intensity={light.intensity}
+              color={color}
+              distance={light.kind.distance}
+            />
+          );
+        }
+
+        if (light.kind.type === "Spot") {
+          return (
+            <spotLight
+              key={light.id}
+              position={[light.kind.position.x, light.kind.position.y, light.kind.position.z]}
+              intensity={light.intensity}
+              color={color}
+              angle={light.kind.angle ? (light.kind.angle * Math.PI) / 180 : undefined}
+              penumbra={light.kind.penumbra ? light.kind.penumbra / 90 : undefined}
+            />
+          );
+        }
+
+        return null;
+      })}
 
       {/* Contact shadows - soft shadow beneath objects (disabled during camera motion for FPS) */}
       {!isCameraMoving && (
@@ -749,8 +897,20 @@ export function ViewportContent() {
 
       {/* Environment lighting - wrapped in Suspense to not block initial render */}
       <Suspense fallback={null}>
-        <Environment preset="studio" environmentIntensity={0.4} />
+        <Environment
+          preset={environmentPreset as "studio" | "warehouse" | "apartment" | "park" | "city" | "dawn" | "night" | "sunset" | "forest"}
+          environmentIntensity={environmentIntensity}
+          background={sceneSettings.background.type === "Environment"}
+        />
       </Suspense>
+
+      {/* Custom background (if not using environment) */}
+      {sceneSettings.background.type === "Solid" && (
+        <color attach="background" args={[sceneSettings.background.color[0], sceneSettings.background.color[1], sceneSettings.background.color[2]]} />
+      )}
+      {sceneSettings.background.type === "Transparent" && (
+        <color attach="background" args={[0, 0, 0]} />
+      )}
 
       {/* Engine-dependent content - renders after engine ready */}
       {engineReady && (
@@ -839,17 +999,40 @@ export function ViewportContent() {
       )}
 
       {/* Post-processing effects - disabled during camera motion for FPS */}
-      {engineReady && !isCameraMoving && (
+      {engineReady && !isCameraMoving && sceneSettings.postProcessing.ambientOcclusion?.enabled !== false && sceneSettings.postProcessing.vignette?.enabled !== false && (
         <EffectComposer>
-          {/* N8AO - high quality ambient occlusion */}
           <N8AO
-            aoRadius={0.5}
-            intensity={isDark ? 2 : 1.5}
+            aoRadius={sceneSettings.postProcessing.ambientOcclusion?.radius ?? 0.5}
+            intensity={sceneSettings.postProcessing.ambientOcclusion?.intensity ?? (isDark ? 2 : 1.5)}
             aoSamples={6}
             denoiseSamples={4}
           />
-          {/* Subtle vignette for focus */}
-          <Vignette offset={0.3} darkness={isDark ? 0.5 : 0.3} eskil={false} />
+          <Vignette
+            offset={sceneSettings.postProcessing.vignette?.offset ?? 0.3}
+            darkness={sceneSettings.postProcessing.vignette?.darkness ?? (isDark ? 0.5 : 0.3)}
+            eskil={false}
+          />
+        </EffectComposer>
+      )}
+      {/* AO only mode */}
+      {engineReady && !isCameraMoving && sceneSettings.postProcessing.ambientOcclusion?.enabled !== false && sceneSettings.postProcessing.vignette?.enabled === false && (
+        <EffectComposer>
+          <N8AO
+            aoRadius={sceneSettings.postProcessing.ambientOcclusion?.radius ?? 0.5}
+            intensity={sceneSettings.postProcessing.ambientOcclusion?.intensity ?? (isDark ? 2 : 1.5)}
+            aoSamples={6}
+            denoiseSamples={4}
+          />
+        </EffectComposer>
+      )}
+      {/* Vignette only mode */}
+      {engineReady && !isCameraMoving && sceneSettings.postProcessing.ambientOcclusion?.enabled === false && sceneSettings.postProcessing.vignette?.enabled !== false && (
+        <EffectComposer>
+          <Vignette
+            offset={sceneSettings.postProcessing.vignette?.offset ?? 0.3}
+            darkness={sceneSettings.postProcessing.vignette?.darkness ?? (isDark ? 0.5 : 0.3)}
+            eskil={false}
+          />
         </EffectComposer>
       )}
     </>
