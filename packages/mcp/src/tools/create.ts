@@ -712,6 +712,113 @@ export const createCadDocumentSchema = {
         required: ["name"],
       },
     },
+    assembly: {
+      type: "object" as const,
+      description: "Optional assembly definition for physics simulation. Define instances of parts and joints connecting them.",
+      properties: {
+        instances: {
+          type: "array" as const,
+          description: "Part instances in the assembly",
+          items: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const, description: "Unique instance ID" },
+              part: { type: "string" as const, description: "Part name to instantiate" },
+              name: { type: "string" as const, description: "Display name (optional)" },
+              position: {
+                type: "object" as const,
+                description: "Initial position {x, y, z} in mm",
+                properties: {
+                  x: { type: "number" as const },
+                  y: { type: "number" as const },
+                  z: { type: "number" as const },
+                },
+              },
+              rotation: {
+                type: "object" as const,
+                description: "Initial rotation {x, y, z} in degrees",
+                properties: {
+                  x: { type: "number" as const },
+                  y: { type: "number" as const },
+                  z: { type: "number" as const },
+                },
+              },
+            },
+            required: ["id", "part"],
+          },
+        },
+        joints: {
+          type: "array" as const,
+          description: "Joints connecting instances",
+          items: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const, description: "Unique joint ID" },
+              name: { type: "string" as const, description: "Display name (optional)" },
+              parent: {
+                oneOf: [{ type: "string" as const }, { type: "null" as const }],
+                description: "Parent instance ID, or null for ground/world",
+              },
+              child: { type: "string" as const, description: "Child instance ID" },
+              type: {
+                type: "string" as const,
+                enum: ["fixed", "revolute", "slider", "cylindrical", "ball"],
+                description: "Joint type: fixed, revolute (hinge), slider (prismatic), cylindrical, or ball",
+              },
+              axis: {
+                oneOf: [
+                  { type: "string" as const, enum: ["x", "y", "z"] },
+                  {
+                    type: "object" as const,
+                    properties: {
+                      x: { type: "number" as const },
+                      y: { type: "number" as const },
+                      z: { type: "number" as const },
+                    },
+                  },
+                ],
+                description: "Joint axis: 'x', 'y', 'z', or custom {x, y, z} vector",
+              },
+              parent_anchor: {
+                type: "object" as const,
+                description: "Anchor point on parent in parent's local coordinates",
+                properties: {
+                  x: { type: "number" as const },
+                  y: { type: "number" as const },
+                  z: { type: "number" as const },
+                },
+              },
+              child_anchor: {
+                type: "object" as const,
+                description: "Anchor point on child in child's local coordinates",
+                properties: {
+                  x: { type: "number" as const },
+                  y: { type: "number" as const },
+                  z: { type: "number" as const },
+                },
+              },
+              limits: {
+                type: "array" as const,
+                items: { type: "number" as const },
+                minItems: 2,
+                maxItems: 2,
+                description: "Joint limits [min, max] in degrees for revolute, mm for slider",
+              },
+              state: {
+                type: "number" as const,
+                description: "Initial joint state (angle in degrees or position in mm)",
+              },
+            },
+            required: ["id", "parent", "child", "type"],
+          },
+        },
+        ground: {
+          type: "string" as const,
+          description: "Instance ID of the fixed/ground part",
+        },
+      },
+      required: ["instances", "joints"],
+    },
   },
   required: ["parts"],
 };
