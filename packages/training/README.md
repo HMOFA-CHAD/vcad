@@ -147,6 +147,36 @@ const result = await generateCAD("mounting bracket with 4 holes");
 console.log(result.ir);
 ```
 
+## Distillation (cad0-mini)
+
+After training cad0 (7B), distill to cad0-mini (0.5B) for browser inference:
+
+```bash
+# Run distillation (7B → 0.5B)
+cd src/modal
+modal run distill.py
+
+# Export to ONNX for Transformers.js
+modal run distill.py --action export-onnx
+
+# Upload both models to HuggingFace
+modal run distill.py --action upload
+```
+
+### Distillation Config
+```python
+student_model = "Qwen/Qwen2.5-0.5B"
+temperature = 2.0          # Softmax temperature
+alpha = 0.5                # 0.5 distill + 0.5 task loss
+num_epochs = 3
+batch_size = 32
+learning_rate = 5e-5
+```
+
+### Hardware
+- **Distillation**: 1x A100-80GB (~8h)
+- **ONNX Export**: 1x A10G (~30min)
+
 ## Evaluation
 
 ```bash
@@ -171,6 +201,7 @@ packages/training/
 │   │   └── ...
 │   ├── modal/           # Modal training infrastructure
 │   │   ├── modal_app.py # Main app (train, evaluate, infer)
+│   │   ├── distill.py   # Knowledge distillation (7B → 0.5B)
 │   │   ├── config.py    # Training configuration
 │   │   ├── train.py     # Training loop
 │   │   ├── eval.py      # Evaluation metrics
@@ -186,6 +217,8 @@ packages/training/
 | Task | GPU | Time | Cost |
 |------|-----|------|------|
 | Training (1 epoch) | H100 | ~6h | ~$20 |
+| Distillation (3 epochs) | A100-80GB | ~8h | ~$30 |
+| ONNX Export | A10G | ~30min | ~$0.50 |
 | Inference (cold) | A10G | ~30s | ~$0.01 |
 | Inference (warm) | A10G | ~2s | ~$0.001 |
 
@@ -204,6 +237,7 @@ Check Modal volume exists: `modal volume list`
 
 - [W&B Dashboard](https://wandb.ai/ecto/cad0)
 - [Modal Dashboard](https://modal.com/apps/ecto/main/deployed/cad0-training)
-- [HuggingFace Model](https://huggingface.co/campedersen/cad0)
+- [HuggingFace: cad0](https://huggingface.co/campedersen/cad0) (7B, server inference)
+- [HuggingFace: cad0-mini](https://huggingface.co/campedersen/cad0-mini) (0.5B ONNX, browser)
 - [Compact IR Spec](../../docs/features/compact-ir.md)
 - [Text-to-CAD Design Doc](../../docs/features/text-to-cad.md)

@@ -50,6 +50,22 @@ def load_dataset(
     return train_dataset, val_dataset
 
 
+def format_prompt(text: str) -> str:
+    """
+    Format a design description into a prompt for inference.
+
+    This is the same prompt format used during training, but without the IR.
+    Used for inference and distillation.
+
+    Args:
+        text: Design description
+
+    Returns:
+        Formatted prompt string
+    """
+    return f"Design: {text}\n\nCompact IR:\n"
+
+
 def format_for_training(
     example: dict,
     prompt_template: str = "Design: {text}\n\nCompact IR:\n{ir}",
