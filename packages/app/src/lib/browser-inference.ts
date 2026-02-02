@@ -11,7 +11,7 @@ const DB_VERSION = 1;
 const STORE_NAME = "models";
 
 // Model configuration
-const DEFAULT_MODEL_ID = "campedersen/cad0-0.5b-onnx";
+const DEFAULT_MODEL_ID = "campedersen/cad0-mini";
 const MODEL_CACHE_KEY = "cad0-model";
 
 /** System prompt for CAD generation. */

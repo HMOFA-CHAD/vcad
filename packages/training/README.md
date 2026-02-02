@@ -7,7 +7,7 @@ Fine-tuning pipeline for the cad0 text-to-CAD model.
 | Model | Base | Size | Use Case |
 |-------|------|------|----------|
 | **cad0** | Qwen2.5-Coder-7B | ~14GB | Server inference (Modal) |
-| **cad0-0.5b-onnx** | Qwen2.5-0.5B | ~350MB | Browser inference (WASM) |
+| **cad0-mini** | Qwen2.5-0.5B | ~350MB | Browser inference (WASM) |
 
 HuggingFace: [campedersen/cad0](https://huggingface.co/campedersen/cad0)
 
@@ -142,7 +142,7 @@ curl -X POST https://ecto--cad0-training-inference-infer.modal.run \
 ```typescript
 import { loadModel, generateCAD } from '@/lib/browser-inference';
 
-await loadModel();  // Downloads campedersen/cad0-0.5b-onnx
+await loadModel();  // Downloads campedersen/cad0-mini
 const result = await generateCAD("mounting bracket with 4 holes");
 console.log(result.ir);
 ```
