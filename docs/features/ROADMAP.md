@@ -19,33 +19,43 @@ This isn't incremental improvement. This is **category creation**.
 
 ## Current State
 
+**Audit (2026-02-02):** Status legend — ✅ verified in repo, ⚠️ partial/limited, ❌ not found.
+
 | Phase | Component | Status |
 |-------|-----------|--------|
 | 1 | Topology + Geometry + Primitives + Tessellation | ✅ |
 | 2 | Boolean Operations | ✅ |
 | 3 | Surface Transforms | ✅ |
 | 4 | NURBS | ✅ |
-| 5 | Fillets & Chamfers | ✅ |
+| 5 | Fillets & Chamfers | ⚠️ |
 | 6 | Sketch-Based Operations (extrude/revolve) | ✅ |
 | 7 | Sketch IR + UI Integration | ✅ |
-| 8 | Shell + Pattern Operations | ✅ |
-| 9 | Constraint Solver | ✅ |
-| 10 | STEP Import/Export | ✅ |
+| 8 | Shell + Pattern Operations | ⚠️ |
+| 9 | Constraint Solver | ⚠️ |
+| 10 | STEP Import/Export | ⚠️ |
 | 11 | Sweep + Loft (Kernel) | ✅ |
 | 12 | Sweep + Loft UI Integration | ✅ |
 | 13 | Assembly + Joints | ✅ |
 | 14 | 2D Drafting | ✅ |
 | 15 | Headless Mode + API | ✅ |
 | 16 | Exact Predicates (Shewchuk) | ✅ |
-| 17 | GPU Acceleration (wgpu) | ✅ |
+| 17 | GPU Acceleration (wgpu) | ⚠️ |
 | 18 | Direct BRep Ray Tracing | ✅ |
 | 19 | Physics Simulation (Rapier3D) | ✅ |
-| 20 | URDF Import | ✅ |
+| 20 | URDF Import | ⚠️ |
 | 21 | Text-to-CAD Training Pipeline | ✅ |
+
+**Audit notes (repo evidence):**
+- Fillet/chamfer is planar-face only.
+- Shell is mesh-based; planar B-rep offset only.
+- Constraint solver exists in kernel, but app uses a simplified constraint solve.
+- STEP import/export supports limited surface types and requires B-rep; booleans convert to mesh.
+- URDF import stores mesh links as STEP imports and approximates planar/floating joints.
+- GPU acceleration currently used for mesh processing and ray tracing.
 
 **Kernel crates:** math, topo, geom, primitives, tessellate, booleans, nurbs, fillet, sketch, sweep, shell, constraints, step, drafting, gpu, raytrace, physics, urdf
 
-**Kernel stats:** ~35K lines Rust
+**Kernel stats:** ~40K lines Rust (src only, excludes `vcad-kernel-wasm`)
 
 **App features:**
 - React + Three.js viewport with standard and ray-traced render modes
@@ -158,7 +168,7 @@ NURBS       → Newton iteration on ray-surface
 
 ---
 
-## Phase 19: PCB Design (Unified MCAD-ECAD)
+## Phase 22: PCB Design (Unified MCAD-ECAD)
 
 **Goal:** First-class PCB design integrated with mechanical CAD.
 
