@@ -638,53 +638,140 @@ export function fromJson(json: string): Document {
 }
 
 // ============================================================================
-// Compact IR Format (for cad0 model training and inference)
+// Compact IR Format v0.2 (for cad0 model training and inference)
 // ============================================================================
+
+/** Current compact IR format version. */
+export const COMPACT_VERSION = '0.2';
 
 /**
  * Parse compact IR text format into a vcad IR Document.
  *
  * The compact IR format is a token-efficient text representation designed
- * for ML model training and inference.
+ * for ML model training and inference. Supports the full v0.2 format with
+ * materials, assembly, joints, scene settings, and node names.
  *
  * @example
  * ```typescript
- * const ir = "C 50 30 5\nY 5 10\nT 1 25 15 0\nD 0 2";
+ * const ir = "# vcad 0.2\nM default 0.8 0.8 0.8 0 0.5\nC 50 30 5\nROOT 0 default";
  * const doc = fromCompact(ir);
  * ```
  */
 export function fromCompact(compact: string): Document {
   const doc = createDocument();
-  let currentLine = 0;
   const lines = compact.split('\n');
   let i = 0;
+  let geometryNodeCount = 0;
 
   while (i < lines.length) {
     const line = lines[i].trim();
 
     // Skip empty lines and comments
     if (!line || line.startsWith('#')) {
-      currentLine++;
       i++;
       continue;
     }
 
-    const nodeId = currentLine;
-    const result = parseLine(line, currentLine, lines, i);
-    const [op, newIndex] = result;
+    const parts = splitLineRespectingQuotes(line);
+    if (parts.length === 0) {
+      i++;
+      continue;
+    }
 
-    doc.nodes[nodeId.toString()] = {
-      id: nodeId,
-      name: null,
-      op,
-    };
+    const opcode = parts[0];
 
-    currentLine = newIndex + 1;
-    i = newIndex + 1;
+    switch (opcode) {
+      case 'M':
+        parseMaterial(doc, parts, i);
+        break;
+
+      case 'ROOT':
+        parseRoot(doc, parts, i);
+        break;
+
+      case 'PDEF':
+        parsePartDef(doc, parts, i);
+        break;
+
+      case 'INST':
+        parseInstance(doc, parts, i);
+        break;
+
+      case 'JFIX':
+      case 'JREV':
+      case 'JSLD':
+      case 'JCYL':
+      case 'JBAL':
+        parseJoint(doc, opcode, parts, i);
+        break;
+
+      case 'GROUND':
+        if (parts.length !== 2) {
+          throw new CompactParseError(i, `GROUND requires 1 arg, got ${parts.length - 1}`);
+        }
+        doc.groundInstanceId = parseStringArg(parts[1]);
+        break;
+
+      case 'ENV':
+        parseEnvironment(doc, parts, i);
+        break;
+
+      case 'BG':
+        parseBackground(doc, parts, i);
+        break;
+
+      case 'LDIR':
+      case 'LPNT':
+      case 'LSPT':
+      case 'LAREA':
+        parseLight(doc, opcode, parts, i);
+        break;
+
+      case 'AO':
+        parseAO(doc, parts, i);
+        break;
+
+      case 'BLOOM':
+        parseBloom(doc, parts, i);
+        break;
+
+      case 'VIG':
+        parseVignette(doc, parts, i);
+        break;
+
+      case 'TONE':
+        parseToneMapping(doc, parts, i);
+        break;
+
+      case 'EXP':
+        parseExposure(doc, parts, i);
+        break;
+
+      case 'CAM':
+        parseCamera(doc, parts, i);
+        break;
+
+      default: {
+        // Geometry opcode
+        const nodeId = geometryNodeCount;
+        const [op, name, newIndex] = parseGeometryLine(line, i, lines);
+
+        doc.nodes[nodeId.toString()] = {
+          id: nodeId,
+          name: name ?? null,
+          op,
+        };
+
+        geometryNodeCount++;
+        i = newIndex;
+      }
+    }
+
+    i++;
   }
 
-  // Find the root node (highest ID that isn't referenced by others)
-  if (Object.keys(doc.nodes).length > 0) {
+  // If no explicit ROOTs were defined, add a default one
+  if (doc.roots.length === 0 && Object.keys(doc.nodes).length > 0) {
     const referenced = new Set<number>();
     for (const node of Object.values(doc.nodes)) {
       for (const childId of getChildren(node.op)) {
@@ -697,17 +784,19 @@ export function fromCompact(compact: string): Document {
       .filter(id => !referenced.has(id))
       .reduce((a, b) => Math.max(a, b), 0);
 
-    // Add default material and scene entry
-    doc.materials['default'] = {
-      name: 'default',
-      color: [0.8, 0.8, 0.8],
-      metallic: 0,
-      roughness: 0.5,
-    };
+    // Add default material if none exists
+    if (Object.keys(doc.materials).length === 0) {
+      doc.materials['default'] = {
+        name: 'default',
+        color: [0.8, 0.8, 0.8],
+        metallic: 0,
+        roughness: 0.5,
+      };
+    }
 
     doc.roots.push({
       root: rootId,
-      material: 'default',
+      material: Object.keys(doc.materials)[0] ?? 'default',
     });
   }
 
@@ -715,48 +804,228 @@ export function fromCompact(compact: string): Document {
 }
 
 /**
- * Convert a vcad IR Document to compact IR text format.
+ * Convert a vcad IR Document to compact IR text format (v0.2).
  *
  * @example
  * ```typescript
  * const compact = toCompact(doc);
- * console.log(compact); // "C 50 30 5\nY 5 10\n..."
+ * console.log(compact); // "# vcad 0.2\n..."
  * ```
  */
 export function toCompact(doc: Document): string {
-  if (Object.keys(doc.nodes).length === 0) {
-    return '';
+  const lines: string[] = [];
+
+  // Header
+  lines.push(`# vcad ${COMPACT_VERSION}`);
+  lines.push('');
+
+  // Materials section
+  const matNames = Object.keys(doc.materials).sort();
+  if (matNames.length > 0) {
+    lines.push('# Materials');
+    for (const name of matNames) {
+      const mat = doc.materials[name];
+      let line = `M ${escapeId(mat.name)} ${mat.color[0]} ${mat.color[1]} ${mat.color[2]} ${mat.metallic} ${mat.roughness}`;
+      if (mat.density !== undefined) {
+        line += ` ${mat.density}`;
+        if (mat.friction !== undefined) {
+          line += ` ${mat.friction}`;
+        }
+      }
+      lines.push(line);
+    }
+    lines.push('');
   }
 
-  // Find all root nodes (nodes not referenced by any other node)
-  const referenced = new Set<number>();
-  for (const node of Object.values(doc.nodes)) {
-    for (const childId of getChildren(node.op)) {
-      referenced.add(childId);
+  // Geometry section
+  const nodeIds = Object.keys(doc.nodes).map(Number);
+  if (nodeIds.length > 0) {
+    lines.push('# Geometry');
+
+    // Find all root nodes (nodes not referenced by any other node)
+    const referenced = new Set<number>();
+    for (const node of Object.values(doc.nodes)) {
+      for (const childId of getChildren(node.op)) {
+        referenced.add(childId);
+      }
+    }
+
+    const roots = nodeIds.filter(id => !referenced.has(id));
+
+    // Topological sort
+    const sorted = topologicalSort(doc, roots);
+
+    // Create ID mapping
+    const idMap = new Map<number, number>();
+    sorted.forEach((id, index) => {
+      idMap.set(id, index);
+    });
+
+    for (const nodeId of sorted) {
+      const node = doc.nodes[nodeId.toString()];
+      const line = formatOp(node.op, idMap, node.name ?? undefined);
+      lines.push(line);
+    }
+    lines.push('');
+
+    // Scene roots
+    if (doc.roots.length > 0) {
+      lines.push('# Scene');
+      for (const entry of doc.roots) {
+        const mappedId = idMap.get(entry.root);
+        if (mappedId === undefined) {
+          throw new Error(`Unknown root node ${entry.root}`);
+        }
+        let line = `ROOT ${mappedId} ${escapeId(entry.material)}`;
+        if (entry.visible === false) {
+          line += ' hidden';
+        }
+        lines.push(line);
+      }
+      lines.push('');
     }
   }
 
-  const roots = Object.keys(doc.nodes)
-    .map(Number)
-    .filter(id => !referenced.has(id));
+  // Part definitions
+  if (doc.partDefs && Object.keys(doc.partDefs).length > 0) {
+    lines.push('# Parts');
 
-  // Topological sort: dependencies before dependents
-  const sorted = topologicalSort(doc, roots);
+    // Rebuild idMap for part def node refs
+    const referenced = new Set<number>();
+    for (const node of Object.values(doc.nodes)) {
+      for (const childId of getChildren(node.op)) {
+        referenced.add(childId);
+      }
+    }
+    const roots = Object.keys(doc.nodes).map(Number).filter(id => !referenced.has(id));
+    const sorted = topologicalSort(doc, roots);
+    const idMap = new Map<number, number>();
+    sorted.forEach((id, index) => idMap.set(id, index));
 
-  // Create ID mapping: original NodeId -> line number
-  const idMap = new Map<number, number>();
-  sorted.forEach((id, index) => {
-    idMap.set(id, index);
-  });
+    const pdefIds = Object.keys(doc.partDefs).sort();
+    for (const id of pdefIds) {
+      const pdef = doc.partDefs[id];
+      const mappedRoot = idMap.get(pdef.root);
+      if (mappedRoot === undefined) {
+        throw new Error(`Unknown part def root ${pdef.root}`);
+      }
+      let line = `PDEF ${escapeId(pdef.id)} ${formatQuotedString(pdef.name ?? pdef.id)} ${mappedRoot}`;
+      if (pdef.defaultMaterial) {
+        line += ` ${escapeId(pdef.defaultMaterial)}`;
+      }
+      lines.push(line);
+    }
+    lines.push('');
+  }
 
-  const lines: string[] = [];
-  for (const nodeId of sorted) {
-    const node = doc.nodes[nodeId.toString()];
-    const line = formatOp(node.op, idMap);
-    lines.push(line);
+  // Instances
+  if (doc.instances && doc.instances.length > 0) {
+    lines.push('# Instances');
+    for (const inst of doc.instances) {
+      const tf = inst.transform ?? identityTransform();
+      let line = `INST ${escapeId(inst.id)} ${escapeId(inst.partDefId)} ${formatQuotedString(inst.name ?? inst.id)} ${tf.translation.x} ${tf.translation.y} ${tf.translation.z} ${tf.rotation.x} ${tf.rotation.y} ${tf.rotation.z} ${tf.scale.x} ${tf.scale.y} ${tf.scale.z}`;
+      if (inst.material) {
+        line += ` ${escapeId(inst.material)}`;
+      }
+      lines.push(line);
+    }
+    lines.push('');
+  }
+
+  // Joints
+  if (doc.joints && doc.joints.length > 0) {
+    lines.push('# Joints');
+    for (const joint of doc.joints) {
+      lines.push(formatJoint(joint));
+    }
+    lines.push('');
+  }
+
+  // Ground
+  if (doc.groundInstanceId) {
+    lines.push(`GROUND ${escapeId(doc.groundInstanceId)}`);
+    lines.push('');
+  }
+
+  // Scene settings
+  if (doc.scene) {
+    lines.push('# Scene Settings');
+    formatSceneSettings(lines, doc.scene);
+  }
+
+  // Remove trailing empty lines
+  while (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop();
   }
 
   return lines.join('\n');
+}
+
+// ============================================================================
+// Compact IR Helper Functions
+// ============================================================================
+
+/** Split a line by whitespace, but keep quoted strings together. */
+function splitLineRespectingQuotes(line: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+
+    if (c === '"' && (i === 0 || line[i - 1] !== '\\')) {
+      if (inQuotes) {
+        current += c;
+        parts.push(current);
+        current = '';
+        inQuotes = false;
+      } else {
+        if (current.trim()) {
+          parts.push(...current.trim().split(/\s+/));
+        }
+        current = c;
+        inQuotes = true;
+      }
+    } else if (inQuotes) {
+      current += c;
+    } else if (/\s/.test(c)) {
+      if (current.trim()) {
+        parts.push(current.trim());
+      }
+      current = '';
+    } else {
+      current += c;
+    }
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
+  return parts;
+}
+
+/** Parse a potentially quoted string argument. */
+function parseStringArg(s: string): string {
+  if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) {
+    const inner = s.slice(1, -1);
+    return inner.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return s;
+}
+
+/** Escape an identifier - if it contains spaces or special chars, quote it. */
+function escapeId(s: string): string {
+  if (/[\s"]/.test(s) || s.length === 0 || /^\d/.test(s)) {
+    return formatQuotedString(s);
+  }
+  return s;
+}
+
+/** Format a string with quotes. */
+function formatQuotedString(s: string): string {
+  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 /** Get child node IDs from an operation. */
@@ -772,10 +1041,11 @@ function getChildren(op: CsgOp): number[] {
     case 'LinearPattern':
     case 'CircularPattern':
     case 'Shell':
+    case 'Fillet':
+    case 'Chamfer':
       return [op.child];
     case 'Extrude':
     case 'Revolve':
-      return [op.sketch];
     case 'Sweep':
       return [op.sketch];
     case 'Loft':
@@ -826,115 +1096,672 @@ function topologicalSort(doc: Document, roots: number[]): number[] {
 }
 
 /** Format a CsgOp as a compact IR line. */
-function formatOp(op: CsgOp, idMap: Map<number, number>): string {
+function formatOp(op: CsgOp, idMap: Map<number, number>, name?: string): string {
+  const nameSuffix = name ? ` ${formatQuotedString(name)}` : '';
+
   switch (op.type) {
     case 'Cube':
-      return `C ${op.size.x} ${op.size.y} ${op.size.z}`;
+      return `C ${op.size.x} ${op.size.y} ${op.size.z}${nameSuffix}`;
     case 'Cylinder':
-      return `Y ${op.radius} ${op.height}`;
+      return `Y ${op.radius} ${op.height}${nameSuffix}`;
     case 'Sphere':
-      return `S ${op.radius}`;
+      return `S ${op.radius}${nameSuffix}`;
     case 'Cone':
-      return `K ${op.radius_bottom} ${op.radius_top} ${op.height}`;
+      return `K ${op.radius_bottom} ${op.radius_top} ${op.height}${nameSuffix}`;
     case 'Empty':
-      return 'C 0 0 0';
+      return `C 0 0 0${nameSuffix}`;
     case 'Union':
-      return `U ${idMap.get(op.left)} ${idMap.get(op.right)}`;
+      return `U ${idMap.get(op.left)} ${idMap.get(op.right)}${nameSuffix}`;
     case 'Difference':
-      return `D ${idMap.get(op.left)} ${idMap.get(op.right)}`;
+      return `D ${idMap.get(op.left)} ${idMap.get(op.right)}${nameSuffix}`;
     case 'Intersection':
-      return `I ${idMap.get(op.left)} ${idMap.get(op.right)}`;
+      return `I ${idMap.get(op.left)} ${idMap.get(op.right)}${nameSuffix}`;
     case 'Translate':
-      return `T ${idMap.get(op.child)} ${op.offset.x} ${op.offset.y} ${op.offset.z}`;
+      return `T ${idMap.get(op.child)} ${op.offset.x} ${op.offset.y} ${op.offset.z}${nameSuffix}`;
     case 'Rotate':
-      return `R ${idMap.get(op.child)} ${op.angles.x} ${op.angles.y} ${op.angles.z}`;
+      return `R ${idMap.get(op.child)} ${op.angles.x} ${op.angles.y} ${op.angles.z}${nameSuffix}`;
     case 'Scale':
-      return `X ${idMap.get(op.child)} ${op.factor.x} ${op.factor.y} ${op.factor.z}`;
+      return `X ${idMap.get(op.child)} ${op.factor.x} ${op.factor.y} ${op.factor.z}${nameSuffix}`;
     case 'LinearPattern':
-      return `LP ${idMap.get(op.child)} ${op.direction.x} ${op.direction.y} ${op.direction.z} ${op.count} ${op.spacing}`;
+      return `LP ${idMap.get(op.child)} ${op.direction.x} ${op.direction.y} ${op.direction.z} ${op.count} ${op.spacing}${nameSuffix}`;
     case 'CircularPattern':
-      return `CP ${idMap.get(op.child)} ${op.axis_origin.x} ${op.axis_origin.y} ${op.axis_origin.z} ${op.axis_dir.x} ${op.axis_dir.y} ${op.axis_dir.z} ${op.count} ${op.angle_deg}`;
+      return `CP ${idMap.get(op.child)} ${op.axis_origin.x} ${op.axis_origin.y} ${op.axis_origin.z} ${op.axis_dir.x} ${op.axis_dir.y} ${op.axis_dir.z} ${op.count} ${op.angle_deg}${nameSuffix}`;
     case 'Shell':
-      return `SH ${idMap.get(op.child)} ${op.thickness}`;
+      return `SH ${idMap.get(op.child)} ${op.thickness}${nameSuffix}`;
+    case 'Fillet':
+      return `FI ${idMap.get(op.child)} ${op.radius}${nameSuffix}`;
+    case 'Chamfer':
+      return `CH ${idMap.get(op.child)} ${op.distance}${nameSuffix}`;
     case 'Sketch2D': {
-      const lines: string[] = [];
-      lines.push(`SK ${op.origin.x} ${op.origin.y} ${op.origin.z}  ${op.x_dir.x} ${op.x_dir.y} ${op.x_dir.z}  ${op.y_dir.x} ${op.y_dir.y} ${op.y_dir.z}`);
+      const skLines: string[] = [];
+      skLines.push(`SK ${op.origin.x} ${op.origin.y} ${op.origin.z}  ${op.x_dir.x} ${op.x_dir.y} ${op.x_dir.z}  ${op.y_dir.x} ${op.y_dir.y} ${op.y_dir.z}${nameSuffix}`);
       for (const seg of op.segments) {
         if (seg.type === 'Line') {
-          lines.push(`L ${seg.start.x} ${seg.start.y} ${seg.end.x} ${seg.end.y}`);
+          skLines.push(`L ${seg.start.x} ${seg.start.y} ${seg.end.x} ${seg.end.y}`);
         } else {
-          lines.push(`A ${seg.start.x} ${seg.start.y} ${seg.end.x} ${seg.end.y} ${seg.center.x} ${seg.center.y} ${seg.ccw ? 1 : 0}`);
+          skLines.push(`A ${seg.start.x} ${seg.start.y} ${seg.end.x} ${seg.end.y} ${seg.center.x} ${seg.center.y} ${seg.ccw ? 1 : 0}`);
         }
       }
-      lines.push('END');
-      return lines.join('\n');
+      skLines.push('END');
+      return skLines.join('\n');
     }
     case 'Extrude':
-      return `E ${idMap.get(op.sketch)} ${op.direction.x} ${op.direction.y} ${op.direction.z}`;
+      return `E ${idMap.get(op.sketch)} ${op.direction.x} ${op.direction.y} ${op.direction.z}${nameSuffix}`;
     case 'Revolve':
-      return `V ${idMap.get(op.sketch)} ${op.axis_origin.x} ${op.axis_origin.y} ${op.axis_origin.z} ${op.axis_dir.x} ${op.axis_dir.y} ${op.axis_dir.z} ${op.angle_deg}`;
+      return `V ${idMap.get(op.sketch)} ${op.axis_origin.x} ${op.axis_origin.y} ${op.axis_origin.z} ${op.axis_dir.x} ${op.axis_dir.y} ${op.axis_dir.z} ${op.angle_deg}${nameSuffix}`;
     default:
       throw new Error(`Unsupported op type for compact IR: ${(op as CsgOp).type}`);
   }
 }
 
-/** Parse a single line of compact IR. Returns [op, newLineIndex]. */
-function parseLine(line: string, lineNum: number, lines: string[], currentIndex: number): [CsgOp, number] {
-  const parts = line.split(/\s+/);
+/** Format a joint. */
+function formatJoint(joint: Joint): string {
+  const parent = joint.parentInstanceId ? escapeId(joint.parentInstanceId) : '_';
+  const child = escapeId(joint.childInstanceId);
+  const pa = joint.parentAnchor;
+  const ca = joint.childAnchor;
+
+  switch (joint.kind.type) {
+    case 'Fixed':
+      return `JFIX ${escapeId(joint.id)} ${parent} ${child} ${pa.x} ${pa.y} ${pa.z} ${ca.x} ${ca.y} ${ca.z}`;
+    case 'Revolute': {
+      let line = `JREV ${escapeId(joint.id)} ${parent} ${child} ${pa.x} ${pa.y} ${pa.z} ${ca.x} ${ca.y} ${ca.z} ${joint.kind.axis.x} ${joint.kind.axis.y} ${joint.kind.axis.z}`;
+      if (joint.kind.limits) {
+        line += ` ${joint.kind.limits[0]} ${joint.kind.limits[1]}`;
+      }
+      return line;
+    }
+    case 'Slider': {
+      let line = `JSLD ${escapeId(joint.id)} ${parent} ${child} ${pa.x} ${pa.y} ${pa.z} ${ca.x} ${ca.y} ${ca.z} ${joint.kind.axis.x} ${joint.kind.axis.y} ${joint.kind.axis.z}`;
+      if (joint.kind.limits) {
+        line += ` ${joint.kind.limits[0]} ${joint.kind.limits[1]}`;
+      }
+      return line;
+    }
+    case 'Cylindrical':
+      return `JCYL ${escapeId(joint.id)} ${parent} ${child} ${pa.x} ${pa.y} ${pa.z} ${ca.x} ${ca.y} ${ca.z} ${joint.kind.axis.x} ${joint.kind.axis.y} ${joint.kind.axis.z}`;
+    case 'Ball':
+      return `JBAL ${escapeId(joint.id)} ${parent} ${child} ${pa.x} ${pa.y} ${pa.z} ${ca.x} ${ca.y} ${ca.z}`;
+  }
+}
+
+/** Format scene settings. */
+function formatSceneSettings(lines: string[], scene: SceneSettings): void {
+  if (scene.environment) {
+    if (scene.environment.type === 'Preset') {
+      lines.push(`ENV ${scene.environment.preset} ${scene.environment.intensity ?? 1.0}`);
+    } else {
+      lines.push(`ENV ${formatQuotedString(scene.environment.url)} ${scene.environment.intensity ?? 1.0}`);
+    }
+  }
+
+  if (scene.background) {
+    switch (scene.background.type) {
+      case 'Solid':
+        lines.push(`BG solid ${scene.background.color[0]} ${scene.background.color[1]} ${scene.background.color[2]}`);
+        break;
+      case 'Gradient':
+        lines.push(`BG gradient ${scene.background.top[0]} ${scene.background.top[1]} ${scene.background.top[2]} ${scene.background.bottom[0]} ${scene.background.bottom[1]} ${scene.background.bottom[2]}`);
+        break;
+      case 'Environment':
+        lines.push('BG env');
+        break;
+      case 'Transparent':
+        lines.push('BG transparent');
+        break;
+    }
+  }
+
+  if (scene.lights) {
+    for (const light of scene.lights) {
+      const c = light.color;
+      const i = light.intensity;
+      const shadow = light.castShadow ? ' shadow' : '';
+
+      switch (light.kind.type) {
+        case 'Directional':
+          lines.push(`LDIR ${escapeId(light.id)} ${c[0]} ${c[1]} ${c[2]} ${i} ${light.kind.direction.x} ${light.kind.direction.y} ${light.kind.direction.z}${shadow}`);
+          break;
+        case 'Point': {
+          let line = `LPNT ${escapeId(light.id)} ${c[0]} ${c[1]} ${c[2]} ${i} ${light.kind.position.x} ${light.kind.position.y} ${light.kind.position.z}`;
+          if (light.kind.distance !== undefined) {
+            line += ` ${light.kind.distance}`;
+          }
+          lines.push(line);
+          break;
+        }
+        case 'Spot': {
+          let line = `LSPT ${escapeId(light.id)} ${c[0]} ${c[1]} ${c[2]} ${i} ${light.kind.position.x} ${light.kind.position.y} ${light.kind.position.z} ${light.kind.direction.x} ${light.kind.direction.y} ${light.kind.direction.z}`;
+          if (light.kind.angle !== undefined) {
+            line += ` ${light.kind.angle}`;
+            if (light.kind.penumbra !== undefined) {
+              line += ` ${light.kind.penumbra}`;
+            }
+          }
+          lines.push(line);
+          break;
+        }
+        case 'Area':
+          lines.push(`LAREA ${escapeId(light.id)} ${c[0]} ${c[1]} ${c[2]} ${i} ${light.kind.position.x} ${light.kind.position.y} ${light.kind.position.z} ${light.kind.direction.x} ${light.kind.direction.y} ${light.kind.direction.z} ${light.kind.width} ${light.kind.height}`);
+          break;
+      }
+    }
+  }
+
+  if (scene.postProcessing) {
+    const pp = scene.postProcessing;
+    if (pp.ambientOcclusion) {
+      lines.push(`AO ${pp.ambientOcclusion.enabled ? 1 : 0} ${pp.ambientOcclusion.intensity ?? 1.0} ${pp.ambientOcclusion.radius ?? 1.0}`);
+    }
+    if (pp.bloom) {
+      lines.push(`BLOOM ${pp.bloom.enabled ? 1 : 0} ${pp.bloom.intensity ?? 0.5} ${pp.bloom.threshold ?? 0.8}`);
+    }
+    if (pp.vignette) {
+      lines.push(`VIG ${pp.vignette.enabled ? 1 : 0} ${pp.vignette.offset ?? 0.3} ${pp.vignette.darkness ?? 0.5}`);
+    }
+    if (pp.toneMapping) {
+      lines.push(`TONE ${pp.toneMapping}`);
+    }
+    if (pp.exposure !== undefined) {
+      lines.push(`EXP ${pp.exposure}`);
+    }
+  }
+
+  if (scene.cameraPresets) {
+    for (const cam of scene.cameraPresets) {
+      let line = `CAM ${escapeId(cam.id)} ${cam.position.x} ${cam.position.y} ${cam.position.z} ${cam.target.x} ${cam.target.y} ${cam.target.z}`;
+      if (cam.fov !== undefined) {
+        line += ` ${cam.fov}`;
+      }
+      if (cam.name) {
+        line += ` ${formatQuotedString(cam.name)}`;
+      }
+      lines.push(line);
+    }
+  }
+}
+
+// ============================================================================
+// Compact IR Parsing Functions
+// ============================================================================
+
+function parseMaterial(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 7) {
+    throw new CompactParseError(line, `M requires at least 6 args, got ${parts.length - 1}`);
+  }
+
+  const name = parseStringArg(parts[1]);
+  const color: [number, number, number] = [parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4])];
+  const metallic = parseFloat(parts[5]);
+  const roughness = parseFloat(parts[6]);
+  const density = parts[7] ? parseFloat(parts[7]) : undefined;
+  const friction = parts[8] ? parseFloat(parts[8]) : undefined;
+
+  doc.materials[name] = { name, color, metallic, roughness, density, friction };
+}
+
+function parseRoot(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 3) {
+    throw new CompactParseError(line, `ROOT requires at least 2 args, got ${parts.length - 1}`);
+  }
+
+  const root = parseInt(parts[1]);
+  const material = parseStringArg(parts[2]);
+  const visible = parts[3] === 'hidden' ? false : undefined;
+
+  doc.roots.push({ root, material, visible });
+}
+
+function parsePartDef(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 4) {
+    throw new CompactParseError(line, `PDEF requires at least 3 args, got ${parts.length - 1}`);
+  }
+
+  const id = parseStringArg(parts[1]);
+  const name = parseStringArg(parts[2]);
+  const root = parseInt(parts[3]);
+  const defaultMaterial = parts[4] ? parseStringArg(parts[4]) : undefined;
+
+  if (!doc.partDefs) doc.partDefs = {};
+  doc.partDefs[id] = { id, name, root, defaultMaterial };
+}
+
+function parseInstance(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 13) {
+    throw new CompactParseError(line, `INST requires at least 12 args, got ${parts.length - 1}`);
+  }
+
+  const id = parseStringArg(parts[1]);
+  const partDefId = parseStringArg(parts[2]);
+  const name = parseStringArg(parts[3]);
+  const transform: Transform3D = {
+    translation: { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) },
+    rotation: { x: parseFloat(parts[7]), y: parseFloat(parts[8]), z: parseFloat(parts[9]) },
+    scale: { x: parseFloat(parts[10]), y: parseFloat(parts[11]), z: parseFloat(parts[12]) },
+  };
+  const material = parts[13] ? parseStringArg(parts[13]) : undefined;
+
+  if (!doc.instances) doc.instances = [];
+  doc.instances.push({ id, partDefId, name, transform, material });
+}
+
+function parseJoint(doc: Document, opcode: string, parts: string[], line: number): void {
+  if (!doc.joints) doc.joints = [];
+
+  const parseOptionalParent = (s: string): string | null => s === '_' ? null : parseStringArg(s);
+
+  switch (opcode) {
+    case 'JFIX': {
+      if (parts.length < 10) {
+        throw new CompactParseError(line, `JFIX requires 9 args, got ${parts.length - 1}`);
+      }
+      doc.joints.push({
+        id: parseStringArg(parts[1]),
+        parentInstanceId: parseOptionalParent(parts[2]),
+        childInstanceId: parseStringArg(parts[3]),
+        parentAnchor: { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) },
+        childAnchor: { x: parseFloat(parts[7]), y: parseFloat(parts[8]), z: parseFloat(parts[9]) },
+        kind: { type: 'Fixed' },
+        state: 0,
+      });
+      break;
+    }
+    case 'JREV': {
+      if (parts.length < 13) {
+        throw new CompactParseError(line, `JREV requires at least 12 args, got ${parts.length - 1}`);
+      }
+      const limits: [number, number] | undefined = parts.length >= 15
+        ? [parseFloat(parts[13]), parseFloat(parts[14])]
+        : undefined;
+      doc.joints.push({
+        id: parseStringArg(parts[1]),
+        parentInstanceId: parseOptionalParent(parts[2]),
+        childInstanceId: parseStringArg(parts[3]),
+        parentAnchor: { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) },
+        childAnchor: { x: parseFloat(parts[7]), y: parseFloat(parts[8]), z: parseFloat(parts[9]) },
+        kind: {
+          type: 'Revolute',
+          axis: { x: parseFloat(parts[10]), y: parseFloat(parts[11]), z: parseFloat(parts[12]) },
+          limits,
+        },
+        state: 0,
+      });
+      break;
+    }
+    case 'JSLD': {
+      if (parts.length < 13) {
+        throw new CompactParseError(line, `JSLD requires at least 12 args, got ${parts.length - 1}`);
+      }
+      const limits: [number, number] | undefined = parts.length >= 15
+        ? [parseFloat(parts[13]), parseFloat(parts[14])]
+        : undefined;
+      doc.joints.push({
+        id: parseStringArg(parts[1]),
+        parentInstanceId: parseOptionalParent(parts[2]),
+        childInstanceId: parseStringArg(parts[3]),
+        parentAnchor: { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) },
+        childAnchor: { x: parseFloat(parts[7]), y: parseFloat(parts[8]), z: parseFloat(parts[9]) },
+        kind: {
+          type: 'Slider',
+          axis: { x: parseFloat(parts[10]), y: parseFloat(parts[11]), z: parseFloat(parts[12]) },
+          limits,
+        },
+        state: 0,
+      });
+      break;
+    }
+    case 'JCYL': {
+      if (parts.length < 13) {
+        throw new CompactParseError(line, `JCYL requires 12 args, got ${parts.length - 1}`);
+      }
+      doc.joints.push({
+        id: parseStringArg(parts[1]),
+        parentInstanceId: parseOptionalParent(parts[2]),
+        childInstanceId: parseStringArg(parts[3]),
+        parentAnchor: { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) },
+        childAnchor: { x: parseFloat(parts[7]), y: parseFloat(parts[8]), z: parseFloat(parts[9]) },
+        kind: {
+          type: 'Cylindrical',
+          axis: { x: parseFloat(parts[10]), y: parseFloat(parts[11]), z: parseFloat(parts[12]) },
+        },
+        state: 0,
+      });
+      break;
+    }
+    case 'JBAL': {
+      if (parts.length < 10) {
+        throw new CompactParseError(line, `JBAL requires 9 args, got ${parts.length - 1}`);
+      }
+      doc.joints.push({
+        id: parseStringArg(parts[1]),
+        parentInstanceId: parseOptionalParent(parts[2]),
+        childInstanceId: parseStringArg(parts[3]),
+        parentAnchor: { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) },
+        childAnchor: { x: parseFloat(parts[7]), y: parseFloat(parts[8]), z: parseFloat(parts[9]) },
+        kind: { type: 'Ball' },
+        state: 0,
+      });
+      break;
+    }
+  }
+}
+
+function parseEnvironment(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 3) {
+    throw new CompactParseError(line, `ENV requires 2 args, got ${parts.length - 1}`);
+  }
+
+  if (!doc.scene) doc.scene = {};
+  const presetOrUrl = parseStringArg(parts[1]);
+  const intensity = parseFloat(parts[2]);
+
+  const presets = ['studio', 'warehouse', 'apartment', 'park', 'city', 'dawn', 'night', 'sunset', 'forest', 'neutral'];
+  if (presets.includes(presetOrUrl)) {
+    doc.scene.environment = { type: 'Preset', preset: presetOrUrl as EnvironmentPreset, intensity };
+  } else {
+    doc.scene.environment = { type: 'Custom', url: presetOrUrl, intensity };
+  }
+}
+
+function parseBackground(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 2) {
+    throw new CompactParseError(line, 'BG requires at least 1 arg');
+  }
+
+  if (!doc.scene) doc.scene = {};
+
+  switch (parts[1]) {
+    case 'solid':
+      if (parts.length < 5) {
+        throw new CompactParseError(line, 'BG solid requires 3 color values');
+      }
+      doc.scene.background = { type: 'Solid', color: [parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4])] };
+      break;
+    case 'gradient':
+      if (parts.length < 8) {
+        throw new CompactParseError(line, 'BG gradient requires 6 color values');
+      }
+      doc.scene.background = {
+        type: 'Gradient',
+        top: [parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4])],
+        bottom: [parseFloat(parts[5]), parseFloat(parts[6]), parseFloat(parts[7])],
+      };
+      break;
+    case 'env':
+      doc.scene.background = { type: 'Environment' };
+      break;
+    case 'transparent':
+      doc.scene.background = { type: 'Transparent' };
+      break;
+    default:
+      throw new CompactParseError(line, `Unknown BG type: ${parts[1]}`);
+  }
+}
+
+function parseLight(doc: Document, opcode: string, parts: string[], line: number): void {
+  if (!doc.scene) doc.scene = {};
+  if (!doc.scene.lights) doc.scene.lights = [];
+
+  switch (opcode) {
+    case 'LDIR': {
+      if (parts.length < 9) {
+        throw new CompactParseError(line, `LDIR requires at least 8 args, got ${parts.length - 1}`);
+      }
+      const castShadow = parts[9] === 'shadow';
+      doc.scene.lights.push({
+        id: parseStringArg(parts[1]),
+        color: [parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4])],
+        intensity: parseFloat(parts[5]),
+        kind: { type: 'Directional', direction: { x: parseFloat(parts[6]), y: parseFloat(parts[7]), z: parseFloat(parts[8]) } },
+        enabled: true,
+        castShadow: castShadow || undefined,
+      });
+      break;
+    }
+    case 'LPNT': {
+      if (parts.length < 9) {
+        throw new CompactParseError(line, `LPNT requires at least 8 args, got ${parts.length - 1}`);
+      }
+      const distance = parts[9] ? parseFloat(parts[9]) : undefined;
+      doc.scene.lights.push({
+        id: parseStringArg(parts[1]),
+        color: [parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4])],
+        intensity: parseFloat(parts[5]),
+        kind: { type: 'Point', position: { x: parseFloat(parts[6]), y: parseFloat(parts[7]), z: parseFloat(parts[8]) }, distance },
+        enabled: true,
+      });
+      break;
+    }
+    case 'LSPT': {
+      if (parts.length < 12) {
+        throw new CompactParseError(line, `LSPT requires at least 11 args, got ${parts.length - 1}`);
+      }
+      const angle = parts[12] ? parseFloat(parts[12]) : undefined;
+      const penumbra = parts[13] ? parseFloat(parts[13]) : undefined;
+      doc.scene.lights.push({
+        id: parseStringArg(parts[1]),
+        color: [parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4])],
+        intensity: parseFloat(parts[5]),
+        kind: {
+          type: 'Spot',
+          position: { x: parseFloat(parts[6]), y: parseFloat(parts[7]), z: parseFloat(parts[8]) },
+          direction: { x: parseFloat(parts[9]), y: parseFloat(parts[10]), z: parseFloat(parts[11]) },
+          angle,
+          penumbra,
+        },
+        enabled: true,
+      });
+      break;
+    }
+    case 'LAREA': {
+      if (parts.length < 14) {
+        throw new CompactParseError(line, `LAREA requires 13 args, got ${parts.length - 1}`);
+      }
+      doc.scene.lights.push({
+        id: parseStringArg(parts[1]),
+        color: [parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4])],
+        intensity: parseFloat(parts[5]),
+        kind: {
+          type: 'Area',
+          position: { x: parseFloat(parts[6]), y: parseFloat(parts[7]), z: parseFloat(parts[8]) },
+          direction: { x: parseFloat(parts[9]), y: parseFloat(parts[10]), z: parseFloat(parts[11]) },
+          width: parseFloat(parts[12]),
+          height: parseFloat(parts[13]),
+        },
+        enabled: true,
+      });
+      break;
+    }
+  }
+}
+
+function parseAO(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 4) {
+    throw new CompactParseError(line, `AO requires 3 args, got ${parts.length - 1}`);
+  }
+
+  if (!doc.scene) doc.scene = {};
+  if (!doc.scene.postProcessing) doc.scene.postProcessing = {};
+
+  doc.scene.postProcessing.ambientOcclusion = {
+    enabled: parseInt(parts[1]) !== 0,
+    intensity: parseFloat(parts[2]),
+    radius: parseFloat(parts[3]),
+  };
+}
+
+function parseBloom(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 4) {
+    throw new CompactParseError(line, `BLOOM requires 3 args, got ${parts.length - 1}`);
+  }
+
+  if (!doc.scene) doc.scene = {};
+  if (!doc.scene.postProcessing) doc.scene.postProcessing = {};
+
+  doc.scene.postProcessing.bloom = {
+    enabled: parseInt(parts[1]) !== 0,
+    intensity: parseFloat(parts[2]),
+    threshold: parseFloat(parts[3]),
+  };
+}
+
+function parseVignette(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 4) {
+    throw new CompactParseError(line, `VIG requires 3 args, got ${parts.length - 1}`);
+  }
+
+  if (!doc.scene) doc.scene = {};
+  if (!doc.scene.postProcessing) doc.scene.postProcessing = {};
+
+  doc.scene.postProcessing.vignette = {
+    enabled: parseInt(parts[1]) !== 0,
+    offset: parseFloat(parts[2]),
+    darkness: parseFloat(parts[3]),
+  };
+}
+
+function parseToneMapping(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 2) {
+    throw new CompactParseError(line, 'TONE requires 1 arg');
+  }
+
+  if (!doc.scene) doc.scene = {};
+  if (!doc.scene.postProcessing) doc.scene.postProcessing = {};
+
+  const validMappings = ['none', 'reinhard', 'cineon', 'acesFilmic', 'agX', 'neutral'];
+  if (!validMappings.includes(parts[1])) {
+    throw new CompactParseError(line, `Unknown tone mapping: ${parts[1]}`);
+  }
+  doc.scene.postProcessing.toneMapping = parts[1] as ToneMapping;
+}
+
+function parseExposure(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 2) {
+    throw new CompactParseError(line, 'EXP requires 1 arg');
+  }
+
+  if (!doc.scene) doc.scene = {};
+  if (!doc.scene.postProcessing) doc.scene.postProcessing = {};
+
+  doc.scene.postProcessing.exposure = parseFloat(parts[1]);
+}
+
+function parseCamera(doc: Document, parts: string[], line: number): void {
+  if (parts.length < 8) {
+    throw new CompactParseError(line, `CAM requires at least 7 args, got ${parts.length - 1}`);
+  }
+
+  if (!doc.scene) doc.scene = {};
+  if (!doc.scene.cameraPresets) doc.scene.cameraPresets = [];
+
+  const fov = parts[8] ? parseFloat(parts[8]) : undefined;
+  const name = parts[9] ? parseStringArg(parts[9]) : undefined;
+
+  doc.scene.cameraPresets.push({
+    id: parseStringArg(parts[1]),
+    position: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) },
+    target: { x: parseFloat(parts[5]), y: parseFloat(parts[6]), z: parseFloat(parts[7]) },
+    fov,
+    name,
+  });
+}
+
+/** Parse a geometry line. Returns [op, name, newLineIndex]. */
+function parseGeometryLine(line: string, lineNum: number, lines: string[]): [CsgOp, string | undefined, number] {
+  const parts = splitLineRespectingQuotes(line);
+  if (parts.length === 0) {
+    throw new CompactParseError(lineNum, 'empty line');
+  }
+
   const opcode = parts[0];
 
+  // Extract trailing quoted name if present
+  let name: string | undefined;
+  let args = parts;
+  const last = parts[parts.length - 1];
+  if (last.startsWith('"') && last.endsWith('"')) {
+    name = parseStringArg(last);
+    args = parts.slice(0, -1);
+  }
+
+  const op = parseGeometryOpcode(opcode, args, lineNum, lines);
+  const newIndex = opcode === 'SK' ? findSketchEndLine(lineNum, lines) : lineNum;
+
+  return [op, name, newIndex];
+}
+
+/** Find the END line for a sketch. */
+function findSketchEndLine(startLine: number, lines: string[]): number {
+  for (let i = startLine + 1; i < lines.length; i++) {
+    if (lines[i].trim() === 'END') {
+      return i;
+    }
+  }
+  return startLine;
+}
+
+/** Parse a geometry opcode. */
+function parseGeometryOpcode(opcode: string, parts: string[], lineNum: number, lines: string[]): CsgOp {
   switch (opcode) {
     case 'C':
       if (parts.length !== 4) throw new CompactParseError(lineNum, `C requires 3 args, got ${parts.length - 1}`);
-      return [{ type: 'Cube', size: { x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) } }, currentIndex];
+      return { type: 'Cube', size: { x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) } };
 
     case 'Y':
       if (parts.length !== 3) throw new CompactParseError(lineNum, `Y requires 2 args, got ${parts.length - 1}`);
-      return [{ type: 'Cylinder', radius: parseFloat(parts[1]), height: parseFloat(parts[2]), segments: 0 }, currentIndex];
+      return { type: 'Cylinder', radius: parseFloat(parts[1]), height: parseFloat(parts[2]), segments: 0 };
 
     case 'S':
       if (parts.length !== 2) throw new CompactParseError(lineNum, `S requires 1 arg, got ${parts.length - 1}`);
-      return [{ type: 'Sphere', radius: parseFloat(parts[1]), segments: 0 }, currentIndex];
+      return { type: 'Sphere', radius: parseFloat(parts[1]), segments: 0 };
 
     case 'K':
       if (parts.length !== 4) throw new CompactParseError(lineNum, `K requires 3 args, got ${parts.length - 1}`);
-      return [{ type: 'Cone', radius_bottom: parseFloat(parts[1]), radius_top: parseFloat(parts[2]), height: parseFloat(parts[3]), segments: 0 }, currentIndex];
+      return { type: 'Cone', radius_bottom: parseFloat(parts[1]), radius_top: parseFloat(parts[2]), height: parseFloat(parts[3]), segments: 0 };
 
     case 'U':
       if (parts.length !== 3) throw new CompactParseError(lineNum, `U requires 2 args, got ${parts.length - 1}`);
-      return [{ type: 'Union', left: parseInt(parts[1]), right: parseInt(parts[2]) }, currentIndex];
+      return { type: 'Union', left: parseInt(parts[1]), right: parseInt(parts[2]) };
 
     case 'D':
       if (parts.length !== 3) throw new CompactParseError(lineNum, `D requires 2 args, got ${parts.length - 1}`);
-      return [{ type: 'Difference', left: parseInt(parts[1]), right: parseInt(parts[2]) }, currentIndex];
+      return { type: 'Difference', left: parseInt(parts[1]), right: parseInt(parts[2]) };
 
     case 'I':
       if (parts.length !== 3) throw new CompactParseError(lineNum, `I requires 2 args, got ${parts.length - 1}`);
-      return [{ type: 'Intersection', left: parseInt(parts[1]), right: parseInt(parts[2]) }, currentIndex];
+      return { type: 'Intersection', left: parseInt(parts[1]), right: parseInt(parts[2]) };
 
     case 'T':
       if (parts.length !== 5) throw new CompactParseError(lineNum, `T requires 4 args, got ${parts.length - 1}`);
-      return [{ type: 'Translate', child: parseInt(parts[1]), offset: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } }, currentIndex];
+      return { type: 'Translate', child: parseInt(parts[1]), offset: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } };
 
     case 'R':
       if (parts.length !== 5) throw new CompactParseError(lineNum, `R requires 4 args, got ${parts.length - 1}`);
-      return [{ type: 'Rotate', child: parseInt(parts[1]), angles: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } }, currentIndex];
+      return { type: 'Rotate', child: parseInt(parts[1]), angles: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } };
 
     case 'X':
       if (parts.length !== 5) throw new CompactParseError(lineNum, `X requires 4 args, got ${parts.length - 1}`);
-      return [{ type: 'Scale', child: parseInt(parts[1]), factor: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } }, currentIndex];
+      return { type: 'Scale', child: parseInt(parts[1]), factor: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } };
 
     case 'LP':
       if (parts.length !== 7) throw new CompactParseError(lineNum, `LP requires 6 args, got ${parts.length - 1}`);
-      return [{ type: 'LinearPattern', child: parseInt(parts[1]), direction: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) }, count: parseInt(parts[5]), spacing: parseFloat(parts[6]) }, currentIndex];
+      return { type: 'LinearPattern', child: parseInt(parts[1]), direction: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) }, count: parseInt(parts[5]), spacing: parseFloat(parts[6]) };
 
     case 'CP':
       if (parts.length !== 10) throw new CompactParseError(lineNum, `CP requires 9 args, got ${parts.length - 1}`);
-      return [{ type: 'CircularPattern', child: parseInt(parts[1]), axis_origin: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) }, axis_dir: { x: parseFloat(parts[5]), y: parseFloat(parts[6]), z: parseFloat(parts[7]) }, count: parseInt(parts[8]), angle_deg: parseFloat(parts[9]) }, currentIndex];
+      return { type: 'CircularPattern', child: parseInt(parts[1]), axis_origin: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) }, axis_dir: { x: parseFloat(parts[5]), y: parseFloat(parts[6]), z: parseFloat(parts[7]) }, count: parseInt(parts[8]), angle_deg: parseFloat(parts[9]) };
 
     case 'SH':
       if (parts.length !== 3) throw new CompactParseError(lineNum, `SH requires 2 args, got ${parts.length - 1}`);
-      return [{ type: 'Shell', child: parseInt(parts[1]), thickness: parseFloat(parts[2]) }, currentIndex];
+      return { type: 'Shell', child: parseInt(parts[1]), thickness: parseFloat(parts[2]) };
+
+    case 'FI':
+      if (parts.length !== 3) throw new CompactParseError(lineNum, `FI requires 2 args, got ${parts.length - 1}`);
+      return { type: 'Fillet', child: parseInt(parts[1]), radius: parseFloat(parts[2]) };
+
+    case 'CH':
+      if (parts.length !== 3) throw new CompactParseError(lineNum, `CH requires 2 args, got ${parts.length - 1}`);
+      return { type: 'Chamfer', child: parseInt(parts[1]), distance: parseFloat(parts[2]) };
 
     case 'SK': {
       if (parts.length !== 10) throw new CompactParseError(lineNum, `SK requires 9 args, got ${parts.length - 1}`);
@@ -943,14 +1770,10 @@ function parseLine(line: string, lineNum: number, lines: string[], currentIndex:
       const y_dir = { x: parseFloat(parts[7]), y: parseFloat(parts[8]), z: parseFloat(parts[9]) };
       const segments: SketchSegment2D[] = [];
 
-      let idx = currentIndex + 1;
-      while (idx < lines.length) {
+      for (let idx = lineNum + 1; idx < lines.length; idx++) {
         const segLine = lines[idx].trim();
         if (segLine === 'END') break;
-        if (!segLine || segLine.startsWith('#')) {
-          idx++;
-          continue;
-        }
+        if (!segLine || segLine.startsWith('#')) continue;
 
         const segParts = segLine.split(/\s+/);
         if (segParts[0] === 'L') {
@@ -972,19 +1795,18 @@ function parseLine(line: string, lineNum: number, lines: string[], currentIndex:
         } else {
           throw new CompactParseError(idx, `Unknown sketch segment opcode: ${segParts[0]}`);
         }
-        idx++;
       }
 
-      return [{ type: 'Sketch2D', origin, x_dir, y_dir, segments }, idx];
+      return { type: 'Sketch2D', origin, x_dir, y_dir, segments };
     }
 
     case 'E':
       if (parts.length !== 5) throw new CompactParseError(lineNum, `E requires 4 args, got ${parts.length - 1}`);
-      return [{ type: 'Extrude', sketch: parseInt(parts[1]), direction: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } }, currentIndex];
+      return { type: 'Extrude', sketch: parseInt(parts[1]), direction: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) } };
 
     case 'V':
       if (parts.length !== 9) throw new CompactParseError(lineNum, `V requires 8 args, got ${parts.length - 1}`);
-      return [{ type: 'Revolve', sketch: parseInt(parts[1]), axis_origin: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) }, axis_dir: { x: parseFloat(parts[5]), y: parseFloat(parts[6]), z: parseFloat(parts[7]) }, angle_deg: parseFloat(parts[8]) }, currentIndex];
+      return { type: 'Revolve', sketch: parseInt(parts[1]), axis_origin: { x: parseFloat(parts[2]), y: parseFloat(parts[3]), z: parseFloat(parts[4]) }, axis_dir: { x: parseFloat(parts[5]), y: parseFloat(parts[6]), z: parseFloat(parts[7]) }, angle_deg: parseFloat(parts[8]) };
 
     default:
       throw new CompactParseError(lineNum, `Unknown opcode: ${opcode}`);

@@ -607,7 +607,7 @@ pub enum ToneMapping {
 }
 
 /// Post-processing effects configuration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PostProcessing {
     /// Ambient occlusion settings.
@@ -645,7 +645,7 @@ pub struct CameraPreset {
 }
 
 /// Scene-wide settings for lighting, environment, and rendering.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneSettings {
     /// Environment lighting configuration.

@@ -211,7 +211,10 @@ describe("Compact IR", () => {
       doc.roots.push({ root: 0, material: "default" });
 
       const compact = toCompact(doc);
-      expect(compact).toBe("C 50 30 5");
+      // v0.2 format includes header, geometry section, and scene roots
+      expect(compact).toContain("# vcad 0.2");
+      expect(compact).toContain("C 50 30 5");
+      expect(compact).toContain("ROOT 0 default");
     });
 
     it("roundtrips plate with hole", () => {
@@ -234,18 +237,18 @@ describe("Compact IR", () => {
       doc.roots.push({ root: 3, material: "default" });
 
       const compact = toCompact(doc);
-      const lines = compact.split('\n');
-      expect(lines).toHaveLength(4);
-      expect(lines[0]).toBe("C 10 20 30");
-      expect(lines[1]).toBe("Y 5 15");
-      expect(lines[2]).toBe("S 8");
-      expect(lines[3]).toBe("K 5 2 20");
+      // v0.2 format includes header and sections, check for content
+      expect(compact).toContain("C 10 20 30");
+      expect(compact).toContain("Y 5 15");
+      expect(compact).toContain("S 8");
+      expect(compact).toContain("K 5 2 20");
     });
 
     it("handles empty document", () => {
       const doc = createDocument();
       const compact = toCompact(doc);
-      expect(compact).toBe("");
+      // Empty document still has version header
+      expect(compact).toBe("# vcad 0.2");
     });
   });
 
