@@ -242,9 +242,10 @@ export function evaluateDocument(
     console.log("Roots:", JSON.stringify(doc.roots, null, 2));
   }
 
-  // Traditional mode: evaluate roots
+  // Traditional mode: evaluate roots (filter out hidden parts)
+  const visibleRoots = doc.roots.filter((entry) => entry.visible !== false);
   const solids: Solid[] = [];
-  const parts = doc.roots.map((entry, idx) => {
+  const parts = visibleRoots.map((entry, idx) => {
     const node = doc.nodes[String(entry.root)];
     if (DEBUG_EVAL) {
       console.group(`[ENGINE] Evaluating root[${idx}] nodeId=${entry.root}`);
