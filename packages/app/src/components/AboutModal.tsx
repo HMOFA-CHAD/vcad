@@ -11,6 +11,7 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useDocumentStore, useSketchStore, useUiStore } from "@vcad/core";
+import { useChangelogStore } from "@/stores/changelog-store";
 
 const QUICK_ACTIONS = [
   {
@@ -61,6 +62,7 @@ export function AboutModal({
   const select = useUiStore((s) => s.select);
   const setTransformMode = useUiStore((s) => s.setTransformMode);
   const enterSketchMode = useSketchStore((s) => s.enterSketchMode);
+  const openWhatsNew = useChangelogStore((s) => s.openPanel);
 
   function handleAction(id: string) {
     onOpenChange(false);
@@ -168,9 +170,16 @@ export function AboutModal({
               <ChatCircle size={14} />
               <span>Discord</span>
             </a>
-            <span className="text-text-muted/50">
+            <button
+              onClick={() => {
+                openWhatsNew();
+                onOpenChange(false);
+              }}
+              className="text-text-muted/50 hover:text-accent transition-colors"
+              title="What's new"
+            >
               v{__APP_VERSION__}
-            </span>
+            </button>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
