@@ -12,6 +12,7 @@ import { createCadDocument, createCadDocumentSchema } from "./tools/create.js";
 import { exportCad, exportCadSchema } from "./tools/export.js";
 import { inspectCad, inspectCadSchema } from "./tools/inspect.js";
 import { importStep, importStepSchema } from "./tools/import.js";
+import { openInBrowser, openInBrowserSchema } from "./tools/share.js";
 import {
   createRobotEnv,
   createRobotEnvSchema,
@@ -80,6 +81,15 @@ export async function createServer(): Promise<Server> {
         inputSchema: importStepSchema,
       },
       {
+        name: "open_in_browser",
+        description:
+          "Generate a shareable URL to open a CAD document in vcad.io. " +
+          "Takes an IR document (JSON or compact format) and returns a URL that opens the document in the browser. " +
+          "Documents are compressed (gzip + base64url) for URL embedding. " +
+          "Note: Very large documents may exceed URL length limits (~2KB).",
+        inputSchema: openInBrowserSchema,
+      },
+      {
         name: "create_robot_env",
         description:
           "Create a physics simulation environment from a vcad assembly. " +
@@ -133,6 +143,9 @@ export async function createServer(): Promise<Server> {
 
         case "import_step":
           return importStep(args, engine);
+
+        case "open_in_browser":
+          return openInBrowser(args);
 
         case "create_robot_env":
           return await createRobotEnv(args);

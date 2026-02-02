@@ -45,6 +45,7 @@ import {
   loadDocument as loadDocumentFromDb,
   generateDocumentName,
 } from "@/lib/storage";
+import { loadDocumentFromUrl } from "@/lib/url-document";
 import {
   isGpuAvailable,
   processGeometryGpu,
@@ -388,6 +389,17 @@ export function App() {
 
     async function initDocument() {
       try {
+        // First, check for document in URL (shared link)
+        const urlDoc = await loadDocumentFromUrl();
+        if (urlDoc) {
+          const id = crypto.randomUUID();
+          useDocumentStore.getState().loadDocument(urlDoc.file);
+          useDocumentStore.getState().setDocumentMeta(id, urlDoc.name);
+          useNotificationStore.getState().addToast("Loaded shared document", "success");
+          setInitialized(true);
+          return;
+        }
+
         // Try to restore most recent document
         const recent = await getMostRecentDocument();
         if (recent) {
