@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useDocumentStore } from "@vcad/core";
 import { useNotificationStore } from "@/stores/notification-store";
 import {
@@ -21,7 +21,7 @@ export function useAutoSave() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const hasLockRef = useRef(false);
+  const [hasLock, setHasLock] = useState(false);
 
   const save = useCallback(async () => {
     if (!documentId) return;
@@ -67,10 +67,9 @@ export function useAutoSave() {
 
   // Acquire lock when document changes
   useEffect(() => {
-    if (!documentId) {
-      hasLockRef.current = false;
-      return;
-    }
+    // Reset lock state on document change to avoid stale true.
+    setHasLock(false);
+    if (!documentId) return;
 
     let cancelled = false;
 
@@ -85,34 +84,35 @@ export function useAutoSave() {
           5000
         );
       }
-      hasLockRef.current = acquired;
+      setHasLock(acquired);
     }
 
     tryAcquireLock();
 
     return () => {
       cancelled = true;
-      if (hasLockRef.current && documentId) {
+      if (documentId) {
         releaseLock(documentId);
-        hasLockRef.current = false;
       }
     };
   }, [documentId]);
 
   // Periodically refresh lock
   useEffect(() => {
-    if (!documentId || !hasLockRef.current) return;
+    if (!documentId || !hasLock) return;
 
     lockRefreshRef.current = setInterval(async () => {
-      if (hasLockRef.current) {
-        const refreshed = await refreshLock(documentId);
-        if (!refreshed) {
-          hasLockRef.current = false;
-          useNotificationStore.getState().addToast(
-            "Lost document lock - another tab may have taken control",
-            "error"
-          );
+      const refreshed = await refreshLock(documentId);
+      if (!refreshed) {
+        setHasLock(false);
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+          debounceRef.current = null;
         }
+        useNotificationStore.getState().addToast(
+          "Lost document lock - another tab may have taken control",
+          "error"
+        );
       }
     }, LOCK_REFRESH_MS);
 
@@ -122,11 +122,11 @@ export function useAutoSave() {
         lockRefreshRef.current = null;
       }
     };
-  }, [documentId]);
+  }, [documentId, hasLock]);
 
   // Debounced auto-save when dirty
   useEffect(() => {
-    if (!isDirty || !documentId || !hasLockRef.current) return;
+    if (!isDirty || !documentId || !hasLock) return;
 
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -142,7 +142,7 @@ export function useAutoSave() {
         debounceRef.current = null;
       }
     };
-  }, [isDirty, documentId, save]);
+  }, [isDirty, documentId, save, hasLock]);
 
   return { save };
 }
