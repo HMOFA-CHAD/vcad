@@ -2,15 +2,58 @@
 /* eslint-disable */
 
 /**
- * Stub PhysicsSim when physics feature is not enabled.
+ * Physics simulation for robot assemblies.
+ *
+ * When compiled without the physics feature, only the constructor is available
+ * and it will throw an error. Use isPhysicsAvailable() to check at runtime.
  */
 export class PhysicsSim {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Returns an error when physics feature is not enabled.
+     * Create a new physics simulation from a vcad document JSON.
      */
-    constructor(_doc_json: string, _end_effector_ids: string[], _dt?: number | null, _substeps?: number | null);
+    constructor(doc_json: string, end_effector_ids: string[], dt?: number | null, substeps?: number | null);
+    /**
+     * Reset the environment to initial state.
+     */
+    reset(): any;
+    /**
+     * Step the simulation with torque action.
+     */
+    stepTorque(torques: Float64Array): any;
+    /**
+     * Step the simulation with position targets.
+     */
+    stepPosition(targets: Float64Array): any;
+    /**
+     * Step the simulation with velocity targets.
+     */
+    stepVelocity(targets: Float64Array): any;
+    /**
+     * Get current observation without stepping.
+     */
+    observe(): any;
+    /**
+     * Get the number of joints.
+     */
+    numJoints(): number;
+    /**
+     * Get the observation dimension.
+     */
+    observationDim(): number;
+    /**
+     * Get the action dimension.
+     */
+    actionDim(): number;
+    /**
+     * Set the maximum episode length.
+     */
+    setMaxSteps(max_steps: number): void;
+    /**
+     * Set the random seed.
+     */
+    setSeed(seed: bigint): void;
 }
 
 /**
