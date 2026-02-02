@@ -125,6 +125,7 @@ impl<'a> UrdfReader<'a> {
                     doc.roots.push(SceneEntry {
                         root: part_def.root,
                         material: "default".to_string(),
+                        visible: None,
                     });
                 }
             }

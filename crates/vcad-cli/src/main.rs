@@ -288,6 +288,7 @@ fn import_step(input: &PathBuf, output: &PathBuf, name: Option<String>) -> Resul
         doc.roots.push(vcad_ir::SceneEntry {
             root: node_id,
             material: "default".to_string(),
+            visible: None,
         });
     }
 

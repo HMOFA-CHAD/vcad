@@ -496,6 +496,7 @@ mod tests {
         doc.roots.push(vcad_ir::SceneEntry {
             root: 1,
             material: "default".to_string(),
+            visible: None,
         });
 
         let urdf = write_urdf_to_string(&doc).unwrap();

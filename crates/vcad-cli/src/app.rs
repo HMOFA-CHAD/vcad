@@ -141,6 +141,7 @@ impl App {
         self.document.roots.push(SceneEntry {
             root: id,
             material: "default".to_string(),
+            visible: None,
         });
         self.evaluate()?;
         self.status = format!("Added cube {}", id);
@@ -166,6 +167,7 @@ impl App {
         self.document.roots.push(SceneEntry {
             root: id,
             material: "default".to_string(),
+            visible: None,
         });
         self.evaluate()?;
         self.status = format!("Added cylinder {}", id);
@@ -190,6 +192,7 @@ impl App {
         self.document.roots.push(SceneEntry {
             root: id,
             material: "default".to_string(),
+            visible: None,
         });
         self.evaluate()?;
         self.status = format!("Added sphere {}", id);

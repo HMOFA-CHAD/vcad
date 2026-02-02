@@ -366,6 +366,7 @@ impl Part {
         doc.roots.push(SceneEntry {
             root: self.ir_node_id,
             material: "default".to_string(),
+            visible: None,
         });
         doc
     }
@@ -833,6 +834,7 @@ impl Scene {
             doc.roots.push(SceneEntry {
                 root: scene_node.part.ir_node_id,
                 material: scene_node.material_key.clone(),
+                visible: None,
             });
         }
         doc
