@@ -95,20 +95,33 @@ function cleanGeneratedIR(text: string): string {
     "M", "ROOT", "PDEF", "INST", "END",
   ];
 
+  // Minimum args required for each opcode
+  const minArgs: Record<string, number> = {
+    C: 3, Y: 2, S: 1, K: 3, T: 4, R: 4, X: 4,
+    U: 2, D: 2, I: 2, SH: 2, FI: 2, CH: 2,
+    LP: 4, CP: 4, SK: 1, L: 4, A: 7, E: 2, V: 2,
+    M: 4, ROOT: 1, PDEF: 1, INST: 2, END: 0,
+  };
+
   const validLines: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) {
-      validLines.push(line);
-      continue;
+      continue; // Skip empty lines and comments
     }
-    const opcode = trimmed.split(/\s+/)[0] ?? "";
-    if (validOpcodes.includes(opcode)) {
-      validLines.push(line);
-    } else {
-      // Stop at first invalid line
+    const parts = trimmed.split(/\s+/);
+    const opcode = parts[0] ?? "";
+    if (!validOpcodes.includes(opcode)) {
+      // Stop at first invalid opcode
       break;
     }
+    // Check if line has enough arguments
+    const required = minArgs[opcode] ?? 0;
+    if (parts.length < required + 1) {
+      // Incomplete line - skip it (likely truncated)
+      break;
+    }
+    validLines.push(line);
   }
 
   return validLines.join("\n").trim();

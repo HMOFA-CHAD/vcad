@@ -248,7 +248,7 @@ function CommandDropdown() {
 
       const result = await generateCADServer(prompt, {
         temperature: 0.1,
-        maxTokens: 128,
+        maxTokens: 256,
       });
 
       store.updateAIProgress(progressId, 1, 80);

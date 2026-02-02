@@ -396,7 +396,7 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
 
       const result = await generateCADServer(prompt, {
         temperature: 0.1,
-        maxTokens: 128,
+        maxTokens: 256,
       });
 
       // Stage 2: Building geometry
