@@ -11,6 +11,7 @@ import { Engine } from "@vcad/engine";
 import { createCadDocument, createCadDocumentSchema } from "./tools/create.js";
 import { exportCad, exportCadSchema } from "./tools/export.js";
 import { inspectCad, inspectCadSchema } from "./tools/inspect.js";
+import { importStep, importStepSchema } from "./tools/import.js";
 import {
   createRobotEnv,
   createRobotEnvSchema,
@@ -47,17 +48,16 @@ export async function createServer(): Promise<Server> {
         name: "create_cad_document",
         description:
           "Create a CAD document from structured geometry input. Returns an IR document that can be exported or inspected.\n\n" +
-          "Primitive origins:\n" +
-          "- Cube: corner at (0,0,0), extends to (size.x, size.y, size.z)\n" +
-          "- Cylinder: base center at (0,0,0), height along +Z\n" +
-          "- Sphere: center at (0,0,0)\n" +
-          "- Cone: base center at (0,0,0), height along +Z\n\n" +
-          "Positioning:\n" +
-          "- Absolute: {x: 25, y: 15, z: 0}\n" +
-          "- Named: 'center', 'top-center', 'bottom-center'\n" +
-          "- Percentage: {x: '50%', y: '50%'}\n\n" +
-          "Hole operation: {type: 'hole', diameter: 3, at: 'center'} creates a vertical through-hole. " +
-          "Omit 'depth' for through-hole, or specify depth in mm for blind hole.",
+          "Part types (use ONE per part):\n" +
+          "- primitive: Basic shapes (cube, cylinder, sphere, cone)\n" +
+          "- extrude: Sketch (rectangle/circle/polygon) extruded to solid\n" +
+          "- revolve: Sketch revolved around an axis\n" +
+          "- sweep: Sketch swept along a path (line or helix)\n" +
+          "- loft: Interpolate between multiple sketches\n\n" +
+          "Operations: union, difference, intersection, translate, rotate, scale, " +
+          "linear_pattern, circular_pattern, hole, fillet, chamfer, shell\n\n" +
+          "Positioning: absolute {x,y,z}, named ('center', 'top-center'), percentage {x:'50%'}\n\n" +
+          "Assembly: Optional 'assembly' block with instances and joints for physics simulation.",
         inputSchema: createCadDocumentSchema,
       },
       {
@@ -69,8 +69,15 @@ export async function createServer(): Promise<Server> {
       {
         name: "inspect_cad",
         description:
-          "Inspect a CAD document to get geometry properties: volume, surface area, bounding box, center of mass, and triangle count.",
+          "Inspect a CAD document to get geometry properties: volume, surface area, bounding box, center of mass, triangle count, and mass (if material density is known).",
         inputSchema: inspectCadSchema,
+      },
+      {
+        name: "import_step",
+        description:
+          "Import geometry from a STEP file (.step or .stp). Returns an IR document with ImportedMesh nodes. " +
+          "Supports AP203/AP214 STEP files commonly exported from Fusion 360, SolidWorks, Onshape, etc.",
+        inputSchema: importStepSchema,
       },
       {
         name: "create_robot_env",
@@ -123,6 +130,9 @@ export async function createServer(): Promise<Server> {
 
         case "inspect_cad":
           return inspectCad(args, engine);
+
+        case "import_step":
+          return importStep(args, engine);
 
         case "create_robot_env":
           return await createRobotEnv(args);

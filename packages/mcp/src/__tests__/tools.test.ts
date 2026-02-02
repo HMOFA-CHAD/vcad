@@ -218,6 +218,236 @@ describe("create_cad_document", () => {
     expect(translateNode!.op.offset!.y).toBe(20);
     expect(translateNode!.op.offset!.z).toBe(20);
   });
+
+  it("creates fillet operation", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "filleted_cube",
+          primitive: { type: "cube", size: { x: 20, y: 20, z: 20 } },
+          operations: [{ type: "fillet", radius: 2 }],
+        },
+      ],
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+    const nodes = Object.values(doc.nodes) as Array<{
+      op: { type: string; radius?: number };
+    }>;
+    const filletNode = nodes.find((n) => n.op.type === "Fillet");
+    expect(filletNode).toBeDefined();
+    expect(filletNode!.op.radius).toBe(2);
+  });
+
+  it("creates chamfer operation", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "chamfered_cube",
+          primitive: { type: "cube", size: { x: 20, y: 20, z: 20 } },
+          operations: [{ type: "chamfer", distance: 3 }],
+        },
+      ],
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+    const nodes = Object.values(doc.nodes) as Array<{
+      op: { type: string; distance?: number };
+    }>;
+    const chamferNode = nodes.find((n) => n.op.type === "Chamfer");
+    expect(chamferNode).toBeDefined();
+    expect(chamferNode!.op.distance).toBe(3);
+  });
+
+  it("creates shell operation", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "hollow_box",
+          primitive: { type: "cube", size: { x: 30, y: 30, z: 30 } },
+          operations: [{ type: "shell", thickness: 2 }],
+        },
+      ],
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+    const nodes = Object.values(doc.nodes) as Array<{
+      op: { type: string; thickness?: number };
+    }>;
+    const shellNode = nodes.find((n) => n.op.type === "Shell");
+    expect(shellNode).toBeDefined();
+    expect(shellNode!.op.thickness).toBe(2);
+  });
+
+  it("creates extruded rectangle", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "extruded_rect",
+          extrude: {
+            sketch: {
+              plane: "xy",
+              shape: { type: "rectangle", width: 20, height: 10, centered: true },
+            },
+            height: 15,
+          },
+        },
+      ],
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+    const nodes = Object.values(doc.nodes) as Array<{
+      op: { type: string };
+    }>;
+
+    // Should have Sketch2D and Extrude nodes
+    const hasSketch = nodes.some((n) => n.op.type === "Sketch2D");
+    const hasExtrude = nodes.some((n) => n.op.type === "Extrude");
+    expect(hasSketch).toBe(true);
+    expect(hasExtrude).toBe(true);
+  });
+
+  it("creates extruded circle", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "extruded_circle",
+          extrude: {
+            sketch: {
+              shape: { type: "circle", radius: 10 },
+            },
+            height: 25,
+          },
+        },
+      ],
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+    const nodes = Object.values(doc.nodes) as Array<{
+      op: { type: string; segments?: Array<{ type: string }> };
+    }>;
+
+    // Sketch should have Arc segments
+    const sketchNode = nodes.find((n) => n.op.type === "Sketch2D");
+    expect(sketchNode).toBeDefined();
+    expect(sketchNode!.op.segments).toBeDefined();
+    expect(sketchNode!.op.segments!.every((s) => s.type === "Arc")).toBe(true);
+  });
+
+  it("creates extruded polygon", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "extruded_triangle",
+          extrude: {
+            sketch: {
+              shape: {
+                type: "polygon",
+                points: [
+                  { x: 0, y: 0 },
+                  { x: 20, y: 0 },
+                  { x: 10, y: 17 },
+                ],
+              },
+            },
+            height: 10,
+          },
+        },
+      ],
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+    const nodes = Object.values(doc.nodes) as Array<{
+      op: { type: string; segments?: Array<{ type: string }> };
+    }>;
+
+    const sketchNode = nodes.find((n) => n.op.type === "Sketch2D");
+    expect(sketchNode).toBeDefined();
+    // Triangle with 3 points closed = 3 line segments
+    expect(sketchNode!.op.segments!.length).toBe(3);
+  });
+
+  it("creates revolved sketch", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "revolved_rect",
+          revolve: {
+            sketch: {
+              shape: { type: "rectangle", width: 5, height: 20 },
+            },
+            axis: "y",
+            axis_offset: 15,
+            angle_deg: 360,
+          },
+        },
+      ],
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+    const nodes = Object.values(doc.nodes) as Array<{
+      op: { type: string; angle_deg?: number };
+    }>;
+
+    const revolveNode = nodes.find((n) => n.op.type === "Revolve");
+    expect(revolveNode).toBeDefined();
+    expect(revolveNode!.op.angle_deg).toBe(360);
+  });
+
+  it("creates assembly with joints", () => {
+    const result = createCadDocument({
+      parts: [
+        {
+          name: "base",
+          primitive: { type: "cube", size: { x: 50, y: 50, z: 10 } },
+        },
+        {
+          name: "arm",
+          primitive: { type: "cube", size: { x: 10, y: 10, z: 50 } },
+        },
+      ],
+      assembly: {
+        instances: [
+          { id: "base_inst", part: "base" },
+          { id: "arm_inst", part: "arm", position: { x: 20, y: 20, z: 10 } },
+        ],
+        joints: [
+          {
+            id: "revolute_joint",
+            parent: "base_inst",
+            child: "arm_inst",
+            type: "revolute",
+            axis: "z",
+            parent_anchor: { x: 20, y: 20, z: 10 },
+            child_anchor: { x: 0, y: 0, z: 0 },
+          },
+        ],
+        ground: "base_inst",
+      },
+    });
+
+    const doc = JSON.parse(result.content[0].text);
+
+    // In assembly mode, roots should be empty
+    expect(doc.roots).toHaveLength(0);
+
+    // Should have partDefs
+    expect(doc.partDefs).toBeDefined();
+    expect(doc.partDefs.base).toBeDefined();
+    expect(doc.partDefs.arm).toBeDefined();
+
+    // Should have instances
+    expect(doc.instances).toBeDefined();
+    expect(doc.instances).toHaveLength(2);
+
+    // Should have joints
+    expect(doc.joints).toBeDefined();
+    expect(doc.joints).toHaveLength(1);
+    expect(doc.joints[0].kind.type).toBe("Revolute");
+
+    // Should have ground
+    expect(doc.groundInstanceId).toBe("base_inst");
+  });
 });
 
 describe("inspect_cad", () => {

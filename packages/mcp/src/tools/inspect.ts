@@ -25,6 +25,15 @@ interface BoundingBox {
   max: { x: number; y: number; z: number };
 }
 
+/** Per-part mass information. */
+interface PartMassInfo {
+  name: string;
+  volume_mm3: number;
+  material: string;
+  density_kg_m3?: number;
+  mass_g?: number;
+}
+
 interface InspectResult {
   volume_mm3: number;
   surface_area_mm2: number;
@@ -32,6 +41,8 @@ interface InspectResult {
   center_of_mass: { x: number; y: number; z: number };
   triangles: number;
   parts: number;
+  mass_g?: number;
+  part_masses?: PartMassInfo[];
 }
 
 /** Calculate signed volume of a triangle with origin. */
@@ -165,6 +176,8 @@ export function inspectCad(
   let totalVolume = 0;
   let totalArea = 0;
   let totalTriangles = 0;
+  let totalMass = 0;
+  let hasMassData = false;
   let weightedCx = 0,
     weightedCy = 0,
     weightedCz = 0;
@@ -174,7 +187,19 @@ export function inspectCad(
     max: { x: -Infinity, y: -Infinity, z: -Infinity },
   };
 
-  for (const part of scene.parts) {
+  const partMasses: PartMassInfo[] = [];
+
+  // Find the root nodes to get part names
+  const rootNameMap = new Map<number, string>();
+  for (const root of ir.roots) {
+    const node = ir.nodes[String(root.root)];
+    if (node?.name) {
+      rootNameMap.set(root.root, node.name);
+    }
+  }
+
+  for (let i = 0; i < scene.parts.length; i++) {
+    const part = scene.parts[i];
     const props = computeMeshProperties(part.mesh);
 
     totalVolume += props.volume;
@@ -193,6 +218,34 @@ export function inspectCad(
     bbox.max.x = Math.max(bbox.max.x, props.bbox.max.x);
     bbox.max.y = Math.max(bbox.max.y, props.bbox.max.y);
     bbox.max.z = Math.max(bbox.max.z, props.bbox.max.z);
+
+    // Compute mass if material has density
+    const materialKey = part.material ?? "default";
+    const material = ir.materials?.[materialKey];
+    const density = material?.density;
+
+    // Get part name from root or use index
+    const rootEntry = ir.roots[i];
+    const partName = rootEntry ? rootNameMap.get(rootEntry.root) ?? `part_${i + 1}` : `part_${i + 1}`;
+
+    const partMassInfo: PartMassInfo = {
+      name: partName,
+      volume_mm3: Math.round(props.volume * 1000) / 1000,
+      material: materialKey,
+    };
+
+    if (density) {
+      // mass (kg) = volume (mm³) / 1e9 * density (kg/m³)
+      // mass (g) = mass (kg) * 1000
+      const massKg = (props.volume / 1e9) * density;
+      const massG = massKg * 1000;
+      partMassInfo.density_kg_m3 = density;
+      partMassInfo.mass_g = Math.round(massG * 1000) / 1000;
+      totalMass += massG;
+      hasMassData = true;
+    }
+
+    partMasses.push(partMassInfo);
   }
 
   // Compute overall center of mass
@@ -228,6 +281,12 @@ export function inspectCad(
     triangles: totalTriangles,
     parts: scene.parts.length,
   };
+
+  // Add mass data if any materials have density
+  if (hasMassData) {
+    result.mass_g = Math.round(totalMass * 1000) / 1000;
+    result.part_masses = partMasses;
+  }
 
   return {
     content: [

@@ -2,7 +2,7 @@
  * create_cad_document tool — build geometry from structured input.
  */
 
-import type { Document, Node, NodeId, CsgOp, Vec3 } from "@vcad/ir";
+import type { Document, Node, NodeId, CsgOp, Vec3, Vec2, SketchSegment2D } from "@vcad/ir";
 import { createDocument } from "@vcad/ir";
 
 /** Primitive definition for tool input. */
@@ -37,6 +37,56 @@ interface BBox {
   max: Vec3;
 }
 
+// ============================================================================
+// Sketch Input Types (for AI-friendly sketch-based operations)
+// ============================================================================
+
+/** Rectangle shape for sketch input. */
+interface RectangleShape {
+  type: "rectangle";
+  width: number;
+  height: number;
+  centered?: boolean;  // If true, centered at origin; if false, corner at origin
+}
+
+/** Circle shape for sketch input. */
+interface CircleShape {
+  type: "circle";
+  radius: number;
+}
+
+/** Polygon shape for sketch input. */
+interface PolygonShape {
+  type: "polygon";
+  points: Array<{ x: number; y: number }>;
+  closed?: boolean;  // Default true
+}
+
+/** High-level sketch input format for AI usability. */
+interface SketchInput {
+  plane?: "xy" | "xz" | "yz";  // Default: xy
+  at?: Vec3;                   // Sketch plane origin (default: 0,0,0)
+  shape: RectangleShape | CircleShape | PolygonShape;
+}
+
+/** Path for sweep operations - line segment. */
+interface LinePathInput {
+  type: "line";
+  start: Vec3;
+  end: Vec3;
+}
+
+/** Path for sweep operations - helix. */
+interface HelixPathInput {
+  type: "helix";
+  radius: number;
+  pitch: number;
+  height: number;
+}
+
+/** Path input for sweep operations. */
+type PathInput = LinePathInput | HelixPathInput;
+
 /** Operation to apply to geometry. */
 interface Operation {
   type:
@@ -48,7 +98,14 @@ interface Operation {
     | "scale"
     | "linear_pattern"
     | "circular_pattern"
-    | "hole";
+    | "hole"
+    | "fillet"
+    | "chamfer"
+    | "shell"
+    | "extrude"
+    | "revolve"
+    | "sweep"
+    | "loft";
   // For boolean ops
   primitive?: Primitive;
   at?: PositionSpec;
@@ -69,19 +126,127 @@ interface Operation {
   axis_origin?: Vec3;
   axis_dir?: Vec3;
   angle_deg?: number;
+  // For fillet
+  radius?: number;
+  // For chamfer
+  distance?: number;
+  // For shell
+  thickness?: number;
+  // For extrude
+  sketch?: SketchInput;
+  height?: number;
+  // For revolve
+  axis?: "x" | "y" | "z" | Vec3;
+  axis_offset?: number;
+  // For sweep
+  path?: PathInput;
+  twist_deg?: number;
+  scale_start?: number;
+  scale_end?: number;
+  // For loft
+  sketches?: SketchInput[];
+  closed?: boolean;
 }
 
-/** Part definition for tool input. */
-interface PartInput {
+/** Part definition for tool input (primitive-based). */
+interface PrimitivePartInput {
   name: string;
   primitive: Primitive;
   operations?: Operation[];
   material?: string;
 }
 
+/** Part definition for tool input (sketch-based extrude). */
+interface ExtrudePartInput {
+  name: string;
+  extrude: {
+    sketch: SketchInput;
+    height?: number;
+    direction?: Vec3;
+  };
+  operations?: Operation[];
+  material?: string;
+}
+
+/** Part definition for tool input (sketch-based revolve). */
+interface RevolvePartInput {
+  name: string;
+  revolve: {
+    sketch: SketchInput;
+    axis?: "x" | "y" | "z" | Vec3;
+    axis_offset?: number;
+    angle_deg?: number;
+  };
+  operations?: Operation[];
+  material?: string;
+}
+
+/** Part definition for tool input (sketch-based sweep). */
+interface SweepPartInput {
+  name: string;
+  sweep: {
+    sketch: SketchInput;
+    path: PathInput;
+    twist_deg?: number;
+    scale_start?: number;
+    scale_end?: number;
+  };
+  operations?: Operation[];
+  material?: string;
+}
+
+/** Part definition for tool input (sketch-based loft). */
+interface LoftPartInput {
+  name: string;
+  loft: {
+    sketches: SketchInput[];
+    closed?: boolean;
+  };
+  operations?: Operation[];
+  material?: string;
+}
+
+/** Part definition for tool input. */
+type PartInput = PrimitivePartInput | ExtrudePartInput | RevolvePartInput | SweepPartInput | LoftPartInput;
+
+// ============================================================================
+// Assembly Types (for physics simulation and robotics)
+// ============================================================================
+
+/** Instance of a part in an assembly. */
+interface InstanceInput {
+  id: string;
+  part: string;           // References part by name
+  name?: string;
+  position?: Vec3;
+  rotation?: Vec3;        // Euler degrees
+}
+
+/** Joint connecting two instances. */
+interface JointInput {
+  id: string;
+  name?: string;
+  parent: string | null;  // Instance ID or null for ground
+  child: string;          // Instance ID
+  type: "fixed" | "revolute" | "slider" | "cylindrical" | "ball";
+  axis?: "x" | "y" | "z" | Vec3;
+  parent_anchor?: Vec3;
+  child_anchor?: Vec3;
+  limits?: [number, number];
+  state?: number;
+}
+
+/** Assembly definition for physics simulation. */
+interface AssemblyInput {
+  instances: InstanceInput[];
+  joints: JointInput[];
+  ground?: string;        // Instance ID of fixed part
+}
+
 /** Input schema for create_cad_document. */
 interface CreateInput {
   parts: PartInput[];
+  assembly?: AssemblyInput;
 }
 
 /** Compute bounding box from a primitive definition. */
@@ -142,6 +307,157 @@ function resolveCoordinate(
     return minVal + pct * (maxVal - minVal);
   }
   throw new Error(`Invalid coordinate value: ${value}`);
+}
+
+/**
+ * Convert a high-level SketchInput shape to SketchSegment2D array.
+ * This makes it easy for AI agents to create sketch-based geometry without
+ * knowing the low-level segment format.
+ */
+function convertSketchToSegments(sketch: SketchInput): SketchSegment2D[] {
+  const { shape } = sketch;
+
+  switch (shape.type) {
+    case "rectangle": {
+      const { width, height, centered } = shape;
+      const x0 = centered ? -width / 2 : 0;
+      const y0 = centered ? -height / 2 : 0;
+      const x1 = centered ? width / 2 : width;
+      const y1 = centered ? height / 2 : height;
+
+      // Create 4 line segments forming a closed rectangle
+      return [
+        { type: "Line", start: { x: x0, y: y0 }, end: { x: x1, y: y0 } },
+        { type: "Line", start: { x: x1, y: y0 }, end: { x: x1, y: y1 } },
+        { type: "Line", start: { x: x1, y: y1 }, end: { x: x0, y: y1 } },
+        { type: "Line", start: { x: x0, y: y1 }, end: { x: x0, y: y0 } },
+      ];
+    }
+
+    case "circle": {
+      const { radius } = shape;
+      // Approximate circle with 4 arcs (quarter circles)
+      // Each arc spans 90 degrees
+      return [
+        {
+          type: "Arc",
+          start: { x: radius, y: 0 },
+          end: { x: 0, y: radius },
+          center: { x: 0, y: 0 },
+          ccw: true,
+        },
+        {
+          type: "Arc",
+          start: { x: 0, y: radius },
+          end: { x: -radius, y: 0 },
+          center: { x: 0, y: 0 },
+          ccw: true,
+        },
+        {
+          type: "Arc",
+          start: { x: -radius, y: 0 },
+          end: { x: 0, y: -radius },
+          center: { x: 0, y: 0 },
+          ccw: true,
+        },
+        {
+          type: "Arc",
+          start: { x: 0, y: -radius },
+          end: { x: radius, y: 0 },
+          center: { x: 0, y: 0 },
+          ccw: true,
+        },
+      ];
+    }
+
+    case "polygon": {
+      const { points, closed = true } = shape;
+      if (points.length < 2) {
+        throw new Error("Polygon requires at least 2 points");
+      }
+
+      const segments: SketchSegment2D[] = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        segments.push({
+          type: "Line",
+          start: { x: points[i].x, y: points[i].y },
+          end: { x: points[i + 1].x, y: points[i + 1].y },
+        });
+      }
+
+      // Close the polygon if requested
+      if (closed && points.length >= 3) {
+        const last = points[points.length - 1];
+        const first = points[0];
+        segments.push({
+          type: "Line",
+          start: { x: last.x, y: last.y },
+          end: { x: first.x, y: first.y },
+        });
+      }
+
+      return segments;
+    }
+  }
+}
+
+/**
+ * Get sketch plane vectors from plane specification.
+ * Returns [origin, x_dir, y_dir] for the sketch plane.
+ */
+function getSketchPlaneVectors(
+  sketch: SketchInput,
+): { origin: Vec3; x_dir: Vec3; y_dir: Vec3 } {
+  const plane = sketch.plane ?? "xy";
+  const origin = sketch.at ?? { x: 0, y: 0, z: 0 };
+
+  switch (plane) {
+    case "xy":
+      return {
+        origin,
+        x_dir: { x: 1, y: 0, z: 0 },
+        y_dir: { x: 0, y: 1, z: 0 },
+      };
+    case "xz":
+      return {
+        origin,
+        x_dir: { x: 1, y: 0, z: 0 },
+        y_dir: { x: 0, y: 0, z: 1 },
+      };
+    case "yz":
+      return {
+        origin,
+        x_dir: { x: 0, y: 1, z: 0 },
+        y_dir: { x: 0, y: 0, z: 1 },
+      };
+  }
+}
+
+/**
+ * Create a Sketch2D node from a SketchInput and return its ID.
+ */
+function createSketchNode(
+  sketch: SketchInput,
+  nodes: Record<string, Node>,
+  nextId: { value: NodeId },
+): NodeId {
+  const id = nextId.value++;
+  const { origin, x_dir, y_dir } = getSketchPlaneVectors(sketch);
+  const segments = convertSketchToSegments(sketch);
+
+  nodes[String(id)] = {
+    id,
+    name: null,
+    op: {
+      type: "Sketch2D",
+      origin,
+      x_dir,
+      y_dir,
+      segments,
+    },
+  };
+
+  return id;
 }
 
 /** Resolve a position specification to absolute Vec3 coordinates. */
@@ -250,9 +566,12 @@ export const createCadDocumentSchema = {
                     "linear_pattern",
                     "circular_pattern",
                     "hole",
+                    "fillet",
+                    "chamfer",
+                    "shell",
                   ],
                   description:
-                    "Operation type. 'hole' creates a vertical through-hole (cylinder difference along Z axis).",
+                    "Operation type. 'hole' creates a vertical through-hole. 'fillet' rounds edges. 'chamfer' bevels edges. 'shell' hollows the part.",
                 },
                 primitive: {
                   type: "object" as const,
@@ -363,6 +682,18 @@ export const createCadDocumentSchema = {
                   type: "number" as const,
                   description: "Total angle for circular pattern (degrees)",
                 },
+                radius: {
+                  type: "number" as const,
+                  description: "Radius for fillet operation (mm)",
+                },
+                distance: {
+                  type: "number" as const,
+                  description: "Distance for chamfer operation (mm)",
+                },
+                thickness: {
+                  type: "number" as const,
+                  description: "Wall thickness for shell operation (mm)",
+                },
               },
               required: ["type"],
             },
@@ -372,11 +703,79 @@ export const createCadDocumentSchema = {
             description: "Material key (e.g., 'aluminum', 'steel')",
           },
         },
-        required: ["name", "primitive"],
+        required: ["name"],
       },
     },
   },
   required: ["parts"],
+};
+
+// Sketch input schema for sketch-based operations
+const sketchInputSchema = {
+  type: "object" as const,
+  description: "Sketch definition for extrude/revolve/sweep/loft operations",
+  properties: {
+    plane: {
+      type: "string" as const,
+      enum: ["xy", "xz", "yz"],
+      description: "Sketch plane (default: xy)",
+    },
+    at: {
+      type: "object" as const,
+      description: "Sketch plane origin (default: 0,0,0)",
+      properties: {
+        x: { type: "number" as const },
+        y: { type: "number" as const },
+        z: { type: "number" as const },
+      },
+    },
+    shape: {
+      oneOf: [
+        {
+          type: "object" as const,
+          description: "Rectangle shape",
+          properties: {
+            type: { const: "rectangle" as const },
+            width: { type: "number" as const, description: "Width in mm" },
+            height: { type: "number" as const, description: "Height in mm" },
+            centered: { type: "boolean" as const, description: "Center at origin (default: false)" },
+          },
+          required: ["type", "width", "height"],
+        },
+        {
+          type: "object" as const,
+          description: "Circle shape",
+          properties: {
+            type: { const: "circle" as const },
+            radius: { type: "number" as const, description: "Radius in mm" },
+          },
+          required: ["type", "radius"],
+        },
+        {
+          type: "object" as const,
+          description: "Polygon shape",
+          properties: {
+            type: { const: "polygon" as const },
+            points: {
+              type: "array" as const,
+              items: {
+                type: "object" as const,
+                properties: {
+                  x: { type: "number" as const },
+                  y: { type: "number" as const },
+                },
+                required: ["x", "y"],
+              },
+              description: "Array of 2D points",
+            },
+            closed: { type: "boolean" as const, description: "Close the polygon (default: true)" },
+          },
+          required: ["type", "points"],
+        },
+      ],
+    },
+  },
+  required: ["shape"],
 };
 
 /** Create a primitive node and return its ID. */
@@ -425,6 +824,209 @@ function createPrimitiveNode(
   return id;
 }
 
+/**
+ * Type guard to check if a part is primitive-based.
+ */
+function isPrimitivePart(part: PartInput): part is PrimitivePartInput {
+  return "primitive" in part;
+}
+
+/**
+ * Type guard to check if a part is extrude-based.
+ */
+function isExtrudePart(part: PartInput): part is ExtrudePartInput {
+  return "extrude" in part;
+}
+
+/**
+ * Type guard to check if a part is revolve-based.
+ */
+function isRevolvePart(part: PartInput): part is RevolvePartInput {
+  return "revolve" in part;
+}
+
+/**
+ * Type guard to check if a part is sweep-based.
+ */
+function isSweepPart(part: PartInput): part is SweepPartInput {
+  return "sweep" in part;
+}
+
+/**
+ * Type guard to check if a part is loft-based.
+ */
+function isLoftPart(part: PartInput): part is LoftPartInput {
+  return "loft" in part;
+}
+
+/**
+ * Create the base geometry node for a part (primitive, extrude, revolve, sweep, or loft).
+ */
+function createPartBaseNode(
+  part: PartInput,
+  nodes: Record<string, Node>,
+  nextId: { value: NodeId },
+): NodeId {
+  if (isPrimitivePart(part)) {
+    return createPrimitiveNode(part.primitive, nodes, nextId);
+  }
+
+  if (isExtrudePart(part)) {
+    const { sketch, height, direction } = part.extrude;
+    const sketchId = createSketchNode(sketch, nodes, nextId);
+
+    // Determine extrusion direction
+    const plane = sketch.plane ?? "xy";
+    let extrudeDir: Vec3;
+    if (direction) {
+      extrudeDir = direction;
+    } else {
+      // Default: extrude normal to sketch plane
+      const h = height ?? 10;
+      switch (plane) {
+        case "xy":
+          extrudeDir = { x: 0, y: 0, z: h };
+          break;
+        case "xz":
+          extrudeDir = { x: 0, y: h, z: 0 };
+          break;
+        case "yz":
+          extrudeDir = { x: h, y: 0, z: 0 };
+          break;
+      }
+    }
+
+    const extrudeId = nextId.value++;
+    nodes[String(extrudeId)] = {
+      id: extrudeId,
+      name: null,
+      op: {
+        type: "Extrude",
+        sketch: sketchId,
+        direction: extrudeDir,
+      },
+    };
+
+    return extrudeId;
+  }
+
+  if (isRevolvePart(part)) {
+    const { sketch, axis, axis_offset, angle_deg } = part.revolve;
+    const sketchId = createSketchNode(sketch, nodes, nextId);
+
+    // Determine axis origin and direction
+    let axisOrigin: Vec3;
+    let axisDir: Vec3;
+    const offset = axis_offset ?? 0;
+
+    if (typeof axis === "string" || axis === undefined) {
+      const axisName = axis ?? "y";
+      switch (axisName) {
+        case "x":
+          axisOrigin = { x: 0, y: offset, z: 0 };
+          axisDir = { x: 1, y: 0, z: 0 };
+          break;
+        case "y":
+          axisOrigin = { x: offset, y: 0, z: 0 };
+          axisDir = { x: 0, y: 1, z: 0 };
+          break;
+        case "z":
+          axisOrigin = { x: offset, y: 0, z: 0 };
+          axisDir = { x: 0, y: 0, z: 1 };
+          break;
+      }
+    } else {
+      // Custom axis direction
+      axisOrigin = { x: offset, y: 0, z: 0 };
+      axisDir = axis;
+    }
+
+    const revolveId = nextId.value++;
+    nodes[String(revolveId)] = {
+      id: revolveId,
+      name: null,
+      op: {
+        type: "Revolve",
+        sketch: sketchId,
+        axis_origin: axisOrigin,
+        axis_dir: axisDir,
+        angle_deg: angle_deg ?? 360,
+      },
+    };
+
+    return revolveId;
+  }
+
+  if (isSweepPart(part)) {
+    const { sketch, path, twist_deg, scale_start, scale_end } = part.sweep;
+    const sketchId = createSketchNode(sketch, nodes, nextId);
+
+    const sweepId = nextId.value++;
+
+    if (path.type === "line") {
+      nodes[String(sweepId)] = {
+        id: sweepId,
+        name: null,
+        op: {
+          type: "Sweep",
+          sketch: sketchId,
+          path: {
+            type: "Line",
+            start: path.start,
+            end: path.end,
+          },
+          twist_angle: twist_deg ? (twist_deg * Math.PI) / 180 : undefined,
+          scale_start,
+          scale_end,
+        },
+      };
+    } else {
+      // Helix path
+      const turns = path.height / path.pitch;
+      nodes[String(sweepId)] = {
+        id: sweepId,
+        name: null,
+        op: {
+          type: "Sweep",
+          sketch: sketchId,
+          path: {
+            type: "Helix",
+            radius: path.radius,
+            pitch: path.pitch,
+            height: path.height,
+            turns,
+          },
+          twist_angle: twist_deg ? (twist_deg * Math.PI) / 180 : undefined,
+          scale_start,
+          scale_end,
+        },
+      };
+    }
+
+    return sweepId;
+  }
+
+  if (isLoftPart(part)) {
+    const { sketches, closed } = part.loft;
+    const sketchIds = sketches.map((sketch) => createSketchNode(sketch, nodes, nextId));
+
+    const loftId = nextId.value++;
+    nodes[String(loftId)] = {
+      id: loftId,
+      name: null,
+      op: {
+        type: "Loft",
+        sketches: sketchIds,
+        closed,
+      },
+    };
+
+    return loftId;
+  }
+
+  throw new Error("Part must have primitive, extrude, revolve, sweep, or loft definition");
+}
+
 /** Build an IR document from tool input. */
 export function createCadDocument(
   input: unknown,
@@ -432,10 +1034,11 @@ export function createCadDocument(
   const { parts } = input as CreateInput;
   const doc = createDocument();
   const nextId = { value: 1 };
+  const partRootMap = new Map<string, NodeId>();
 
   for (const part of parts) {
-    // Create base primitive
-    let currentId = createPrimitiveNode(part.primitive, doc.nodes, nextId);
+    // Create base geometry (primitive, extrude, revolve, sweep, or loft)
+    let currentId = createPartBaseNode(part, doc.nodes, nextId);
 
     // Apply operations
     if (part.operations) {
@@ -454,14 +1057,29 @@ export function createCadDocument(
             let toolId = createPrimitiveNode(op.primitive, doc.nodes, nextId);
             // Translate it if needed
             if (op.at) {
-              const resolvedPos = resolvePosition(op.at, part.primitive);
-              const translateId = nextId.value++;
-              doc.nodes[String(translateId)] = {
-                id: translateId,
-                name: null,
-                op: { type: "Translate", child: toolId, offset: resolvedPos },
-              };
-              toolId = translateId;
+              // Position resolution requires primitive-based parts
+              if (!isPrimitivePart(part)) {
+                // For non-primitive parts, treat 'at' as absolute position
+                const pos = typeof op.at === "string"
+                  ? { x: 0, y: 0, z: 0 } // Named positions need a primitive
+                  : op.at as Vec3;
+                const translateId = nextId.value++;
+                doc.nodes[String(translateId)] = {
+                  id: translateId,
+                  name: null,
+                  op: { type: "Translate", child: toolId, offset: pos },
+                };
+                toolId = translateId;
+              } else {
+                const resolvedPos = resolvePosition(op.at, part.primitive);
+                const translateId = nextId.value++;
+                doc.nodes[String(translateId)] = {
+                  id: translateId,
+                  name: null,
+                  op: { type: "Translate", child: toolId, offset: resolvedPos },
+                };
+                toolId = translateId;
+              }
             }
             newOp = {
               type: op.type === "union" ? "Union" : op.type === "difference" ? "Difference" : "Intersection",
@@ -474,6 +1092,9 @@ export function createCadDocument(
           case "hole": {
             if (!op.diameter) {
               throw new Error("hole requires a diameter");
+            }
+            if (!isPrimitivePart(part)) {
+              throw new Error("hole operation requires a primitive-based part");
             }
             const radius = op.diameter / 2;
             const bbox = getPrimitiveBBox(part.primitive);
@@ -495,8 +1116,10 @@ export function createCadDocument(
             };
 
             // Resolve position (default to center if not specified)
+            // Note: isPrimitivePart check above ensures part.primitive exists
             const pos = op.at ?? "center";
-            const resolvedPos = resolvePosition(pos, part.primitive);
+            const primitivePart = part as PrimitivePartInput;
+            const resolvedPos = resolvePosition(pos, primitivePart.primitive);
             // For through-hole, position cylinder to start below the part
             const zOffset = op.depth ? resolvedPos.z : bbox.min.z - 1;
 
@@ -563,6 +1186,33 @@ export function createCadDocument(
               angle_deg: op.angle_deg ?? 360,
             };
             break;
+
+          case "fillet":
+            newOp = {
+              type: "Fillet",
+              child: currentId,
+              radius: op.radius ?? 1,
+            };
+            break;
+
+          case "chamfer":
+            newOp = {
+              type: "Chamfer",
+              child: currentId,
+              distance: op.distance ?? 1,
+            };
+            break;
+
+          case "shell":
+            newOp = {
+              type: "Shell",
+              child: currentId,
+              thickness: op.thickness ?? 2,
+            };
+            break;
+
+          default:
+            throw new Error(`Unsupported operation type: ${op.type}`);
         }
 
         doc.nodes[String(newId)] = { id: newId, name: part.name, op: newOp };
@@ -584,6 +1234,116 @@ export function createCadDocument(
 
     // Track material assignment
     doc.part_materials[part.name] = part.material ?? "default";
+
+    // Track root ID by part name for assembly lookup
+    partRootMap.set(part.name, currentId);
+  }
+
+  // Process assembly if provided
+  const { assembly } = input as CreateInput;
+  if (assembly) {
+    // Create partDefs from parts
+    doc.partDefs = {};
+    for (const [partName, rootId] of partRootMap) {
+      const partDef = parts.find((p) => p.name === partName);
+      doc.partDefs[partName] = {
+        id: partName,
+        name: partName,
+        root: rootId,
+        defaultMaterial: partDef?.material ?? "default",
+      };
+    }
+
+    // Create instances
+    doc.instances = assembly.instances.map((inst) => {
+      const partDef = doc.partDefs![inst.part];
+      if (!partDef) {
+        throw new Error(`Instance ${inst.id} references unknown part: ${inst.part}`);
+      }
+
+      return {
+        id: inst.id,
+        partDefId: inst.part,
+        name: inst.name ?? inst.id,
+        transform: inst.position || inst.rotation
+          ? {
+              translation: inst.position ?? { x: 0, y: 0, z: 0 },
+              rotation: inst.rotation ?? { x: 0, y: 0, z: 0 },
+              scale: { x: 1, y: 1, z: 1 },
+            }
+          : undefined,
+        material: undefined,
+      };
+    });
+
+    // Create joints
+    doc.joints = assembly.joints.map((joint) => {
+      // Convert axis to Vec3
+      let axisVec: Vec3;
+      if (typeof joint.axis === "string" || joint.axis === undefined) {
+        const axisName = joint.axis ?? "y";
+        switch (axisName) {
+          case "x":
+            axisVec = { x: 1, y: 0, z: 0 };
+            break;
+          case "y":
+            axisVec = { x: 0, y: 1, z: 0 };
+            break;
+          case "z":
+            axisVec = { x: 0, y: 0, z: 1 };
+            break;
+        }
+      } else {
+        axisVec = joint.axis;
+      }
+
+      // Convert joint type to JointKind
+      let kind: import("@vcad/ir").JointKind;
+      switch (joint.type) {
+        case "fixed":
+          kind = { type: "Fixed" };
+          break;
+        case "revolute":
+          kind = {
+            type: "Revolute",
+            axis: axisVec,
+            limits: joint.limits,
+          };
+          break;
+        case "slider":
+          kind = {
+            type: "Slider",
+            axis: axisVec,
+            limits: joint.limits,
+          };
+          break;
+        case "cylindrical":
+          kind = { type: "Cylindrical", axis: axisVec };
+          break;
+        case "ball":
+          kind = { type: "Ball" };
+          break;
+      }
+
+      return {
+        id: joint.id,
+        name: joint.name,
+        parentInstanceId: joint.parent,
+        childInstanceId: joint.child,
+        parentAnchor: joint.parent_anchor ?? { x: 0, y: 0, z: 0 },
+        childAnchor: joint.child_anchor ?? { x: 0, y: 0, z: 0 },
+        kind,
+        state: joint.state ?? 0,
+      };
+    });
+
+    // Set ground instance
+    if (assembly.ground) {
+      doc.groundInstanceId = assembly.ground;
+    }
+
+    // In assembly mode, clear roots (instances take over)
+    doc.roots = [];
   }
 
   return {
