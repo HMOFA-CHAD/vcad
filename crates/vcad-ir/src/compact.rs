@@ -190,6 +190,7 @@ pub fn from_compact(s: &str) -> Result<Document, CompactParseError> {
         doc.roots.push(SceneEntry {
             root: root_id,
             material: "default".to_string(),
+            visible: None,
         });
     }
 
@@ -1010,6 +1011,7 @@ mod tests {
         doc.roots.push(SceneEntry {
             root: 0,
             material: "default".to_string(),
+            visible: None,
         });
 
         let compact = to_compact(&doc).unwrap();
@@ -1082,6 +1084,7 @@ mod tests {
         doc.roots.push(SceneEntry {
             root: 3,
             material: "default".to_string(),
+            visible: None,
         });
 
         let compact = to_compact(&doc).unwrap();

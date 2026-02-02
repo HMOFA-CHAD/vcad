@@ -408,6 +408,261 @@ pub struct SceneEntry {
     pub root: NodeId,
     /// Material key referencing a [`MaterialDef::name`].
     pub material: String,
+    /// If false, the part is hidden from the viewport (default: true).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+}
+
+// ============================================================================
+// Scene Settings (lighting, environment, post-processing)
+// ============================================================================
+
+/// Available HDR environment presets.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EnvironmentPreset {
+    /// Professional photo studio lighting.
+    Studio,
+    /// Industrial warehouse with skylights.
+    Warehouse,
+    /// Modern apartment with natural light.
+    Apartment,
+    /// Outdoor park environment.
+    Park,
+    /// Urban city environment.
+    City,
+    /// Dawn/dusk sky.
+    Dawn,
+    /// Night environment with artificial lights.
+    Night,
+    /// Sunset sky.
+    Sunset,
+    /// Forest environment.
+    Forest,
+    /// Neutral gray environment for technical views.
+    Neutral,
+}
+
+/// Environment lighting configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Environment {
+    /// Use a preset HDR environment.
+    Preset {
+        /// The preset to use.
+        preset: EnvironmentPreset,
+        /// Intensity multiplier (default 1.0).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intensity: Option<f64>,
+    },
+    /// Use a custom HDR environment from URL.
+    Custom {
+        /// URL to the HDR environment map.
+        url: String,
+        /// Intensity multiplier (default 1.0).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        intensity: Option<f64>,
+    },
+}
+
+/// Type of light source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum LightKind {
+    /// Directional light (sun-like, parallel rays).
+    Directional {
+        /// Direction the light is pointing (normalized).
+        direction: Vec3,
+    },
+    /// Point light (omnidirectional from a point).
+    Point {
+        /// Position of the light.
+        position: Vec3,
+        /// Maximum range of the light.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        distance: Option<f64>,
+    },
+    /// Spot light (cone of light from a point).
+    Spot {
+        /// Position of the light.
+        position: Vec3,
+        /// Direction the spot is pointing.
+        direction: Vec3,
+        /// Inner cone angle in degrees (full intensity).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        angle: Option<f64>,
+        /// Outer cone angle in degrees (falloff).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        penumbra: Option<f64>,
+    },
+    /// Area light (rectangular emitter).
+    Area {
+        /// Position of the light center.
+        position: Vec3,
+        /// Direction the light is facing.
+        direction: Vec3,
+        /// Width of the area light.
+        width: f64,
+        /// Height of the area light.
+        height: f64,
+    },
+}
+
+/// A light source in the scene.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Light {
+    /// Unique identifier for the light.
+    pub id: String,
+    /// Light type and parameters.
+    pub kind: LightKind,
+    /// Light color as RGB values (0.0-1.0).
+    pub color: [f64; 3],
+    /// Light intensity.
+    pub intensity: f64,
+    /// Whether the light is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Whether this light casts shadows.
+    #[serde(rename = "castShadow", skip_serializing_if = "Option::is_none")]
+    pub cast_shadow: Option<bool>,
+}
+
+/// Background configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Background {
+    /// Use the environment map as background.
+    Environment,
+    /// Solid color background.
+    Solid {
+        /// Background color as RGB (0.0-1.0).
+        color: [f64; 3],
+    },
+    /// Gradient background (top to bottom).
+    Gradient {
+        /// Top color as RGB (0.0-1.0).
+        top: [f64; 3],
+        /// Bottom color as RGB (0.0-1.0).
+        bottom: [f64; 3],
+    },
+    /// Transparent background (for compositing).
+    Transparent,
+}
+
+/// Ambient occlusion settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AmbientOcclusion {
+    /// Whether AO is enabled.
+    pub enabled: bool,
+    /// AO intensity (0.0-2.0, default 1.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intensity: Option<f64>,
+    /// AO radius in scene units.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f64>,
+}
+
+/// Bloom effect settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Bloom {
+    /// Whether bloom is enabled.
+    pub enabled: bool,
+    /// Bloom intensity (0.0-1.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intensity: Option<f64>,
+    /// Luminance threshold for bloom.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f64>,
+}
+
+/// Vignette effect settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Vignette {
+    /// Whether vignette is enabled.
+    pub enabled: bool,
+    /// Vignette offset from edge (0.0-1.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<f64>,
+    /// Vignette darkness (0.0-1.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub darkness: Option<f64>,
+}
+
+/// Tone mapping algorithm.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToneMapping {
+    /// No tone mapping (linear).
+    None,
+    /// Reinhard tone mapping.
+    Reinhard,
+    /// Cineon tone mapping.
+    Cineon,
+    /// ACES filmic tone mapping.
+    AcesFilmic,
+    /// AgX tone mapping.
+    AgX,
+    /// Neutral tone mapping.
+    Neutral,
+}
+
+/// Post-processing effects configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostProcessing {
+    /// Ambient occlusion settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ambient_occlusion: Option<AmbientOcclusion>,
+    /// Bloom settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bloom: Option<Bloom>,
+    /// Vignette settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vignette: Option<Vignette>,
+    /// Tone mapping algorithm.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tone_mapping: Option<ToneMapping>,
+    /// Exposure adjustment (-2.0 to 2.0, default 0.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exposure: Option<f64>,
+}
+
+/// A saved camera position/orientation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CameraPreset {
+    /// Unique identifier for the preset.
+    pub id: String,
+    /// Human-readable name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Camera position in world space.
+    pub position: Vec3,
+    /// Camera target (look-at point).
+    pub target: Vec3,
+    /// Field of view in degrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fov: Option<f64>,
+}
+
+/// Scene-wide settings for lighting, environment, and rendering.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneSettings {
+    /// Environment lighting configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<Environment>,
+    /// Additional lights in the scene.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lights: Option<Vec<Light>>,
+    /// Background configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background: Option<Background>,
+    /// Post-processing effects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_processing: Option<PostProcessing>,
+    /// Saved camera presets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub camera_presets: Option<Vec<CameraPreset>>,
 }
 
 /// A vcad document — the `.vcad` file format.
@@ -425,6 +680,11 @@ pub struct Document {
     pub part_materials: HashMap<String, String>,
     /// Scene entries (assembled parts with materials).
     pub roots: Vec<SceneEntry>,
+
+    // Scene settings (optional, for lighting/environment/post-processing)
+    /// Scene-wide rendering settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene: Option<SceneSettings>,
 
     // Assembly fields (optional, for kinematics)
     /// Part definitions for assembly mode.
@@ -449,6 +709,7 @@ impl Default for Document {
             materials: HashMap::new(),
             part_materials: HashMap::new(),
             roots: Vec::new(),
+            scene: None,
             part_defs: None,
             instances: None,
             joints: None,
@@ -541,6 +802,7 @@ mod tests {
         doc.roots.push(SceneEntry {
             root: diff_id,
             material: "aluminum".to_string(),
+            visible: None,
         });
 
         // Serialize and deserialize

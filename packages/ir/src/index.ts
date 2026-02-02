@@ -385,6 +385,8 @@ export interface MaterialDef {
 export interface SceneEntry {
   root: NodeId;
   material: string;
+  /** If false, the part is hidden from the viewport (default: true). */
+  visible?: boolean;
 }
 
 /** Joint limits as [min, max] tuple for constrained joints. */
@@ -430,6 +432,171 @@ export interface PartDef {
   defaultMaterial?: string;
 }
 
+// ============================================================================
+// Scene Settings (lighting, environment, post-processing)
+// ============================================================================
+
+/** Available HDR environment presets. */
+export type EnvironmentPreset =
+  | "studio"
+  | "warehouse"
+  | "apartment"
+  | "park"
+  | "city"
+  | "dawn"
+  | "night"
+  | "sunset"
+  | "forest"
+  | "neutral";
+
+/** Preset environment configuration. */
+export interface PresetEnvironment {
+  type: "Preset";
+  preset: EnvironmentPreset;
+  intensity?: number;
+}
+
+/** Custom HDR environment configuration. */
+export interface CustomEnvironment {
+  type: "Custom";
+  url: string;
+  intensity?: number;
+}
+
+/** Environment lighting configuration. */
+export type Environment = PresetEnvironment | CustomEnvironment;
+
+/** Directional light (sun-like, parallel rays). */
+export interface DirectionalLight {
+  type: "Directional";
+  direction: Vec3;
+}
+
+/** Point light (omnidirectional from a point). */
+export interface PointLight {
+  type: "Point";
+  position: Vec3;
+  distance?: number;
+}
+
+/** Spot light (cone of light from a point). */
+export interface SpotLight {
+  type: "Spot";
+  position: Vec3;
+  direction: Vec3;
+  angle?: number;
+  penumbra?: number;
+}
+
+/** Area light (rectangular emitter). */
+export interface AreaLight {
+  type: "Area";
+  position: Vec3;
+  direction: Vec3;
+  width: number;
+  height: number;
+}
+
+/** Type of light source. */
+export type LightKind = DirectionalLight | PointLight | SpotLight | AreaLight;
+
+/** A light source in the scene. */
+export interface Light {
+  id: string;
+  kind: LightKind;
+  color: [number, number, number];
+  intensity: number;
+  enabled?: boolean;
+  castShadow?: boolean;
+}
+
+/** Environment map background. */
+export interface EnvironmentBackground {
+  type: "Environment";
+}
+
+/** Solid color background. */
+export interface SolidBackground {
+  type: "Solid";
+  color: [number, number, number];
+}
+
+/** Gradient background (top to bottom). */
+export interface GradientBackground {
+  type: "Gradient";
+  top: [number, number, number];
+  bottom: [number, number, number];
+}
+
+/** Transparent background (for compositing). */
+export interface TransparentBackground {
+  type: "Transparent";
+}
+
+/** Background configuration. */
+export type Background =
+  | EnvironmentBackground
+  | SolidBackground
+  | GradientBackground
+  | TransparentBackground;
+
+/** Ambient occlusion settings. */
+export interface AmbientOcclusion {
+  enabled: boolean;
+  intensity?: number;
+  radius?: number;
+}
+
+/** Bloom effect settings. */
+export interface Bloom {
+  enabled: boolean;
+  intensity?: number;
+  threshold?: number;
+}
+
+/** Vignette effect settings. */
+export interface Vignette {
+  enabled: boolean;
+  offset?: number;
+  darkness?: number;
+}
+
+/** Tone mapping algorithm. */
+export type ToneMapping =
+  | "none"
+  | "reinhard"
+  | "cineon"
+  | "acesFilmic"
+  | "agX"
+  | "neutral";
+
+/** Post-processing effects configuration. */
+export interface PostProcessing {
+  ambientOcclusion?: AmbientOcclusion;
+  bloom?: Bloom;
+  vignette?: Vignette;
+  toneMapping?: ToneMapping;
+  exposure?: number;
+}
+
+/** A saved camera position/orientation. */
+export interface CameraPreset {
+  id: string;
+  name?: string;
+  position: Vec3;
+  target: Vec3;
+  fov?: number;
+}
+
+/** Scene-wide settings for lighting, environment, and rendering. */
+export interface SceneSettings {
+  environment?: Environment;
+  lights?: Light[];
+  background?: Background;
+  postProcessing?: PostProcessing;
+  cameraPresets?: CameraPreset[];
+}
+
 /** A vcad document — the `.vcad` file format. */
 export interface Document {
   version: string;
@@ -437,6 +604,8 @@ export interface Document {
   materials: Record<string, MaterialDef>;
   part_materials: Record<string, string>;
   roots: SceneEntry[];
+  /** Scene-wide rendering settings. */
+  scene?: SceneSettings;
   /** Part definitions for assembly mode. */
   partDefs?: Record<string, PartDef>;
   /** Instances of part definitions. */
