@@ -233,8 +233,19 @@ The inference endpoint has 5-min idle timeout. First request after idle takes ~3
 ### Data upload fails
 Check Modal volume exists: `modal volume list`
 
+## Current Status (2026-02-02)
+
+**cad0 v1.0 trained and deployed.**
+
+- Eval loss: 0.324
+- In-distribution accuracy: ~75%
+- Model published to HuggingFace
+
+See [FINDINGS.md](./FINDINGS.md) for detailed evaluation results and known issues.
+
 ## Links
 
+- [Training Findings](./FINDINGS.md) - Detailed evaluation and analysis
 - [W&B Dashboard](https://wandb.ai/ecto/cad0)
 - [Modal Dashboard](https://modal.com/apps/ecto/main/deployed/cad0-training)
 - [HuggingFace: cad0](https://huggingface.co/campedersen/cad0) (7B, server inference)

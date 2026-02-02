@@ -403,7 +403,8 @@ class Inference:
         )
         inputs = self.tokenizer(text, return_tensors="pt").to(self.model.device)
 
-        # Generate
+        # Generate with stop sequences
+        stop_strings = ["\n\n", "User", "Now:", "Assistant"]
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -411,14 +412,19 @@ class Inference:
                 temperature=temperature if temperature > 0 else None,
                 do_sample=temperature > 0,
                 pad_token_id=self.tokenizer.eos_token_id,
+                stop_strings=stop_strings,
+                tokenizer=self.tokenizer,
             )
 
         # Decode
         generated = outputs[0][inputs["input_ids"].shape[1]:]
         ir = self.tokenizer.decode(generated, skip_special_tokens=True)
 
-        # Clean up
+        # Clean up - truncate at stop patterns
         ir = ir.strip()
+        for stop in stop_strings:
+            if stop in ir:
+                ir = ir.split(stop)[0].strip()
         if ir.startswith("```"):
             ir = ir.split("```")[1].strip()
             if ir.startswith("ir") or ir.startswith("text"):
