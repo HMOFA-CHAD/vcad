@@ -45,6 +45,19 @@ pub fn face_sample_point(brep: &BRepSolid, face_id: FaceId) -> Point3 {
         return Point3::origin();
     }
 
+    // Special case: circular disk face with a single seam vertex
+    // (e.g., cylinder caps). The single vertex is on the circle's boundary,
+    // not at its center. For proper classification, use the plane's origin
+    // which is the center of the circular disk.
+    if vertices.len() == 1 {
+        let surface = &brep.geometry.surfaces[face.surface_index];
+        if let Some(plane) = surface.as_any().downcast_ref::<vcad_kernel_geom::Plane>() {
+            return plane.origin;
+        }
+        // Fallback: return the single vertex
+        return vertices[0];
+    }
+
     // If face has inner loops (holes), we need a smarter sample point
     // that's outside the holes but inside the outer boundary.
     if !face.inner_loops.is_empty() {

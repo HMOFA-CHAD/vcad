@@ -363,4 +363,51 @@ mod tests {
         let final_orphan_count = count_orphan_half_edges(&result);
         assert_eq!(final_orphan_count, 0, "Final result should have no orphan half-edges");
     }
+
+    /// Test boolean difference with cylinder extending outside cube bounds.
+    ///
+    /// This tests the case where a cylinder overlaps the cube but also extends
+    /// outside it. The result should NOT include any geometry outside the cube's
+    /// original bounds.
+    #[test]
+    fn test_cube_minus_cylinder_boundary() {
+        use vcad_kernel_primitives::make_cylinder;
+
+        // Cube from [0,0,0] to [20,20,20]
+        let cube = make_cube(20.0, 20.0, 20.0);
+
+        // Cylinder: radius=10, height=20
+        // We want the cylinder tangent to the x=0 plane at y=10.
+        // Cylinder center at x=0, so it extends from x=-10 to x=10.
+        // This is the bug case: the result incorrectly includes geometry at x < 0.
+        let mut cylinder = make_cylinder(10.0, 20.0, 32);
+        translate_brep(&mut cylinder, -10.0, 10.0, 0.0);
+
+        let result = boolean_op(&cube, &cylinder, BooleanOp::Difference, 32);
+        let mesh = result.to_mesh(32);
+
+        // Check bounding box - x should not extend below 0
+        let (min, max) = compute_mesh_bbox(&mesh);
+
+        eprintln!("Cube-Cylinder Difference bbox: min={:?}, max={:?}", min, max);
+
+        // The key assertion: no geometry should extend to negative x
+        assert!(
+            min[0] >= -0.1,
+            "Result should not extend to negative x! min[0] = {:.4}",
+            min[0]
+        );
+
+        // Also verify the cube bounds are roughly preserved
+        assert!(
+            max[0] <= 20.1 && max[1] <= 20.1 && max[2] <= 20.1,
+            "Max should be ~[20,20,20], got {:?}",
+            max
+        );
+
+        assert!(
+            mesh.num_triangles() > 0,
+            "Result mesh should have triangles"
+        );
+    }
 }

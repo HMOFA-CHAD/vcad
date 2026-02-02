@@ -119,7 +119,7 @@ fn apply_splits_to_solid(
     solid: &mut BRepSolid,
     splits: HashMap<FaceId, Vec<(ssi::IntersectionCurve, Point3, Point3)>>,
     segments: u32,
-    _solid_name: &str,
+    #[allow(unused_variables)] solid_name: &str,
 ) {
     for (face_id, split_list) in splits {
         let mut current_faces = vec![face_id];
@@ -154,7 +154,8 @@ fn apply_splits_to_solid(
 
                     // Check if this is a planar face with a circle curve - use specialized split
                     if split::is_planar_face(solid, fid) {
-                        if let ssi::IntersectionCurve::Circle(_circle) = &curve {
+                        #[allow(unused_variables)]
+                        if let ssi::IntersectionCurve::Circle(circle) = &curve {
                             debug_bool!(
                                 "  Split {} face {:?}: planar + Circle at ({:.1},{:.1},{:.1}) r={:.1}",
                                 solid_name,
