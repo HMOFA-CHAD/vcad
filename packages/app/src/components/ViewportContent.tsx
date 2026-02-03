@@ -336,15 +336,13 @@ export function ViewportContent() {
         Math.min(300, selectionInfo.maxDim * 2.5),
       );
       isAnimatingTargetRef.current = true;
+      setIsCameraMoving(true);
     }
   }, [selectionInfo, isDraggingGizmo]);
 
   // Smooth target and distance animation
   useFrame(() => {
     if (!isAnimatingTargetRef.current || !orbitRef.current) return;
-
-    // Ensure effects are disabled during animation
-    if (!isCameraMoving) setIsCameraMoving(true);
 
     const target = orbitRef.current.target;
     const targetGoal = targetGoalRef.current;
@@ -640,6 +638,7 @@ export function ViewportContent() {
       distanceGoalRef.current = INITIAL_DISTANCE;
       cameraPositionGoalRef.current = null; // Clear any position goal
       isAnimatingTargetRef.current = true;
+      setIsCameraMoving(true);
     };
 
     domElement.addEventListener("dblclick", handleDoubleClick);
@@ -677,6 +676,7 @@ export function ViewportContent() {
       // Disable OrbitControls during animation so it doesn't fight with our quaternion
       if (orbitRef.current) orbitRef.current.enabled = false;
       isAnimatingTargetRef.current = true;
+      setIsCameraMoving(true);
     };
 
     window.addEventListener(
@@ -722,6 +722,7 @@ export function ViewportContent() {
       // Disable OrbitControls during animation
       if (orbitRef.current) orbitRef.current.enabled = false;
       isAnimatingTargetRef.current = true;
+      setIsCameraMoving(true);
     };
 
     window.addEventListener("vcad:snap-view", handleSnapView as EventListener);
@@ -750,6 +751,7 @@ export function ViewportContent() {
       // Disable OrbitControls during animation
       if (orbitRef.current) orbitRef.current.enabled = false;
       isAnimatingTargetRef.current = true;
+      setIsCameraMoving(true);
     };
 
     window.addEventListener("vcad:hero-view", handleHeroView);

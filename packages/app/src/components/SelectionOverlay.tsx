@@ -95,9 +95,6 @@ export function SelectionOverlay() {
 
   const accentColor = isDark ? ACCENT_DARK : ACCENT_LIGHT;
 
-  // Skip rendering during orbit for performance
-  if (isOrbiting) return null;
-
   // Compute combined bounding box for all selected parts
   const box = useMemo(() => {
     if (selectedPartIds.size === 0 || !scene) {
@@ -139,7 +136,8 @@ export function SelectionOverlay() {
     return combinedBox;
   }, [selectedPartIds, parts, scene]);
 
-  if (!box || isDraggingGizmo) return null;
+  // Skip rendering during orbit for performance, or when no selection
+  if (isOrbiting || !box || isDraggingGizmo) return null;
 
   return (
     <>
