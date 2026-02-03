@@ -1,12 +1,13 @@
 """
 cad0 Demo Space - Text to CAD with visualization
-Simplified version to avoid gradio_client bugs
 """
 
 import gradio as gr
 import numpy as np
 from PIL import Image
 import io
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -16,6 +17,31 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 GREEN = '#22c55e'
 PURPLE = '#a855f7'
 ORANGE = '#f97316'
+
+# Load model
+print("Loading cad0 model...")
+MODEL_ID = "campedersen/cad0"
+BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+# Use base model tokenizer (more compatible)
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+
+# Load model with 4-bit quantization
+from transformers import BitsAndBytesConfig
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_ID,
+    quantization_config=bnb_config,
+    device_map="auto",
+    trust_remote_code=True,
+)
+print(f"Model loaded on GPU")
+
 
 def parse_compact_ir(ir_text):
     """Parse Compact IR into operations."""
@@ -114,34 +140,35 @@ def render(nodes):
     return Image.open(buf)
 
 
-def generate_fake(prompt):
-    """
-    Fake generation for demo purposes.
-    Real inference requires GPU - this shows the concept.
-    """
-    prompt_lower = prompt.lower()
+def generate(prompt, temperature=0.1):
+    """Generate Compact IR from prompt using cad0 model."""
+    messages = [{"role": "user", "content": prompt}]
+    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tokenizer(text, return_tensors="pt")
 
-    if 'bracket' in prompt_lower or 'l-' in prompt_lower:
-        ir = "C 50 30 3\nC 3 30 50\nT 1 23.5 0 23.5"
-    elif 'plate' in prompt_lower or 'mount' in prompt_lower:
-        ir = "C 50 30 5\nY 3 10\nT 1 -15 -10 0\nY 3 10\nT 3 15 -10 0\nY 3 10\nT 5 -15 10 0\nY 3 10\nT 7 15 10 0"
-    elif 'enclosure' in prompt_lower or 'box' in prompt_lower:
-        ir = "C 80 60 40"
-    elif 'standoff' in prompt_lower or 'cylinder' in prompt_lower:
-        ir = "Y 5 25"
-    else:
-        ir = "C 40 40 10"
+    if torch.cuda.is_available():
+        inputs = inputs.to("cuda")
 
-    return ir
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=256,
+            temperature=temperature if temperature > 0 else 1.0,
+            do_sample=temperature > 0,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+
+    response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+    return response.strip()
 
 
-def text_to_cad(prompt):
+def text_to_cad(prompt, temperature=0.1):
     """Main function."""
     if not prompt.strip():
         return "Enter a prompt", None
 
-    # Generate IR (fake for demo)
-    ir = generate_fake(prompt)
+    # Generate IR using model
+    ir = generate(prompt, temperature)
 
     # Parse and render
     nodes = parse_compact_ir(ir)
@@ -156,18 +183,21 @@ def text_to_cad(prompt):
 # Simple interface
 demo = gr.Interface(
     fn=text_to_cad,
-    inputs=gr.Textbox(label="Describe a part", placeholder="L-bracket: 50mm x 30mm x 3mm"),
+    inputs=[
+        gr.Textbox(label="Describe a part", placeholder="L-bracket: 50mm x 30mm x 3mm"),
+        gr.Slider(minimum=0, maximum=1, value=0.1, step=0.1, label="Temperature"),
+    ],
     outputs=[
         gr.Textbox(label="Compact IR"),
         gr.Image(label="Preview"),
     ],
     title="cad0: Text to CAD",
-    description="Generate CAD geometry from text. This demo uses pattern matching - the real model runs on GPU.",
+    description="Generate parametric CAD geometry from natural language. Model: [campedersen/cad0](https://huggingface.co/campedersen/cad0)",
     examples=[
-        ["L-bracket: 50mm x 30mm x 3mm thick"],
-        ["50x30mm mounting plate with 4 corner holes"],
-        ["enclosure box 80x60x40mm"],
-        ["cylindrical standoff 10mm diameter, 25mm tall"],
+        ["L-bracket: 50mm x 30mm x 3mm thick", 0.1],
+        ["50x30mm mounting plate with 4 corner holes", 0.1],
+        ["enclosure box 80x60x40mm", 0.1],
+        ["cylindrical standoff 10mm diameter, 25mm tall", 0.1],
     ],
     theme=gr.themes.Base(),
 )
