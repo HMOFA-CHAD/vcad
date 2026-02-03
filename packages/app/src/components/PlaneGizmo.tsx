@@ -78,6 +78,7 @@ function GizmoPlane({ plane, rotation, position }: PlaneProps) {
         opacity={GIZMO_OPACITY}
         side={THREE.DoubleSide}
         depthWrite={false}
+        depthTest={false}
       />
     </mesh>
   );
