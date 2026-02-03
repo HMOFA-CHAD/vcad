@@ -61,7 +61,7 @@ export function UserMenu({ onSyncNow }: UserMenuProps) {
       {/* Avatar button */}
       <button
         onClick={() => setOpen(!open)}
-        className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-medium relative overflow-hidden hover:ring-2 hover:ring-blue-400 hover:ring-offset-2 dark:hover:ring-offset-zinc-900 transition-all"
+        className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-sm font-medium relative overflow-hidden hover:opacity-80 transition-opacity"
         aria-haspopup="true"
         aria-expanded={open}
       >
@@ -78,11 +78,11 @@ export function UserMenu({ onSyncNow }: UserMenuProps) {
 
         {/* Sync status indicator dot */}
         <span
-          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-zinc-900 ${
+          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-bg ${
             syncStatus === "syncing"
               ? "bg-yellow-500"
               : syncStatus === "error"
-                ? "bg-red-500"
+                ? "bg-danger"
                 : "bg-green-500"
           }`}
           aria-label={`Sync status: ${syncStatus}`}
@@ -91,27 +91,43 @@ export function UserMenu({ onSyncNow }: UserMenuProps) {
 
       {/* Dropdown menu */}
       {open && (
-        <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-zinc-900 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 py-1 z-50">
-          {/* User info */}
-          <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
-            <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate">
-              {user.user_metadata?.full_name || user.email}
+        <div className="absolute right-0 mt-2 w-56 border border-border bg-card/95 backdrop-blur-sm shadow-lg py-1 z-50">
+          {/* User info with inline avatar */}
+          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-[10px] font-medium overflow-hidden flex-shrink-0">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                initials
+              )}
             </div>
-            {user.user_metadata?.full_name && (
-              <div className="text-xs text-zinc-500 truncate">{user.email}</div>
-            )}
+            <div className="min-w-0">
+              <div className="text-xs text-text truncate">
+                {user.user_metadata?.full_name || user.email}
+              </div>
+              {user.user_metadata?.full_name && (
+                <div className="text-[10px] text-text-muted truncate">
+                  {user.email}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Sync status */}
-          <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2 text-xs text-zinc-500">
+          <div className="px-3 py-2 border-b border-border flex items-center gap-2 text-[10px] text-text-muted">
             {syncStatus === "synced" ? (
-              <CloudIcon className="w-4 h-4 text-green-500" />
+              <CloudIcon className="w-3 h-3 text-green-500" />
             ) : syncStatus === "syncing" ? (
-              <CloudIcon className="w-4 h-4 text-yellow-500 animate-pulse" />
+              <CloudIcon className="w-3 h-3 text-yellow-500 animate-pulse" />
             ) : syncStatus === "error" ? (
-              <CloudOffIcon className="w-4 h-4 text-red-500" />
+              <CloudOffIcon className="w-3 h-3 text-danger" />
             ) : (
-              <CloudIcon className="w-4 h-4 text-zinc-400" />
+              <CloudIcon className="w-3 h-3 text-text-muted" />
             )}
             <span>
               {syncStatus === "syncing"
@@ -130,14 +146,14 @@ export function UserMenu({ onSyncNow }: UserMenuProps) {
               onSyncNow?.();
               setOpen(false);
             }}
-            className="w-full px-3 py-2 text-left text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="w-full px-3 py-2 text-left text-xs text-text hover:bg-border/50"
           >
             Sync now
           </button>
 
           <button
             onClick={handleSignOut}
-            className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="w-full px-3 py-2 text-left text-xs text-danger hover:bg-border/50"
           >
             Sign out
           </button>

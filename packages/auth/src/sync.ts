@@ -64,17 +64,46 @@ function requireStorage(): StorageAdapter {
 // Debounce timer for sync
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Guard against concurrent syncs
+let syncInProgress = false;
+
+// Backoff state for error handling
+let consecutiveErrors = 0;
+let lastErrorTime = 0;
+const MIN_ERROR_BACKOFF = 30_000; // 30s minimum between retries after error
+const MAX_ERROR_BACKOFF = 300_000; // 5 min max
+
 /**
  * Trigger a sync operation.
  * Uploads pending local documents and downloads new cloud documents.
  *
  * Safe to call frequently - operations are debounced internally.
+ * Implements exponential backoff on repeated errors.
  */
 export async function triggerSync(): Promise<void> {
   const { user } = useAuthStore.getState();
   if (!isAuthEnabled() || !user) {
     return;
   }
+
+  // Prevent concurrent syncs
+  if (syncInProgress) {
+    return;
+  }
+
+  // Exponential backoff on errors
+  if (consecutiveErrors > 0) {
+    const backoff = Math.min(
+      MIN_ERROR_BACKOFF * Math.pow(2, consecutiveErrors - 1),
+      MAX_ERROR_BACKOFF
+    );
+    const timeSinceError = Date.now() - lastErrorTime;
+    if (timeSinceError < backoff) {
+      return;
+    }
+  }
+
+  syncInProgress = true;
 
   const { setSyncStatus, setLastSyncAt, setError, setPendingCount } =
     useSyncStore.getState();
@@ -97,10 +126,19 @@ export async function triggerSync(): Promise<void> {
 
     setSyncStatus("synced");
     setLastSyncAt(Date.now());
+
+    // Reset error state on success
+    consecutiveErrors = 0;
   } catch (error) {
     console.error("Sync failed:", error);
     setSyncStatus("error");
     setError((error as Error).message);
+
+    // Track consecutive errors for backoff
+    consecutiveErrors++;
+    lastErrorTime = Date.now();
+  } finally {
+    syncInProgress = false;
   }
 }
 
