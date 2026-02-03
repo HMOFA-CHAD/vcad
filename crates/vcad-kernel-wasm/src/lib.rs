@@ -2815,7 +2815,7 @@ mod cam_wasm {
     /// CAM tool definition for WASM.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct WasmCamTool {
-        /// Tool type: "flat_endmill", "ball_endmill", "vbit", "drill", "face_mill"
+        /// Tool type: "flat_endmill", "ball_endmill", "bull_endmill", "vbit", "drill", "face_mill"
         #[serde(rename = "type")]
         pub tool_type: String,
         /// Tool diameter (mm).
@@ -2828,6 +2828,8 @@ mod cam_wasm {
         pub angle: Option<f64>,
         /// Drill point angle (degrees).
         pub point_angle: Option<f64>,
+        /// Corner radius for bull endmills (mm).
+        pub corner_radius: Option<f64>,
     }
 
     impl From<WasmCamTool> for Tool {
@@ -2840,6 +2842,12 @@ mod cam_wasm {
                 },
                 "ball_endmill" => Tool::BallEndMill {
                     diameter: t.diameter,
+                    flute_length: t.flute_length.unwrap_or(20.0),
+                    flutes: t.flutes.unwrap_or(2),
+                },
+                "bull_endmill" => Tool::BullEndMill {
+                    diameter: t.diameter,
+                    corner_radius: t.corner_radius.unwrap_or(1.0),
                     flute_length: t.flute_length.unwrap_or(20.0),
                     flutes: t.flutes.unwrap_or(2),
                 },
@@ -3161,6 +3169,7 @@ mod cam_wasm {
                 let tool_type = match &entry.tool {
                     Tool::FlatEndMill { .. } => "flat_endmill",
                     Tool::BallEndMill { .. } => "ball_endmill",
+                    Tool::BullEndMill { .. } => "bull_endmill",
                     Tool::VBit { .. } => "vbit",
                     Tool::Drill { .. } => "drill",
                     Tool::FaceMill { .. } => "face_mill",
@@ -3184,6 +3193,126 @@ mod cam_wasm {
     #[wasm_bindgen(js_name = isCamAvailable)]
     pub fn is_cam_available() -> bool {
         true
+    }
+
+    // =========================================================================
+    // Phase 2: 3D Roughing
+    // =========================================================================
+
+    /// Generate a height field from mesh using drop-cutter algorithm.
+    ///
+    /// # Arguments
+    /// * `vertices_json` - Vertex array as JSON [[x,y,z], ...]
+    /// * `indices_json` - Triangle indices as JSON [i0, i1, i2, ...]
+    /// * `tool_json` - Tool definition as JSON
+    /// * `bounds_json` - Bounds [min_x, min_y, max_x, max_y] as JSON
+    /// * `resolution` - Sample spacing in mm
+    ///
+    /// # Returns
+    /// Height field as JSON with { nx, ny, bounds, heights }
+    #[wasm_bindgen(js_name = camDropCutter)]
+    pub fn cam_drop_cutter(
+        vertices_json: &str,
+        indices_json: &str,
+        tool_json: &str,
+        bounds_json: &str,
+        resolution: f64,
+    ) -> Result<String, JsError> {
+        use vcad_kernel_cam::dropcutter::{generate_height_field, MeshAccel};
+
+        let vertices: Vec<[f64; 3]> =
+            serde_json::from_str(vertices_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let indices: Vec<u32> =
+            serde_json::from_str(indices_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let bounds: [f64; 4] =
+            serde_json::from_str(bounds_json).map_err(|e| JsError::new(&e.to_string()))?;
+
+        let tool: Tool = tool.into();
+        let cell_size = resolution.max(1.0);
+
+        let accel = MeshAccel::new(&vertices, &indices, cell_size);
+        let height_field = generate_height_field(&accel, &tool, bounds, resolution);
+
+        serde_json::to_string(&height_field).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Generate 3D roughing toolpath from a height field.
+    ///
+    /// # Arguments
+    /// * `height_field_json` - Height field from cam_drop_cutter
+    /// * `tool_json` - Tool definition as JSON
+    /// * `settings` - CAM settings
+    /// * `target_z` - Target bottom Z depth
+    /// * `top_z` - Top Z (stock surface)
+    /// * `stock_margin` - Extra material to leave (mm)
+    /// * `direction` - Raster direction in degrees (0=X, 90=Y)
+    ///
+    /// # Returns
+    /// Toolpath as JSON string.
+    #[wasm_bindgen(js_name = camGenerateRoughing3d)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn cam_generate_roughing3d(
+        height_field_json: &str,
+        tool_json: &str,
+        settings: &WasmCamSettings,
+        target_z: f64,
+        top_z: f64,
+        stock_margin: f64,
+        direction: f64,
+    ) -> Result<String, JsError> {
+        use vcad_kernel_cam::dropcutter::HeightField;
+        use vcad_kernel_cam::Roughing3D;
+
+        let height_field: HeightField =
+            serde_json::from_str(height_field_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: Tool = tool.into();
+        let settings: CamSettings = settings.clone().into();
+
+        let op = Roughing3D::new(target_z, top_z)
+            .with_margin(stock_margin)
+            .with_direction(direction);
+
+        let toolpath = op
+            .generate(&height_field, &tool, &settings)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&toolpath).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Export toolpath to LinuxCNC G-code.
+    ///
+    /// # Arguments
+    /// * `toolpath_json` - Toolpath as JSON string
+    /// * `job_name` - Name for the G-code file header
+    /// * `tool_json` - Tool definition as JSON
+    /// * `settings` - CAM settings
+    /// * `program_number` - O-word program number
+    ///
+    /// # Returns
+    /// G-code as string.
+    #[wasm_bindgen(js_name = camExportLinuxCnc)]
+    pub fn cam_export_linuxcnc(
+        toolpath_json: &str,
+        job_name: &str,
+        tool_json: &str,
+        settings: &WasmCamSettings,
+        program_number: u32,
+    ) -> Result<String, JsError> {
+        use vcad_kernel_cam::post::{LinuxCncPost, PostProcessor};
+
+        let toolpath: Toolpath =
+            serde_json::from_str(toolpath_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: Tool = tool.into();
+        let settings: CamSettings = settings.clone().into();
+
+        let post = LinuxCncPost::default().with_program_number(program_number);
+        Ok(post.generate(job_name, &tool, &toolpath, &settings))
     }
 }
 
