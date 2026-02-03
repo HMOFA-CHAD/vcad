@@ -23,6 +23,7 @@ import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
 import { QuotePanel } from "@/components/QuotePanel";
 import { LogViewer } from "@/components/LogViewer";
 import { PrintPanel } from "@/components/print";
+import { CamPanel } from "@/components/cam";
 import { DocumentPicker } from "@/components/DocumentPicker";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { UpdateNotification } from "@/components/UpdateNotification";
@@ -54,6 +55,7 @@ import {
 import { useNotificationStore } from "@/stores/notification-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import { useSlicerStore } from "@/stores/slicer-store";
+import { useCamStore } from "@/stores/cam-store";
 import { useChangelogStore, CURRENT_VERSION } from "@/stores/changelog-store";
 import { WhatsNewPanel } from "@/components/WhatsNewPanel";
 
@@ -131,6 +133,7 @@ export function App() {
   const parts = useDocumentStore((s) => s.parts);
   const selectMultiple = useUiStore((s) => s.selectMultiple);
   const printPanelOpen = useSlicerStore((s) => s.printPanelOpen);
+  const camPanelOpen = useCamStore((s) => s.camPanelOpen);
 
   const handleSave = useCallback(() => {
     const state = useDocumentStore.getState();
@@ -546,6 +549,9 @@ export function App() {
 
           {/* Print panel (for 3D printing slicer settings) */}
           {printPanelOpen && <PrintPanel />}
+
+          {/* CAM panel (for CNC toolpath generation) */}
+          {camPanelOpen && <CamPanel />}
 
           {/* Log viewer (Cmd+J to toggle) */}
           <LogViewer />

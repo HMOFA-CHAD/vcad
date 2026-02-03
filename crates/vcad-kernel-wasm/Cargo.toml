@@ -30,6 +30,7 @@ gpu = ["dep:vcad-kernel-gpu"]
 raytrace = ["dep:vcad-kernel-raytrace", "dep:vcad-kernel-topo", "dep:vcad-kernel-geom", "dep:vcad-kernel-math", "dep:wgpu", "gpu", "vcad-kernel-raytrace/gpu"]
 physics = ["dep:vcad-kernel-physics"]
 slicer = ["dep:vcad-slicer", "dep:vcad-slicer-gcode"]
+cam = ["dep:vcad-kernel-cam"]
 
 [dependencies.console_error_panic_hook]
 version = "0.1"
@@ -69,4 +70,8 @@ optional = true
 
 [dependencies.vcad-slicer-gcode]
 path = "../vcad-slicer-gcode"
+optional = true
+
+[dependencies.vcad-kernel-cam]
+path = "../vcad-kernel-cam"
 optional = true

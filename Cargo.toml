@@ -30,6 +30,7 @@ members = [
     "crates/vcad-slicer-gcode",
     "crates/vcad-slicer-bambu",
     "crates/vcad-slicer-wasm",
+    "crates/vcad-kernel-cam",
 ]
 
 [workspace.package]
@@ -75,3 +76,4 @@ vcad-slicer = { path = "crates/vcad-slicer" }
 vcad-slicer-gcode = { path = "crates/vcad-slicer-gcode" }
 vcad-slicer-bambu = { path = "crates/vcad-slicer-bambu" }
 vcad-slicer-wasm = { path = "crates/vcad-slicer-wasm" }
+vcad-kernel-cam = { path = "crates/vcad-kernel-cam" }

@@ -406,6 +406,146 @@ export class WasmAnnotationLayer {
 }
 
 /**
+ * CAM settings for WASM.
+ */
+export class WasmCamSettings {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Create from JSON.
+     */
+    static fromJson(json: string): WasmCamSettings;
+    /**
+     * Create default CAM settings.
+     */
+    constructor();
+    /**
+     * Feed rate (mm/min).
+     */
+    feed_rate: number;
+    /**
+     * Plunge rate (mm/min).
+     */
+    plunge_rate: number;
+    /**
+     * Retract Z height (mm).
+     */
+    retract_z: number;
+    /**
+     * Safe Z height (mm).
+     */
+    safe_z: number;
+    /**
+     * Spindle RPM.
+     */
+    spindle_rpm: number;
+    /**
+     * Stepdown distance (mm).
+     */
+    stepdown: number;
+    /**
+     * Stepover distance (mm).
+     */
+    stepover: number;
+}
+
+/**
+ * Export toolpath to GRBL G-code.
+ *
+ * # Arguments
+ * * `toolpath_json` - Toolpath as JSON string
+ * * `job_name` - Name for the G-code file header
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * G-code as string.
+ */
+export function camExportGcode(toolpath_json: string, job_name: string, tool_json: string, settings: WasmCamSettings): string;
+
+/**
+ * Generate a circular pocket toolpath.
+ *
+ * # Arguments
+ * * `cx`, `cy` - Center point
+ * * `radius` - Pocket radius
+ * * `depth` - Cut depth
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ */
+export function camGenerateCircularPocket(cx: number, cy: number, radius: number, depth: number, tool_json: string, settings: WasmCamSettings): string;
+
+/**
+ * Generate a rectangular contour toolpath.
+ *
+ * # Arguments
+ * * `x`, `y` - Top-left corner
+ * * `width`, `height` - Rectangle dimensions
+ * * `depth` - Cut depth
+ * * `offset` - Offset from contour (positive = outside)
+ * * `tab_count` - Number of tabs (0 for none)
+ * * `tab_width` - Tab width in mm
+ * * `tab_height` - Tab height in mm
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ */
+export function camGenerateContour(x: number, y: number, width: number, height: number, depth: number, offset: number, tab_count: number, tab_width: number, tab_height: number, tool_json: string, settings: WasmCamSettings): string;
+
+/**
+ * Generate a face toolpath.
+ *
+ * # Arguments
+ * * `min_x`, `min_y`, `max_x`, `max_y` - Bounds of the area to face
+ * * `depth` - Cut depth (positive value)
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ */
+export function camGenerateFace(min_x: number, min_y: number, max_x: number, max_y: number, depth: number, tool_json: string, settings: WasmCamSettings): string;
+
+/**
+ * Generate a rectangular pocket toolpath.
+ *
+ * # Arguments
+ * * `x`, `y` - Top-left corner
+ * * `width`, `height` - Pocket dimensions
+ * * `depth` - Cut depth
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ */
+export function camGeneratePocket(x: number, y: number, width: number, height: number, depth: number, tool_json: string, settings: WasmCamSettings): string;
+
+/**
+ * Get default tool library.
+ *
+ * # Returns
+ * Tool library as JSON array.
+ */
+export function camGetDefaultTools(): string;
+
+/**
+ * Get toolpath statistics.
+ *
+ * # Arguments
+ * * `toolpath_json` - Toolpath as JSON string
+ *
+ * # Returns
+ * JSON object with statistics: { cutting_length, estimated_time, bounding_box }
+ */
+export function camToolpathStats(toolpath_json: string): any;
+
+/**
  * Compute creased normals (CPU fallback when GPU feature is disabled).
  */
 export function computeCreasedNormalsGpu(_positions: Float32Array, _indices: Uint32Array, _crease_angle: number): Promise<Float32Array>;
@@ -495,6 +635,11 @@ export function init(): void;
  * Initialize the GPU context (stub when GPU feature is disabled).
  */
 export function initGpu(): Promise<boolean>;
+
+/**
+ * Check if CAM is available.
+ */
+export function isCamAvailable(): boolean;
 
 /**
  * Check if GPU processing is available.
@@ -763,6 +908,31 @@ export interface InitOutput {
     readonly sliceresult_statsJson: (a: number) => [number, number, number, number];
     readonly slicersettings_fromJson: (a: number, b: number) => [number, number, number];
     readonly slicersettings_new: () => number;
+    readonly __wbg_get_wasmcamsettings_feed_rate: (a: number) => number;
+    readonly __wbg_get_wasmcamsettings_plunge_rate: (a: number) => number;
+    readonly __wbg_get_wasmcamsettings_retract_z: (a: number) => number;
+    readonly __wbg_get_wasmcamsettings_safe_z: (a: number) => number;
+    readonly __wbg_get_wasmcamsettings_spindle_rpm: (a: number) => number;
+    readonly __wbg_get_wasmcamsettings_stepdown: (a: number) => number;
+    readonly __wbg_get_wasmcamsettings_stepover: (a: number) => number;
+    readonly __wbg_set_wasmcamsettings_feed_rate: (a: number, b: number) => void;
+    readonly __wbg_set_wasmcamsettings_plunge_rate: (a: number, b: number) => void;
+    readonly __wbg_set_wasmcamsettings_retract_z: (a: number, b: number) => void;
+    readonly __wbg_set_wasmcamsettings_safe_z: (a: number, b: number) => void;
+    readonly __wbg_set_wasmcamsettings_spindle_rpm: (a: number, b: number) => void;
+    readonly __wbg_set_wasmcamsettings_stepdown: (a: number, b: number) => void;
+    readonly __wbg_set_wasmcamsettings_stepover: (a: number, b: number) => void;
+    readonly __wbg_wasmcamsettings_free: (a: number, b: number) => void;
+    readonly camExportGcode: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+    readonly camGenerateCircularPocket: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+    readonly camGenerateContour: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number, number];
+    readonly camGenerateFace: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+    readonly camGeneratePocket: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+    readonly camGetDefaultTools: () => [number, number, number, number];
+    readonly camToolpathStats: (a: number, b: number) => [number, number, number];
+    readonly isCamAvailable: () => number;
+    readonly wasmcamsettings_fromJson: (a: number, b: number) => [number, number, number];
+    readonly wasmcamsettings_new: () => number;
     readonly wasm_bindgen__closure__destroy__ha1c57de1520edab9: (a: number, b: number) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h90946713c829438a: (a: number, b: number, c: any, d: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h4889c924fd29fd81: (a: number, b: number, c: any) => void;

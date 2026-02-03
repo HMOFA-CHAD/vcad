@@ -976,6 +976,426 @@ export class WasmAnnotationLayer {
 if (Symbol.dispose) WasmAnnotationLayer.prototype[Symbol.dispose] = WasmAnnotationLayer.prototype.free;
 
 /**
+ * CAM settings for WASM.
+ */
+export class WasmCamSettings {
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(WasmCamSettings.prototype);
+        obj.__wbg_ptr = ptr;
+        WasmCamSettingsFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WasmCamSettingsFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_wasmcamsettings_free(ptr, 0);
+    }
+    /**
+     * Feed rate (mm/min).
+     * @returns {number}
+     */
+    get feed_rate() {
+        const ret = wasm.__wbg_get_wasmcamsettings_feed_rate(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Plunge rate (mm/min).
+     * @returns {number}
+     */
+    get plunge_rate() {
+        const ret = wasm.__wbg_get_wasmcamsettings_plunge_rate(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Retract Z height (mm).
+     * @returns {number}
+     */
+    get retract_z() {
+        const ret = wasm.__wbg_get_wasmcamsettings_retract_z(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Safe Z height (mm).
+     * @returns {number}
+     */
+    get safe_z() {
+        const ret = wasm.__wbg_get_wasmcamsettings_safe_z(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Spindle RPM.
+     * @returns {number}
+     */
+    get spindle_rpm() {
+        const ret = wasm.__wbg_get_wasmcamsettings_spindle_rpm(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Stepdown distance (mm).
+     * @returns {number}
+     */
+    get stepdown() {
+        const ret = wasm.__wbg_get_wasmcamsettings_stepdown(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Stepover distance (mm).
+     * @returns {number}
+     */
+    get stepover() {
+        const ret = wasm.__wbg_get_wasmcamsettings_stepover(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Feed rate (mm/min).
+     * @param {number} arg0
+     */
+    set feed_rate(arg0) {
+        wasm.__wbg_set_wasmcamsettings_feed_rate(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Plunge rate (mm/min).
+     * @param {number} arg0
+     */
+    set plunge_rate(arg0) {
+        wasm.__wbg_set_wasmcamsettings_plunge_rate(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Retract Z height (mm).
+     * @param {number} arg0
+     */
+    set retract_z(arg0) {
+        wasm.__wbg_set_wasmcamsettings_retract_z(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Safe Z height (mm).
+     * @param {number} arg0
+     */
+    set safe_z(arg0) {
+        wasm.__wbg_set_wasmcamsettings_safe_z(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Spindle RPM.
+     * @param {number} arg0
+     */
+    set spindle_rpm(arg0) {
+        wasm.__wbg_set_wasmcamsettings_spindle_rpm(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Stepdown distance (mm).
+     * @param {number} arg0
+     */
+    set stepdown(arg0) {
+        wasm.__wbg_set_wasmcamsettings_stepdown(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Stepover distance (mm).
+     * @param {number} arg0
+     */
+    set stepover(arg0) {
+        wasm.__wbg_set_wasmcamsettings_stepover(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Create from JSON.
+     * @param {string} json
+     * @returns {WasmCamSettings}
+     */
+    static fromJson(json) {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmcamsettings_fromJson(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return WasmCamSettings.__wrap(ret[0]);
+    }
+    /**
+     * Create default CAM settings.
+     */
+    constructor() {
+        const ret = wasm.wasmcamsettings_new();
+        this.__wbg_ptr = ret >>> 0;
+        WasmCamSettingsFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) WasmCamSettings.prototype[Symbol.dispose] = WasmCamSettings.prototype.free;
+
+/**
+ * Export toolpath to GRBL G-code.
+ *
+ * # Arguments
+ * * `toolpath_json` - Toolpath as JSON string
+ * * `job_name` - Name for the G-code file header
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * G-code as string.
+ * @param {string} toolpath_json
+ * @param {string} job_name
+ * @param {string} tool_json
+ * @param {WasmCamSettings} settings
+ * @returns {string}
+ */
+export function camExportGcode(toolpath_json, job_name, tool_json, settings) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(toolpath_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(job_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(tool_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        _assertClass(settings, WasmCamSettings);
+        const ret = wasm.camExportGcode(ptr0, len0, ptr1, len1, ptr2, len2, settings.__wbg_ptr);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
+/**
+ * Generate a circular pocket toolpath.
+ *
+ * # Arguments
+ * * `cx`, `cy` - Center point
+ * * `radius` - Pocket radius
+ * * `depth` - Cut depth
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ * @param {number} cx
+ * @param {number} cy
+ * @param {number} radius
+ * @param {number} depth
+ * @param {string} tool_json
+ * @param {WasmCamSettings} settings
+ * @returns {string}
+ */
+export function camGenerateCircularPocket(cx, cy, radius, depth, tool_json, settings) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(tool_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(settings, WasmCamSettings);
+        const ret = wasm.camGenerateCircularPocket(cx, cy, radius, depth, ptr0, len0, settings.__wbg_ptr);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Generate a rectangular contour toolpath.
+ *
+ * # Arguments
+ * * `x`, `y` - Top-left corner
+ * * `width`, `height` - Rectangle dimensions
+ * * `depth` - Cut depth
+ * * `offset` - Offset from contour (positive = outside)
+ * * `tab_count` - Number of tabs (0 for none)
+ * * `tab_width` - Tab width in mm
+ * * `tab_height` - Tab height in mm
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ * @param {number} x
+ * @param {number} y
+ * @param {number} width
+ * @param {number} height
+ * @param {number} depth
+ * @param {number} offset
+ * @param {number} tab_count
+ * @param {number} tab_width
+ * @param {number} tab_height
+ * @param {string} tool_json
+ * @param {WasmCamSettings} settings
+ * @returns {string}
+ */
+export function camGenerateContour(x, y, width, height, depth, offset, tab_count, tab_width, tab_height, tool_json, settings) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(tool_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(settings, WasmCamSettings);
+        const ret = wasm.camGenerateContour(x, y, width, height, depth, offset, tab_count, tab_width, tab_height, ptr0, len0, settings.__wbg_ptr);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Generate a face toolpath.
+ *
+ * # Arguments
+ * * `min_x`, `min_y`, `max_x`, `max_y` - Bounds of the area to face
+ * * `depth` - Cut depth (positive value)
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ * @param {number} min_x
+ * @param {number} min_y
+ * @param {number} max_x
+ * @param {number} max_y
+ * @param {number} depth
+ * @param {string} tool_json
+ * @param {WasmCamSettings} settings
+ * @returns {string}
+ */
+export function camGenerateFace(min_x, min_y, max_x, max_y, depth, tool_json, settings) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(tool_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(settings, WasmCamSettings);
+        const ret = wasm.camGenerateFace(min_x, min_y, max_x, max_y, depth, ptr0, len0, settings.__wbg_ptr);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Generate a rectangular pocket toolpath.
+ *
+ * # Arguments
+ * * `x`, `y` - Top-left corner
+ * * `width`, `height` - Pocket dimensions
+ * * `depth` - Cut depth
+ * * `tool_json` - Tool definition as JSON
+ * * `settings` - CAM settings
+ *
+ * # Returns
+ * Toolpath as JSON string.
+ * @param {number} x
+ * @param {number} y
+ * @param {number} width
+ * @param {number} height
+ * @param {number} depth
+ * @param {string} tool_json
+ * @param {WasmCamSettings} settings
+ * @returns {string}
+ */
+export function camGeneratePocket(x, y, width, height, depth, tool_json, settings) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(tool_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(settings, WasmCamSettings);
+        const ret = wasm.camGeneratePocket(x, y, width, height, depth, ptr0, len0, settings.__wbg_ptr);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Get default tool library.
+ *
+ * # Returns
+ * Tool library as JSON array.
+ * @returns {string}
+ */
+export function camGetDefaultTools() {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.camGetDefaultTools();
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Get toolpath statistics.
+ *
+ * # Arguments
+ * * `toolpath_json` - Toolpath as JSON string
+ *
+ * # Returns
+ * JSON object with statistics: { cutting_length, estimated_time, bounding_box }
+ * @param {string} toolpath_json
+ * @returns {any}
+ */
+export function camToolpathStats(toolpath_json) {
+    const ptr0 = passStringToWasm0(toolpath_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.camToolpathStats(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Compute creased normals (CPU fallback when GPU feature is disabled).
  * @param {Float32Array} _positions
  * @param {Uint32Array} _indices
@@ -1174,6 +1594,15 @@ export function init() {
 export function initGpu() {
     const ret = wasm.initGpu();
     return ret;
+}
+
+/**
+ * Check if CAM is available.
+ * @returns {boolean}
+ */
+export function isCamAvailable() {
+    const ret = wasm.isCamAvailable();
+    return ret !== 0;
 }
 
 /**
@@ -1826,7 +2255,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 179, function: Function { arguments: [Externref], shim_idx: 180, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 209, function: Function { arguments: [Externref], shim_idx: 210, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__ha1c57de1520edab9, wasm_bindgen__convert__closures_____invoke__h4889c924fd29fd81);
             return ret;
         },
@@ -1892,6 +2321,9 @@ const SolidFinalization = (typeof FinalizationRegistry === 'undefined')
 const WasmAnnotationLayerFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmannotationlayer_free(ptr >>> 0, 1));
+const WasmCamSettingsFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmcamsettings_free(ptr >>> 0, 1));
 
 function addToExternrefTable0(obj) {
     const idx = wasm.__externref_table_alloc();

@@ -363,6 +363,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e64b0cc0439b12df2fa678eae89a1c56a529fd067a9115f7827f1fffd22b32"
 
 [[package]]
+name = "clipper-sys"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6bccb550d47c390af7a601bee66a74fd3a01163feb85442021096f5533d2e5"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -648,6 +657,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
+name = "earcutr"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79127ed59a85d7687c409e9978547cffb7dc79675355ed22da6b66fd5f6ead01"
+dependencies = [
+ "itertools 0.11.0",
+ "num-traits",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -702,6 +721,12 @@ dependencies = [
  "crc32fast",
  "miniz_oxide",
 ]
+
+[[package]]
+name = "float_next_after"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bf7cc16383c4b8d58b9905a8509f02926ce3058053c056376248d958c9df1e8"
 
 [[package]]
 name = "flume"
@@ -782,6 +807,54 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "geo"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f811f663912a69249fa620dcd2a005db7254529da2d8a0b23942e81f47084501"
+dependencies = [
+ "earcutr",
+ "float_next_after",
+ "geo-types",
+ "geographiclib-rs",
+ "log",
+ "num-traits",
+ "robust",
+ "rstar",
+ "spade",
+]
+
+[[package]]
+name = "geo-clipper"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c080ca0fbf8beeaad1c3bb420d00db56fa109f92cb8e985a0ff53fb5c2820bab"
+dependencies = [
+ "clipper-sys",
+ "geo-types",
+]
+
+[[package]]
+name = "geo-types"
+version = "0.7.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24f8647af4005fa11da47cd56252c6ef030be8fa97bdbf355e7dfb6348f0a82c"
+dependencies = [
+ "approx",
+ "num-traits",
+ "rstar",
+ "serde",
+]
+
+[[package]]
+name = "geographiclib-rs"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f611040a2bb37eaa29a78a128d1e92a378a03e0b6e66ae27398d42b1ba9a7841"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
@@ -1075,6 +1148,15 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
 dependencies = [
  "either",
 ]
@@ -2458,7 +2540,7 @@ dependencies = [
 
 [[package]]
 name = "vcad"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2474,7 +2556,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-cli"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2492,7 +2574,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-ir"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2500,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "vcad-kernel-booleans",
  "vcad-kernel-constraints",
@@ -2518,7 +2600,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-booleans"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "criterion",
  "rayon",
@@ -2530,8 +2612,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "vcad-kernel-cam"
+version = "0.8.0"
+dependencies = [
+ "geo",
+ "geo-clipper",
+ "nalgebra",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "vcad-kernel-math",
+]
+
+[[package]]
 name = "vcad-kernel-constraints"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "approx",
  "nalgebra",
@@ -2543,7 +2638,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-drafting"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "serde",
  "vcad-kernel-math",
@@ -2552,7 +2647,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-fillet"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "vcad-kernel-geom",
  "vcad-kernel-math",
@@ -2563,14 +2658,14 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-geom"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "vcad-kernel-math",
 ]
 
 [[package]]
 name = "vcad-kernel-gpu"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "bytemuck",
  "pollster",
@@ -2582,7 +2677,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-math"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "nalgebra",
  "robust",
@@ -2590,7 +2685,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-nurbs"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "vcad-kernel-geom",
  "vcad-kernel-math",
@@ -2598,7 +2693,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-physics"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "nalgebra",
  "parry3d",
@@ -2612,7 +2707,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-primitives"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "vcad-kernel-geom",
  "vcad-kernel-math",
@@ -2621,7 +2716,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-raytrace"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "bytemuck",
  "js-sys",
@@ -2640,7 +2735,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-shell"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "vcad-kernel-geom",
  "vcad-kernel-math",
@@ -2651,7 +2746,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-sketch"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "thiserror 2.0.18",
  "vcad-kernel-geom",
@@ -2663,7 +2758,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-step"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "thiserror 2.0.18",
  "vcad-kernel-geom",
@@ -2675,7 +2770,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-sweep"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "thiserror 2.0.18",
  "vcad-kernel-geom",
@@ -2688,7 +2783,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-tessellate"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "vcad-kernel-geom",
  "vcad-kernel-math",
@@ -2698,7 +2793,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-topo"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "slotmap",
  "vcad-kernel-math",
@@ -2706,7 +2801,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-urdf"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "quick-xml 0.37.5",
  "serde",
@@ -2717,7 +2812,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-kernel-wasm"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -2726,6 +2821,7 @@ dependencies = [
  "serde_json",
  "vcad-ir",
  "vcad-kernel",
+ "vcad-kernel-cam",
  "vcad-kernel-drafting",
  "vcad-kernel-geom",
  "vcad-kernel-gpu",
@@ -2745,7 +2841,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-slicer"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "approx",
  "rayon",
@@ -2757,7 +2853,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-slicer-bambu"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "quick-xml 0.36.2",
@@ -2777,7 +2873,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-slicer-gcode"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "approx",
  "serde",
@@ -2788,7 +2884,7 @@ dependencies = [
 
 [[package]]
 name = "vcad-slicer-wasm"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -2894,7 +2990,7 @@ dependencies = [
 
 [[package]]
 name = "wasmosis"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "wasm-bindgen",
  "wasmosis-macro",
@@ -2902,7 +2998,7 @@ dependencies = [
 
 [[package]]
 name = "wasmosis-macro"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "proc-macro2",
  "quote",

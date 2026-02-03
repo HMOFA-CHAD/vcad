@@ -2799,3 +2799,394 @@ mod slicer_wasm {
 // Re-export slicer types at module level when feature is enabled
 #[cfg(feature = "slicer")]
 pub use slicer_wasm::*;
+
+// =========================================================================
+// CAM (Computer-Aided Manufacturing) bindings
+// =========================================================================
+
+#[cfg(feature = "cam")]
+mod cam_wasm {
+    use super::*;
+    use vcad_kernel_cam::{
+        post::{GrblPost, PostProcessor},
+        CamSettings, Contour, Contour2D, Face, Pocket2D, Tool, ToolLibrary, Toolpath,
+    };
+
+    /// CAM tool definition for WASM.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct WasmCamTool {
+        /// Tool type: "flat_endmill", "ball_endmill", "vbit", "drill", "face_mill"
+        #[serde(rename = "type")]
+        pub tool_type: String,
+        /// Tool diameter (mm).
+        pub diameter: f64,
+        /// Flute length (mm, for endmills).
+        pub flute_length: Option<f64>,
+        /// Number of flutes/inserts.
+        pub flutes: Option<u8>,
+        /// V-bit angle (degrees).
+        pub angle: Option<f64>,
+        /// Drill point angle (degrees).
+        pub point_angle: Option<f64>,
+    }
+
+    impl From<WasmCamTool> for Tool {
+        fn from(t: WasmCamTool) -> Self {
+            match t.tool_type.as_str() {
+                "flat_endmill" => Tool::FlatEndMill {
+                    diameter: t.diameter,
+                    flute_length: t.flute_length.unwrap_or(20.0),
+                    flutes: t.flutes.unwrap_or(2),
+                },
+                "ball_endmill" => Tool::BallEndMill {
+                    diameter: t.diameter,
+                    flute_length: t.flute_length.unwrap_or(20.0),
+                    flutes: t.flutes.unwrap_or(2),
+                },
+                "vbit" => Tool::VBit {
+                    diameter: t.diameter,
+                    angle: t.angle.unwrap_or(90.0),
+                },
+                "drill" => Tool::Drill {
+                    diameter: t.diameter,
+                    point_angle: t.point_angle.unwrap_or(118.0),
+                },
+                "face_mill" => Tool::FaceMill {
+                    diameter: t.diameter,
+                    inserts: t.flutes.unwrap_or(4),
+                },
+                _ => Tool::FlatEndMill {
+                    diameter: t.diameter,
+                    flute_length: t.flute_length.unwrap_or(20.0),
+                    flutes: t.flutes.unwrap_or(2),
+                },
+            }
+        }
+    }
+
+    /// CAM settings for WASM.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[wasm_bindgen]
+    pub struct WasmCamSettings {
+        /// Stepover distance (mm).
+        pub stepover: f64,
+        /// Stepdown distance (mm).
+        pub stepdown: f64,
+        /// Feed rate (mm/min).
+        pub feed_rate: f64,
+        /// Plunge rate (mm/min).
+        pub plunge_rate: f64,
+        /// Spindle RPM.
+        pub spindle_rpm: f64,
+        /// Safe Z height (mm).
+        pub safe_z: f64,
+        /// Retract Z height (mm).
+        pub retract_z: f64,
+    }
+
+    #[wasm_bindgen]
+    impl WasmCamSettings {
+        /// Create default CAM settings.
+        #[wasm_bindgen(constructor)]
+        pub fn new() -> Self {
+            Self {
+                stepover: 3.0,
+                stepdown: 2.0,
+                feed_rate: 1000.0,
+                plunge_rate: 300.0,
+                spindle_rpm: 12000.0,
+                safe_z: 5.0,
+                retract_z: 10.0,
+            }
+        }
+
+        /// Create from JSON.
+        #[wasm_bindgen(js_name = fromJson)]
+        pub fn from_json(json: &str) -> Result<WasmCamSettings, JsError> {
+            serde_json::from_str(json).map_err(|e| JsError::new(&e.to_string()))
+        }
+    }
+
+    impl Default for WasmCamSettings {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl From<WasmCamSettings> for CamSettings {
+        fn from(s: WasmCamSettings) -> Self {
+            Self {
+                stepover: s.stepover,
+                stepdown: s.stepdown,
+                feed_rate: s.feed_rate,
+                plunge_rate: s.plunge_rate,
+                spindle_rpm: s.spindle_rpm,
+                safe_z: s.safe_z,
+                retract_z: s.retract_z,
+            }
+        }
+    }
+
+    /// Generate a face toolpath.
+    ///
+    /// # Arguments
+    /// * `min_x`, `min_y`, `max_x`, `max_y` - Bounds of the area to face
+    /// * `depth` - Cut depth (positive value)
+    /// * `tool_json` - Tool definition as JSON
+    /// * `settings` - CAM settings
+    ///
+    /// # Returns
+    /// Toolpath as JSON string.
+    #[wasm_bindgen(js_name = camGenerateFace)]
+    pub fn cam_generate_face(
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+        depth: f64,
+        tool_json: &str,
+        settings: &WasmCamSettings,
+    ) -> Result<String, JsError> {
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: Tool = tool.into();
+        let settings: CamSettings = settings.clone().into();
+
+        let face = Face::new(min_x, min_y, max_x, max_y, depth);
+        let toolpath = face
+            .generate(&tool, &settings)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&toolpath).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Generate a rectangular pocket toolpath.
+    ///
+    /// # Arguments
+    /// * `x`, `y` - Top-left corner
+    /// * `width`, `height` - Pocket dimensions
+    /// * `depth` - Cut depth
+    /// * `tool_json` - Tool definition as JSON
+    /// * `settings` - CAM settings
+    ///
+    /// # Returns
+    /// Toolpath as JSON string.
+    #[wasm_bindgen(js_name = camGeneratePocket)]
+    pub fn cam_generate_pocket(
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        depth: f64,
+        tool_json: &str,
+        settings: &WasmCamSettings,
+    ) -> Result<String, JsError> {
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: Tool = tool.into();
+        let settings: CamSettings = settings.clone().into();
+
+        let pocket = Pocket2D::rectangle(x, y, width, height, depth);
+        let toolpath = pocket
+            .generate(&tool, &settings)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&toolpath).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Generate a circular pocket toolpath.
+    ///
+    /// # Arguments
+    /// * `cx`, `cy` - Center point
+    /// * `radius` - Pocket radius
+    /// * `depth` - Cut depth
+    /// * `tool_json` - Tool definition as JSON
+    /// * `settings` - CAM settings
+    ///
+    /// # Returns
+    /// Toolpath as JSON string.
+    #[wasm_bindgen(js_name = camGenerateCircularPocket)]
+    pub fn cam_generate_circular_pocket(
+        cx: f64,
+        cy: f64,
+        radius: f64,
+        depth: f64,
+        tool_json: &str,
+        settings: &WasmCamSettings,
+    ) -> Result<String, JsError> {
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: Tool = tool.into();
+        let settings: CamSettings = settings.clone().into();
+
+        let pocket = Pocket2D::circle(cx, cy, radius, depth);
+        let toolpath = pocket
+            .generate(&tool, &settings)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&toolpath).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Generate a rectangular contour toolpath.
+    ///
+    /// # Arguments
+    /// * `x`, `y` - Top-left corner
+    /// * `width`, `height` - Rectangle dimensions
+    /// * `depth` - Cut depth
+    /// * `offset` - Offset from contour (positive = outside)
+    /// * `tab_count` - Number of tabs (0 for none)
+    /// * `tab_width` - Tab width in mm
+    /// * `tab_height` - Tab height in mm
+    /// * `tool_json` - Tool definition as JSON
+    /// * `settings` - CAM settings
+    ///
+    /// # Returns
+    /// Toolpath as JSON string.
+    #[wasm_bindgen(js_name = camGenerateContour)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn cam_generate_contour(
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        depth: f64,
+        offset: f64,
+        tab_count: u32,
+        tab_width: f64,
+        tab_height: f64,
+        tool_json: &str,
+        settings: &WasmCamSettings,
+    ) -> Result<String, JsError> {
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: Tool = tool.into();
+        let settings: CamSettings = settings.clone().into();
+
+        let contour = Contour::rectangle(x, y, width, height);
+        let mut op = Contour2D::new(contour, depth).with_offset(offset);
+
+        if tab_count > 0 {
+            op = op.with_tabs(tab_count as usize, tab_width, tab_height);
+        }
+
+        let toolpath = op
+            .generate(&tool, &settings)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&toolpath).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Export toolpath to GRBL G-code.
+    ///
+    /// # Arguments
+    /// * `toolpath_json` - Toolpath as JSON string
+    /// * `job_name` - Name for the G-code file header
+    /// * `tool_json` - Tool definition as JSON
+    /// * `settings` - CAM settings
+    ///
+    /// # Returns
+    /// G-code as string.
+    #[wasm_bindgen(js_name = camExportGcode)]
+    pub fn cam_export_gcode(
+        toolpath_json: &str,
+        job_name: &str,
+        tool_json: &str,
+        settings: &WasmCamSettings,
+    ) -> Result<String, JsError> {
+        let toolpath: Toolpath =
+            serde_json::from_str(toolpath_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: WasmCamTool =
+            serde_json::from_str(tool_json).map_err(|e| JsError::new(&e.to_string()))?;
+        let tool: Tool = tool.into();
+        let settings: CamSettings = settings.clone().into();
+
+        let post = GrblPost::default();
+        Ok(post.generate(job_name, &tool, &toolpath, &settings))
+    }
+
+    /// Get toolpath statistics.
+    ///
+    /// # Arguments
+    /// * `toolpath_json` - Toolpath as JSON string
+    ///
+    /// # Returns
+    /// JSON object with statistics: { cutting_length, estimated_time, bounding_box }
+    #[wasm_bindgen(js_name = camToolpathStats)]
+    pub fn cam_toolpath_stats(toolpath_json: &str) -> Result<JsValue, JsError> {
+        let toolpath: Toolpath =
+            serde_json::from_str(toolpath_json).map_err(|e| JsError::new(&e.to_string()))?;
+
+        #[derive(Serialize)]
+        struct Stats {
+            cutting_length: f64,
+            estimated_time: f64,
+            segment_count: usize,
+            bounding_box: Option<[[f64; 3]; 2]>,
+        }
+
+        let bbox = toolpath.bounding_box().map(|(min, max)| [min, max]);
+
+        let stats = Stats {
+            cutting_length: toolpath.cutting_length(),
+            estimated_time: toolpath.estimated_time(),
+            segment_count: toolpath.len(),
+            bounding_box: bbox,
+        };
+
+        serde_wasm_bindgen::to_value(&stats).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Get default tool library.
+    ///
+    /// # Returns
+    /// Tool library as JSON array.
+    #[wasm_bindgen(js_name = camGetDefaultTools)]
+    pub fn cam_get_default_tools() -> Result<String, JsError> {
+        let lib = ToolLibrary::default_library();
+
+        #[derive(Serialize)]
+        struct ToolInfo {
+            number: u32,
+            name: String,
+            tool_type: String,
+            diameter: f64,
+            default_rpm: f64,
+            default_feed: f64,
+        }
+
+        let tools: Vec<ToolInfo> = lib
+            .tools
+            .iter()
+            .map(|entry| {
+                let tool_type = match &entry.tool {
+                    Tool::FlatEndMill { .. } => "flat_endmill",
+                    Tool::BallEndMill { .. } => "ball_endmill",
+                    Tool::VBit { .. } => "vbit",
+                    Tool::Drill { .. } => "drill",
+                    Tool::FaceMill { .. } => "face_mill",
+                };
+
+                ToolInfo {
+                    number: entry.number,
+                    name: entry.name.clone(),
+                    tool_type: tool_type.to_string(),
+                    diameter: entry.tool.diameter(),
+                    default_rpm: entry.default_rpm,
+                    default_feed: entry.default_feed,
+                }
+            })
+            .collect();
+
+        serde_json::to_string(&tools).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Check if CAM is available.
+    #[wasm_bindgen(js_name = isCamAvailable)]
+    pub fn is_cam_available() -> bool {
+        true
+    }
+}
+
+// Re-export CAM types at module level when feature is enabled
+#[cfg(feature = "cam")]
+pub use cam_wasm::*;
