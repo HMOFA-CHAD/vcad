@@ -42,13 +42,27 @@ async function decompressGzip(data: Uint8Array): Promise<string> {
 export interface UrlDocumentParams {
   doc: string;
   name?: string;
+  raw?: boolean; // If true, doc is raw compact IR (not compressed)
 }
 
 /**
  * Parse URL hash parameters.
  * Expects format: #/new?doc=<compressed>&name=<name>
+ * Also supports: ?ir=<url-encoded-compact-ir> for simple sharing
  */
 export function parseUrlParams(): UrlDocumentParams | null {
+  // Check for simple ?ir= parameter first (uncompressed, URL-encoded)
+  const searchParams = new URLSearchParams(window.location.search);
+  const rawIr = searchParams.get("ir");
+  if (rawIr) {
+    return {
+      doc: rawIr,
+      name: searchParams.get("name") ?? undefined,
+      raw: true, // Flag to skip decompression
+    };
+  }
+
+  // Check for hash-based compressed format
   const hash = window.location.hash;
   if (!hash.startsWith("#/new?")) {
     return null;
@@ -82,9 +96,16 @@ export async function loadDocumentFromUrl(): Promise<{
   }
 
   try {
-    // Decode and decompress
-    const compressed = base64urlDecode(params.doc);
-    const compact = await decompressGzip(compressed);
+    let compact: string;
+
+    if (params.raw) {
+      // Raw compact IR (URL-decoded by URLSearchParams)
+      compact = params.doc;
+    } else {
+      // Decode and decompress base64url + gzip
+      const compressed = base64urlDecode(params.doc);
+      compact = await decompressGzip(compressed);
+    }
 
     // Parse compact IR into VcadFile
     const file = parseVcadFile(compact);
