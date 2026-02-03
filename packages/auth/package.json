@@ -15,6 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.7",
+    "@radix-ui/react-dialog": "^1.1.4",
     "@supabase/supabase-js": "^2.45.0",
     "zustand": "^5.0.0"
   },

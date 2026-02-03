@@ -114,8 +114,8 @@ vcad import part.step mypart.vcad
 | `packages/core/src/utils/export-stl.ts` | `exportStlBuffer()`, `exportStlBlob()` |
 | `packages/core/src/utils/export-gltf.ts` | `exportGltfBuffer()`, `exportGltfBlob()` |
 | `packages/core/src/utils/import-stl.ts` | `parseStl()` for binary and ASCII STL |
-| `packages/app/src/components/OutputButton.tsx` | Export dropdown UI |
-| `packages/app/src/stores/output-store.ts` | Export action state |
+| `packages/app/src/components/BottomToolbar.tsx` | Build/Export toolbar UI |
+| `packages/app/src/stores/output-store.ts` | Quote panel state and pricing helpers |
 
 ### Architecture
 

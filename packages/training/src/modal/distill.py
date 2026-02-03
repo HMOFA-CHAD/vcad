@@ -49,7 +49,12 @@ image = (
         "flash-attn",
         extra_options="--no-build-isolation",
     )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
+    .env(
+        {
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+            "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+        }
+    )
 )
 
 
@@ -68,11 +73,11 @@ def distill(
     student_model: str = "Qwen/Qwen2.5-0.5B",
     output_dir: str = "/data/checkpoints/cad0-mini",
     num_epochs: int = 3,
-    batch_size: int = 32,
+    batch_size: int = 16,
     learning_rate: float = 5e-5,
     temperature: float = 2.0,
     alpha: float = 0.5,  # Weight for distillation loss vs task loss
-    max_seq_length: int = 512,
+    max_seq_length: int = 256,
     max_samples: int | None = None,
 ):
     """
@@ -151,6 +156,7 @@ def distill(
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
     )
+    student.gradient_checkpointing_enable()
     student.to("cuda")
 
     student_tokenizer = AutoTokenizer.from_pretrained(
@@ -159,10 +165,39 @@ def distill(
     )
 
     # Ensure padding token
-    if student_tokenizer.pad_token is None:
-        student_tokenizer.pad_token = student_tokenizer.eos_token
     if teacher_tokenizer.pad_token is None:
         teacher_tokenizer.pad_token = teacher_tokenizer.eos_token
+    if student_tokenizer.pad_token is None:
+        student_tokenizer.pad_token = student_tokenizer.eos_token
+
+    teacher_tok_vocab = len(teacher_tokenizer)
+    student_tok_vocab = len(student_tokenizer)
+    teacher_model_vocab = teacher.config.vocab_size
+    student_model_vocab = student.config.vocab_size
+
+    print(f"Teacher tokenizer vocab size: {teacher_tok_vocab}")
+    print(f"Student tokenizer vocab size: {student_tok_vocab}")
+    print(f"Teacher model vocab size: {teacher_model_vocab}")
+    print(f"Student model vocab size: {student_model_vocab}")
+
+    target_vocab = max(
+        teacher_tok_vocab,
+        student_tok_vocab,
+        teacher_model_vocab,
+        student_model_vocab,
+    )
+    if teacher_model_vocab != target_vocab:
+        print(f"Resizing teacher embeddings to {target_vocab}...")
+        teacher.resize_token_embeddings(target_vocab)
+    if student_model_vocab != target_vocab:
+        print(f"Resizing student embeddings to {target_vocab}...")
+        student.resize_token_embeddings(target_vocab)
+
+    tokenizer = (
+        teacher_tokenizer
+        if teacher_tok_vocab >= student_tok_vocab
+        else student_tokenizer
+    )
 
     # Load training data
     print("Loading training data...")
@@ -190,11 +225,10 @@ def distill(
         text = example["text"]
         ir = example["ir"]
 
-        # Use student tokenizer (both Qwen models use same tokenizer)
         prompt = format_prompt(text)
         full_text = prompt + ir
 
-        encoded = student_tokenizer(
+        encoded = tokenizer(
             full_text,
             max_length=max_seq_length,
             truncation=True,
@@ -203,7 +237,7 @@ def distill(
         )
 
         # Find where the response starts
-        prompt_encoded = student_tokenizer(
+        prompt_encoded = tokenizer(
             prompt,
             max_length=max_seq_length,
             truncation=True,
@@ -380,7 +414,7 @@ def distill(
     print(f"Saving distilled model to {output_dir}...")
     os.makedirs(output_dir, exist_ok=True)
     student.save_pretrained(output_dir)
-    student_tokenizer.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)
 
     # Commit volume
     volume.commit()

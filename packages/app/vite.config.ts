@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export default defineConfig({
+  envDir: "../../",
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.0.0"),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

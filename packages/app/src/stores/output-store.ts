@@ -1,6 +1,6 @@
 import { create } from "zustand";
+import type { EvaluatedScene } from "@vcad/core";
 
-export type OutputAction = "manufacture" | "stl" | "glb" | "step";
 export type MaterialType = "pla" | "aluminum" | "steel";
 
 export const PRICING = {
@@ -10,10 +10,6 @@ export const PRICING = {
 } as const;
 
 interface OutputStore {
-  // Dropdown state
-  selectedAction: OutputAction;
-  setSelectedAction: (action: OutputAction) => void;
-
   // Quote panel state
   quotePanelOpen: boolean;
   openQuotePanel: () => void;
@@ -25,10 +21,6 @@ interface OutputStore {
 }
 
 export const useOutputStore = create<OutputStore>((set) => ({
-  // Default to manufacture
-  selectedAction: "manufacture",
-  setSelectedAction: (action) => set({ selectedAction: action }),
-
   // Quote panel
   quotePanelOpen: false,
   openQuotePanel: () => set({ quotePanelOpen: true }),
@@ -48,4 +40,41 @@ export const useOutputStore = create<OutputStore>((set) => ({
 export function calculatePrice(volumeCm3: number, material: MaterialType): number {
   const { rate, base } = PRICING[material];
   return volumeCm3 * rate + base;
+}
+
+/**
+ * Estimate total volume (cm³) for an evaluated scene.
+ * Uses a rough bounding-box fill ratio to keep estimates cheap.
+ */
+export function estimateVolumeCm3(scene: EvaluatedScene | null): number {
+  if (!scene?.parts?.length) return 0;
+  return scene.parts.reduce((sum, part) => {
+    const positions = part.mesh.positions;
+    if (!positions.length) return sum;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < positions.length; i += 3) {
+      minX = Math.min(minX, positions[i]!);
+      maxX = Math.max(maxX, positions[i]!);
+      minY = Math.min(minY, positions[i + 1]!);
+      maxY = Math.max(maxY, positions[i + 1]!);
+      minZ = Math.min(minZ, positions[i + 2]!);
+      maxZ = Math.max(maxZ, positions[i + 2]!);
+    }
+    const bbox = (maxX - minX) * (maxY - minY) * (maxZ - minZ);
+    return sum + bbox * 0.3 / 1000;
+  }, 0);
+}
+
+/**
+ * Estimate price for an evaluated scene and material.
+ */
+export function estimatePrice(
+  scene: EvaluatedScene | null,
+  material: MaterialType
+): number | null {
+  if (!scene?.parts?.length) return null;
+  const volumeCm3 = estimateVolumeCm3(scene);
+  return calculatePrice(volumeCm3, material);
 }

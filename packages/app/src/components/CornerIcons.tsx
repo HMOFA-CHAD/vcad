@@ -30,7 +30,6 @@ import {
 import { FloppyDisk } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { examples } from "@/data/examples";
-import { OutputButton } from "./OutputButton";
 import { CameraSettingsPanel } from "./CameraSettingsPanel";
 import { useCameraSettingsStore } from "@/stores/camera-settings-store";
 import { CONTROL_PRESETS } from "@/types/camera-controls";
@@ -647,7 +646,7 @@ export function CornerIcons({ onAboutOpen, onSave, onOpen }: CornerIconsProps) {
         </div>
       </div>
 
-      {/* Top-right: save, settings, auth, BUILD - with safe area padding */}
+      {/* Top-right: save, settings, auth - with safe area padding */}
       <div className={cn(
         "absolute z-20 flex items-center gap-1 top-[max(0.75rem,var(--safe-top))] right-[max(0.75rem,var(--safe-right))]",
         "transition-opacity duration-200",
@@ -662,14 +661,14 @@ export function CornerIcons({ onAboutOpen, onSave, onOpen }: CornerIconsProps) {
         <SettingsMenu onAboutOpen={onAboutOpen} onOpen={onOpen} />
 
         {/* Auth: Sign in button or user menu */}
-        <SignInButton className={cn(
-          "hidden sm:flex items-center gap-1 px-2 py-1 text-xs font-medium",
-          "text-text-muted hover:text-text hover:bg-hover rounded",
-        )} />
+        <SignInButton
+          variant="icon-text"
+          className={cn(
+            "flex items-center justify-center gap-1.5 h-11 w-11 sm:h-8 sm:w-auto sm:px-2 text-xs font-medium",
+            "text-text-muted hover:text-text hover:bg-hover rounded",
+          )}
+        />
         <UserMenu onSyncNow={() => triggerSync()} />
-
-        {/* BUILD - primary CTA at the end */}
-        <OutputButton />
       </div>
     </>
   );

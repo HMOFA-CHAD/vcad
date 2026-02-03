@@ -43,6 +43,7 @@ import {
   Sparkle,
   SpinnerGap,
   ChatCircle,
+  Path,
 } from "@phosphor-icons/react";
 import * as Popover from "@radix-ui/react-popover";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -65,6 +66,7 @@ import { useNotificationStore } from "@/stores/notification-store";
 import { generateCADServer } from "@/lib/server-inference";
 import { fromCompact, type Document } from "@vcad/ir";
 import { useRequireAuth, AuthModal, useAuthStore } from "@vcad/auth";
+import { useOutputStore, estimatePrice } from "@/stores/output-store";
 import type { VcadFile } from "@vcad/core";
 import { cn } from "@/lib/utils";
 import {
@@ -78,6 +80,7 @@ import {
 import { useOnboardingStore, type GuidedFlowStep } from "@/stores/onboarding-store";
 import { useDrawingStore } from "@/stores/drawing-store";
 import { useSlicerStore } from "@/stores/slicer-store";
+import { useCamStore } from "@/stores/cam-store";
 
 const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] = [
   { kind: "cube", icon: Cube, label: "Box" },
@@ -754,6 +757,8 @@ function ToolbarButton({
   label,
   shortcut,
   iconColor,
+  className,
+  labelClassName,
 }: {
   children: React.ReactNode;
   active?: boolean;
@@ -765,6 +770,8 @@ function ToolbarButton({
   label?: string;
   shortcut?: string;
   iconColor?: string;
+  className?: string;
+  labelClassName?: string;
 }) {
   return (
     <Tooltip content={tooltip} side="top">
@@ -775,7 +782,8 @@ function ToolbarButton({
           "sm:h-8 sm:min-w-0",
           expanded ? "sm:px-2" : "sm:px-1.5",
           "disabled:opacity-30 disabled:cursor-not-allowed",
-                    pulse && "animate-pulse",
+          pulse && "animate-pulse",
+          className,
         )}
         disabled={disabled}
         onClick={onClick}
@@ -791,7 +799,8 @@ function ToolbarButton({
         {expanded && label && (
           <span className={cn(
             "hidden sm:inline text-xs whitespace-nowrap",
-            active ? "text-text" : "text-text-muted"
+            active ? "text-text" : "text-text-muted",
+            labelClassName
           )}>
             {label}
             {shortcut && <span className="ml-1 opacity-60">{shortcut}</span>}
@@ -1133,6 +1142,7 @@ export function BottomToolbar() {
 
   // Engine state
   const scene = useEngineStore((s) => s.scene);
+  const hasSceneParts = Boolean(scene?.parts?.length);
 
   // Simulation state
   const simMode = useSimulationStore((s) => s.mode);
@@ -1148,6 +1158,16 @@ export function BottomToolbar() {
   const guidedFlowActive = useOnboardingStore((s) => s.guidedFlowActive);
   const guidedFlowStep = useOnboardingStore((s) => s.guidedFlowStep);
   const advanceGuidedFlow = useOnboardingStore((s) => s.advanceGuidedFlow);
+
+  // Output/Build state
+  const openQuotePanel = useOutputStore((s) => s.openQuotePanel);
+  const selectedMaterial = useOutputStore((s) => s.selectedMaterial);
+  const estimatedPrice = estimatePrice(scene, selectedMaterial);
+  const buildTooltip = !hasSceneParts
+    ? "Build (add geometry first)"
+    : estimatedPrice
+      ? `Build (~$${estimatedPrice.toFixed(0)})`
+      : "Build";
 
   // Helper to check if a button should pulse during guided flow
   function shouldPulse(
@@ -1619,6 +1639,21 @@ export function BottomToolbar() {
         return (
           <>
             <ToolbarButton
+              tooltip={buildTooltip}
+              disabled={!hasSceneParts}
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("vcad:hero-view"));
+                openQuotePanel();
+              }}
+              expanded={toolbarExpanded}
+              label="Build"
+              iconColor="text-accent"
+              className="bg-accent/10 hover:bg-accent/20 rounded"
+              labelClassName="text-accent font-medium"
+            >
+              <Sparkle size={20} />
+            </ToolbarButton>
+            <ToolbarButton
               tooltip="3D View"
               active={viewMode === "3d"}
               onClick={() => setViewMode("3d")}
@@ -1704,6 +1739,18 @@ export function BottomToolbar() {
               iconColor={color}
             >
               <Printer size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip="Open CAM Panel"
+              disabled={sketchActive}
+              onClick={() => {
+                useCamStore.getState().openCamPanel();
+              }}
+              expanded={toolbarExpanded}
+              label="CAM"
+              iconColor={color}
+            >
+              <Path size={20} />
             </ToolbarButton>
           </>
         );
