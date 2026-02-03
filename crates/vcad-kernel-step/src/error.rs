@@ -9,25 +9,9 @@ pub enum StepError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// Lexer error: unexpected character or malformed token.
-    #[error("Lexer error at line {line}, column {col}: {message}")]
-    Lexer {
-        /// Line number (1-indexed).
-        line: usize,
-        /// Column number (1-indexed).
-        col: usize,
-        /// Error message.
-        message: String,
-    },
-
-    /// Parser error: unexpected token or malformed structure.
-    #[error("Parser error{}: {message}", entity_id.map(|id| format!(" at entity #{}", id)).unwrap_or_default())]
-    Parser {
-        /// Entity ID where the error occurred, if known.
-        entity_id: Option<u64>,
-        /// Error message.
-        message: String,
-    },
+    /// Parsing error from stepperoni.
+    #[error(transparent)]
+    Parse(#[from] stepperoni::StepError),
 
     /// Missing entity reference.
     #[error("Missing entity reference: #{0}")]
@@ -60,21 +44,9 @@ pub enum StepError {
 }
 
 impl StepError {
-    /// Create a lexer error.
-    pub fn lexer(line: usize, col: usize, message: impl Into<String>) -> Self {
-        Self::Lexer {
-            line,
-            col,
-            message: message.into(),
-        }
-    }
-
-    /// Create a parser error.
+    /// Create a parser-style error (wraps stepperoni's parser error).
     pub fn parser(entity_id: Option<u64>, message: impl Into<String>) -> Self {
-        Self::Parser {
-            entity_id,
-            message: message.into(),
-        }
+        Self::Parse(stepperoni::StepError::parser(entity_id, message))
     }
 
     /// Create a type mismatch error.

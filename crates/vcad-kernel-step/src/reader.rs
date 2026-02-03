@@ -8,7 +8,7 @@ use crate::entities::{
     parse_oriented_edge, parse_shell, parse_surface, parse_vertex_point,
 };
 use crate::error::StepError;
-use crate::parser::{Parser, StepFile};
+use stepperoni::{Parser, StepFile};
 
 use vcad_kernel_geom::GeometryStore;
 use vcad_kernel_primitives::BRepSolid;

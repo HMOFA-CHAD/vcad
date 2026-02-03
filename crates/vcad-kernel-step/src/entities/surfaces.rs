@@ -2,7 +2,7 @@
 
 use super::{parse_any_axis_placement, parse_cartesian_point, AxisPlacement, EntityArgs};
 use crate::error::StepError;
-use crate::parser::{StepFile, StepValue};
+use stepperoni::{StepFile, StepValue};
 use vcad_kernel_geom::{ConeSurface, CylinderSurface, Plane, SphereSurface, Surface, TorusSurface};
 use vcad_kernel_nurbs::BSplineSurface;
 
@@ -41,7 +41,7 @@ impl StepSurface {
 ///
 /// STEP syntax: `PLANE(name, position)`
 pub fn parse_plane(file: &StepFile, id: u64) -> Result<Plane, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "PLANE" => {
@@ -62,7 +62,7 @@ pub fn parse_plane(file: &StepFile, id: u64) -> Result<Plane, StepError> {
 ///
 /// STEP syntax: `CYLINDRICAL_SURFACE(name, position, radius)`
 pub fn parse_cylindrical_surface(file: &StepFile, id: u64) -> Result<CylinderSurface, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "CYLINDRICAL_SURFACE" => {
@@ -86,7 +86,7 @@ pub fn parse_cylindrical_surface(file: &StepFile, id: u64) -> Result<CylinderSur
 ///
 /// STEP syntax: `CONICAL_SURFACE(name, position, radius, semi_angle)`
 pub fn parse_conical_surface(file: &StepFile, id: u64) -> Result<ConeSurface, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "CONICAL_SURFACE" => {
@@ -121,7 +121,7 @@ pub fn parse_conical_surface(file: &StepFile, id: u64) -> Result<ConeSurface, St
 ///
 /// STEP syntax: `SPHERICAL_SURFACE(name, position, radius)`
 pub fn parse_spherical_surface(file: &StepFile, id: u64) -> Result<SphereSurface, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "SPHERICAL_SURFACE" => {
@@ -145,7 +145,7 @@ pub fn parse_spherical_surface(file: &StepFile, id: u64) -> Result<SphereSurface
 ///
 /// STEP syntax: `TOROIDAL_SURFACE(name, position, major_radius, minor_radius)`
 pub fn parse_toroidal_surface(file: &StepFile, id: u64) -> Result<TorusSurface, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "TOROIDAL_SURFACE" => {
@@ -182,7 +182,7 @@ pub fn parse_toroidal_surface(file: &StepFile, id: u64) -> Result<TorusSurface, 
 ///  B_SPLINE_SURFACE_WITH_KNOTS(name, ..., u_mults, v_mults, u_knots, v_knots, ...))
 /// ```
 pub fn parse_bspline_surface(file: &StepFile, id: u64) -> Result<BSplineSurface, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     // For complex entities, we need to find B_SPLINE_SURFACE and B_SPLINE_SURFACE_WITH_KNOTS data
     // The args may contain Typed variants with the actual surface data
@@ -323,7 +323,7 @@ fn expand_knots(knots: &[StepValue], mults: &[StepValue]) -> Result<Vec<f64>, St
 
 /// Parse any supported surface entity.
 pub fn parse_surface(file: &StepFile, id: u64) -> Result<StepSurface, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "PLANE" => Ok(StepSurface::Plane(parse_plane(file, id)?)),
@@ -437,7 +437,7 @@ pub fn write_toroidal_surface(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
+    use stepperoni::Parser;
 
     fn parse_step(input: &str) -> StepFile {
         Parser::parse(input.as_bytes()).unwrap()

@@ -42,8 +42,7 @@ pub enum Token {
     Dollar,
 }
 
-/// Position in the source file (reserved for future error reporting).
-#[allow(dead_code)]
+/// Position in the source file.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Position {
     /// Line number (1-indexed).
@@ -57,8 +56,7 @@ pub struct Position {
 pub struct SpannedToken {
     /// The token.
     pub token: Token,
-    /// Position where the token starts (reserved for future error reporting).
-    #[allow(dead_code)]
+    /// Position where the token starts.
     pub pos: Position,
 }
 
@@ -343,15 +341,15 @@ impl<'a> Lexer<'a> {
             // Check what follows the decimal point
             let next_char = self.input.get(self.pos + 1).copied();
             let is_decimal = match next_char {
-                // Digit after decimal → definitely a real number (e.g., 100.5)
+                // Digit after decimal -> definitely a real number (e.g., 100.5)
                 Some(ch) if ch.is_ascii_digit() => true,
-                // Delimiter after decimal → trailing decimal point (e.g., 100., common in STEP)
+                // Delimiter after decimal -> trailing decimal point (e.g., 100., common in STEP)
                 Some(b',') | Some(b')') | Some(b';') | None => true,
-                // Whitespace after decimal → trailing decimal point
+                // Whitespace after decimal -> trailing decimal point
                 Some(ch) if ch.is_ascii_whitespace() => true,
-                // Exponent after decimal → real number (e.g., 100.E5)
+                // Exponent after decimal -> real number (e.g., 100.E5)
                 Some(b'E') | Some(b'e') => true,
-                // Letter after decimal → could be enum (e.g., .T. for true), don't consume
+                // Letter after decimal -> could be enum (e.g., .T. for true), don't consume
                 _ => false,
             };
 

@@ -14,7 +14,7 @@ pub use surfaces::*;
 pub use topology::*;
 
 use crate::error::StepError;
-use crate::parser::{StepEntity, StepFile, StepValue};
+use stepperoni::{StepEntity, StepFile, StepValue};
 
 /// Helper trait for extracting argument values from STEP entities.
 pub trait EntityArgs {
@@ -162,7 +162,7 @@ pub fn require_entity<'a>(
     id: u64,
     expected_type: &str,
 ) -> Result<&'a StepEntity, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
     if entity.type_name != expected_type {
         return Err(StepError::type_mismatch(expected_type, &entity.type_name));
     }

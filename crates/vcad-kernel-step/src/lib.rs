@@ -19,11 +19,12 @@
 
 mod entities;
 mod error;
-mod lexer;
-mod parser;
 mod reader;
 mod writer;
 
 pub use error::StepError;
 pub use reader::{read_step, read_step_from_buffer};
 pub use writer::{write_step, write_step_to_buffer};
+
+// Re-export stepperoni types for downstream consumers
+pub use stepperoni::{parse, tokenize, Lexer, Parser, Position, SpannedToken, StepEntity, StepFile, StepValue, Token};

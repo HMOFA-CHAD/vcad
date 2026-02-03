@@ -2,14 +2,14 @@
 
 use super::EntityArgs;
 use crate::error::StepError;
-use crate::parser::StepFile;
+use stepperoni::StepFile;
 use vcad_kernel_math::{Dir3, Point3, Vec3};
 
 /// Parse a CARTESIAN_POINT entity.
 ///
 /// STEP syntax: `CARTESIAN_POINT(name, (x, y, z))`
 pub fn parse_cartesian_point(file: &StepFile, id: u64) -> Result<Point3, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     // Handle both CARTESIAN_POINT and complex entity forms
     match entity.type_name.as_str() {
@@ -31,7 +31,7 @@ pub fn parse_cartesian_point(file: &StepFile, id: u64) -> Result<Point3, StepErr
 ///
 /// STEP syntax: `DIRECTION(name, (x, y, z))`
 pub fn parse_direction(file: &StepFile, id: u64) -> Result<Dir3, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "DIRECTION" => {
@@ -57,7 +57,7 @@ pub fn parse_direction(file: &StepFile, id: u64) -> Result<Dir3, StepError> {
 /// STEP syntax: `VECTOR(name, direction, magnitude)`
 #[allow(dead_code)]
 pub fn parse_vector(file: &StepFile, id: u64) -> Result<Vec3, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "VECTOR" => {
@@ -116,7 +116,7 @@ impl AxisPlacement {
 ///
 /// STEP syntax: `AXIS1_PLACEMENT(name, location, axis)`
 pub fn parse_axis1_placement(file: &StepFile, id: u64) -> Result<AxisPlacement, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "AXIS1_PLACEMENT" => {
@@ -144,7 +144,7 @@ pub fn parse_axis1_placement(file: &StepFile, id: u64) -> Result<AxisPlacement, 
 ///
 /// STEP syntax: `AXIS2_PLACEMENT_3D(name, location, axis, ref_direction)`
 pub fn parse_axis2_placement_3d(file: &StepFile, id: u64) -> Result<AxisPlacement, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "AXIS2_PLACEMENT_3D" => {
@@ -177,7 +177,7 @@ pub fn parse_axis2_placement_3d(file: &StepFile, id: u64) -> Result<AxisPlacemen
 
 /// Parse any axis placement (AXIS1_PLACEMENT or AXIS2_PLACEMENT_3D).
 pub fn parse_any_axis_placement(file: &StepFile, id: u64) -> Result<AxisPlacement, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
     match entity.type_name.as_str() {
         "AXIS1_PLACEMENT" => parse_axis1_placement(file, id),
         "AXIS2_PLACEMENT_3D" => parse_axis2_placement_3d(file, id),
@@ -227,7 +227,7 @@ pub fn write_axis2_placement_3d(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
+    use stepperoni::Parser;
 
     fn parse_step(input: &str) -> StepFile {
         Parser::parse(input.as_bytes()).unwrap()

@@ -2,7 +2,7 @@
 
 use super::{parse_cartesian_point, EntityArgs};
 use crate::error::StepError;
-use crate::parser::StepFile;
+use stepperoni::StepFile;
 use vcad_kernel_math::Point3;
 
 /// Parsed VERTEX_POINT entity.
@@ -106,7 +106,7 @@ pub struct StepSolid {
 
 /// Parse a VERTEX_POINT entity.
 pub fn parse_vertex_point(file: &StepFile, id: u64) -> Result<StepVertex, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "VERTEX_POINT" => {
@@ -120,7 +120,7 @@ pub fn parse_vertex_point(file: &StepFile, id: u64) -> Result<StepVertex, StepEr
 
 /// Parse an EDGE_CURVE entity.
 pub fn parse_edge_curve(file: &StepFile, id: u64) -> Result<StepEdge, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "EDGE_CURVE" => {
@@ -143,7 +143,7 @@ pub fn parse_edge_curve(file: &StepFile, id: u64) -> Result<StepEdge, StepError>
 
 /// Parse an ORIENTED_EDGE entity.
 pub fn parse_oriented_edge(file: &StepFile, id: u64) -> Result<StepOrientedEdge, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "ORIENTED_EDGE" => {
@@ -167,7 +167,7 @@ pub fn parse_oriented_edge(file: &StepFile, id: u64) -> Result<StepOrientedEdge,
 /// VERTEX_LOOP represents a degenerate boundary (single point, e.g., cone apex).
 /// We return an empty edge list for these since we don't support them yet.
 pub fn parse_edge_loop(file: &StepFile, id: u64) -> Result<StepEdgeLoop, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "EDGE_LOOP" => {
@@ -185,7 +185,7 @@ pub fn parse_edge_loop(file: &StepFile, id: u64) -> Result<StepEdgeLoop, StepErr
 
 /// Parse a FACE_BOUND or FACE_OUTER_BOUND entity.
 pub fn parse_face_bound(file: &StepFile, id: u64) -> Result<StepFaceBound, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "FACE_BOUND" | "FACE_OUTER_BOUND" => {
@@ -206,7 +206,7 @@ pub fn parse_face_bound(file: &StepFile, id: u64) -> Result<StepFaceBound, StepE
 
 /// Parse an ADVANCED_FACE entity.
 pub fn parse_advanced_face(file: &StepFile, id: u64) -> Result<StepFace, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "ADVANCED_FACE" => {
@@ -232,7 +232,7 @@ pub fn parse_advanced_face(file: &StepFile, id: u64) -> Result<StepFace, StepErr
 
 /// Parse a CLOSED_SHELL or OPEN_SHELL entity.
 pub fn parse_shell(file: &StepFile, id: u64) -> Result<StepShell, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "CLOSED_SHELL" | "OPEN_SHELL" => {
@@ -251,7 +251,7 @@ pub fn parse_shell(file: &StepFile, id: u64) -> Result<StepShell, StepError> {
 
 /// Parse a MANIFOLD_SOLID_BREP entity.
 pub fn parse_manifold_solid_brep(file: &StepFile, id: u64) -> Result<StepSolid, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "MANIFOLD_SOLID_BREP" => {
@@ -337,7 +337,7 @@ pub fn write_manifold_solid_brep(name: &str, shell_id: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
+    use stepperoni::Parser;
 
     fn parse_step(input: &str) -> StepFile {
         Parser::parse(input.as_bytes()).unwrap()

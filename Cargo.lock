@@ -2257,6 +2257,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stepperoni"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2760,6 +2767,7 @@ dependencies = [
 name = "vcad-kernel-step"
 version = "0.8.0"
 dependencies = [
+ "stepperoni",
  "thiserror 2.0.18",
  "vcad-kernel-geom",
  "vcad-kernel-math",

@@ -54,8 +54,7 @@ impl StepValue {
         }
     }
 
-    /// Try to get as an integer (reserved for future use with complex entities).
-    #[allow(dead_code)]
+    /// Try to get as an integer.
     pub fn as_integer(&self) -> Option<i64> {
         match self {
             StepValue::Integer(v) => Some(*v),
@@ -63,8 +62,7 @@ impl StepValue {
         }
     }
 
-    /// Try to get as a string (reserved for parsing entity names).
-    #[allow(dead_code)]
+    /// Try to get as a string.
     pub fn as_string(&self) -> Option<&str> {
         match self {
             StepValue::String(s) => Some(s),
@@ -93,8 +91,7 @@ impl StepValue {
         matches!(self, StepValue::Null)
     }
 
-    /// Check if this is a derived value (reserved for future STEP support).
-    #[allow(dead_code)]
+    /// Check if this is a derived value.
     pub fn is_derived(&self) -> bool {
         matches!(self, StepValue::Derived)
     }
@@ -114,23 +111,16 @@ pub struct StepEntity {
 /// The complete parsed content of a STEP file.
 #[derive(Debug, Clone)]
 pub struct StepFile {
-    /// Header section contents (reserved for future FILE_DESCRIPTION parsing).
-    #[allow(dead_code)]
+    /// Header section contents.
     pub header: Vec<StepEntity>,
     /// Data section entities, indexed by ID.
     pub entities: HashMap<u64, StepEntity>,
 }
 
 impl StepFile {
-    /// Get an entity by ID (reserved for future use in readers).
-    #[allow(dead_code)]
+    /// Get an entity by ID.
     pub fn get(&self, id: u64) -> Option<&StepEntity> {
         self.entities.get(&id)
-    }
-
-    /// Get an entity by ID, returning an error if not found.
-    pub fn require(&self, id: u64) -> Result<&StepEntity, StepError> {
-        self.entities.get(&id).ok_or(StepError::MissingEntity(id))
     }
 
     /// Get all entities of a given type.

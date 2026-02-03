@@ -6,7 +6,7 @@
 
 use super::{parse_any_axis_placement, parse_cartesian_point, parse_vector, EntityArgs};
 use crate::error::StepError;
-use crate::parser::StepFile;
+use stepperoni::StepFile;
 use vcad_kernel_geom::{Circle3d, Line3d};
 use vcad_kernel_math::{Dir3, Vec3};
 
@@ -24,7 +24,7 @@ pub enum StepCurve {
 ///
 /// STEP syntax: `LINE(name, point, vector)`
 pub fn parse_line(file: &StepFile, id: u64) -> Result<Line3d, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "LINE" => {
@@ -44,7 +44,7 @@ pub fn parse_line(file: &StepFile, id: u64) -> Result<Line3d, StepError> {
 ///
 /// STEP syntax: `CIRCLE(name, position, radius)`
 pub fn parse_circle(file: &StepFile, id: u64) -> Result<Circle3d, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "CIRCLE" => {
@@ -67,7 +67,7 @@ pub fn parse_circle(file: &StepFile, id: u64) -> Result<Circle3d, StepError> {
 
 /// Parse any supported curve entity.
 pub fn parse_curve(file: &StepFile, id: u64) -> Result<StepCurve, StepError> {
-    let entity = file.require(id)?;
+    let entity = file.get(id).ok_or(StepError::MissingEntity(id))?;
 
     match entity.type_name.as_str() {
         "LINE" => Ok(StepCurve::Line(parse_line(file, id)?)),
@@ -123,7 +123,7 @@ pub fn write_circle(circle: &Circle3d, name: &str, placement_id: u64) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
+    use stepperoni::Parser;
 
     fn parse_step(input: &str) -> StepFile {
         Parser::parse(input.as_bytes()).unwrap()
