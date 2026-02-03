@@ -308,14 +308,15 @@ export function SceneMesh({
     faceSelectionMode && hoveredFace?.partId === partInfo.id;
 
   // Compute highlighted face geometry (triangles sharing same normal)
+  // Skip computation during orbit for performance
   const faceHighlightGeo = useMemo(() => {
-    if (!isHoveredFace || hoveredFace?.faceIndex == null) return null;
+    if (isOrbiting || !isHoveredFace || hoveredFace?.faceIndex == null) return null;
     const matchingTriangles = findCoplanarTriangles(
       mesh,
       hoveredFace.faceIndex,
     );
     return buildFaceHighlightGeometry(mesh, matchingTriangles);
-  }, [isHoveredFace, hoveredFace?.faceIndex, mesh]);
+  }, [isOrbiting, isHoveredFace, hoveredFace?.faceIndex, mesh]);
 
   // Cleanup face highlight geometry
   useEffect(() => {

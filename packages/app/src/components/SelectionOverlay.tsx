@@ -88,11 +88,15 @@ function BoundingBoxLines({ box, color }: { box: THREE.Box3; color: string }) {
 export function SelectionOverlay() {
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const isDraggingGizmo = useUiStore((s) => s.isDraggingGizmo);
+  const isOrbiting = useUiStore((s) => s.isOrbiting);
   const parts = useDocumentStore((s) => s.parts);
   const scene = useEngineStore((s) => s.scene);
   const { isDark } = useTheme();
 
   const accentColor = isDark ? ACCENT_DARK : ACCENT_LIGHT;
+
+  // Skip rendering during orbit for performance
+  if (isOrbiting) return null;
 
   // Compute combined bounding box for all selected parts
   const box = useMemo(() => {

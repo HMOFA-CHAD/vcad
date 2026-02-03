@@ -217,6 +217,7 @@ export function ViewportContent() {
   const offsetRef = useRef(new Vector3());
   const velocityRef = useRef({ theta: 0, phi: 0 });
   const animatingRef = useRef(false);
+  const cursorPointRef = useRef(new Vector3()); // Reused in zoom-to-cursor
 
   // Target animation for orbit focus
   const targetGoalRef = useRef(new Vector3());
@@ -482,8 +483,8 @@ export function ViewportContent() {
 
         raycasterRef.current.setFromCamera(mouseRef.current, camera);
 
-        // Project cursor to a plane at the current target distance
-        const cursorPoint = new Vector3();
+        // Project cursor to a plane at the current target distance (reuse Vector3 to avoid GC)
+        const cursorPoint = cursorPointRef.current;
         raycasterRef.current.ray.at(distance, cursorPoint);
 
         // Interpolate target toward cursor based on zoom amount
