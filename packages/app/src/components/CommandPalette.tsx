@@ -35,10 +35,11 @@ import {
 } from "@phosphor-icons/react";
 import { fromCompact, type Document } from "@vcad/ir";
 import { generateCADServer } from "@/lib/server-inference";
+import { generateCAD, isWebGPUAvailable } from "@/lib/browser-inference";
 import { useNotificationStore } from "@/stores/notification-store";
 import { useRequireAuth, AuthModal, useAuthStore } from "@vcad/auth";
 import { useOnboardingStore } from "@/stores/onboarding-store";
-import type { Command, VcadFile } from "@vcad/core";
+import type { Command } from "@vcad/core";
 import { createCommandRegistry, useUiStore, useDocumentStore, useEngineStore, exportStlBlob, exportGltfBlob, parseVcadFile } from "@vcad/core";
 import { downloadBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
@@ -380,57 +381,73 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
   ]);
 
   // AI generation handler (inner function that does the actual work)
-  const doAIGenerate = useCallback(async (prompt: string) => {
+  const doAIGenerate = useCallback(async (prompt: string, useBrowser: boolean) => {
     setAiGenerating(true);
     onOpenChange(false); // Close palette immediately
 
     const store = useNotificationStore.getState();
+    const docStore = useDocumentStore.getState();
 
     // Start AI progress with semantic stages
-    const progressId = store.startAIOperation(prompt, [
-      "Connecting to server",
-      "Generating geometry",
-      "Building mesh",
-    ]);
+    const stages = useBrowser
+      ? ["Loading AI model", "Generating geometry", "Building mesh"]
+      : ["Connecting to server", "Generating geometry", "Building mesh"];
+    const progressId = store.startAIOperation(prompt, stages);
 
     try {
-      // Stage 1: Connecting
-      store.updateAIProgress(progressId, 0, 10);
-      setAiStatus("Connecting to server...");
+      let ir: string;
+      let durationMs: number;
 
-      const currentSession = useAuthStore.getState().session;
-      if (!currentSession) {
-        throw new Error("Not authenticated");
+      if (useBrowser) {
+        // Browser inference with cad0-mini
+        store.updateAIProgress(progressId, 0, 10);
+        setAiStatus("Loading AI model...");
+
+        const result = await generateCAD(prompt, undefined, (loaded, total, status) => {
+          const pct = Math.round((loaded / total) * 100);
+          setAiStatus(status);
+          if (status.includes("Loading") || status.includes("Initializing")) {
+            store.updateAIProgress(progressId, 0, Math.min(pct * 0.7, 70));
+          }
+        });
+
+        ir = result.ir;
+        durationMs = result.durationMs;
+      } else {
+        // Server inference with cad0
+        store.updateAIProgress(progressId, 0, 10);
+        setAiStatus("Connecting to server...");
+
+        const currentSession = useAuthStore.getState().session;
+        if (!currentSession) {
+          throw new Error("Not authenticated");
+        }
+        const result = await generateCADServer(prompt, {
+          authToken: currentSession.access_token,
+        });
+
+        ir = result.ir;
+        durationMs = result.durationMs;
       }
-      const result = await generateCADServer(prompt, {
-        authToken: currentSession.access_token,
-      });
 
       // Stage 2: Building geometry
       store.updateAIProgress(progressId, 1, 80);
       setAiStatus("Building geometry...");
 
       // Parse the Compact IR to a Document
-      const generatedDoc: Document = fromCompact(result.ir);
+      const generatedDoc: Document = fromCompact(ir);
 
       // Stage 3: Validating
       store.updateAIProgress(progressId, 2, 95);
 
-      // Wrap in VcadFile format
-      const vcadFile: VcadFile = {
-        document: generatedDoc,
-        parts: [],
-        nextNodeId: Object.keys(generatedDoc.nodes).length,
-        nextPartNum: 1,
-      };
-
-      loadDocument(vcadFile);
+      // Merge into current document (not replace)
+      docStore.addFromIR(generatedDoc, prompt.slice(0, 30));
 
       // Complete with action result
       store.completeAIOperation(progressId, {
         type: "success",
-        title: "Generation complete",
-        description: `Created in ${(result.durationMs / 1000).toFixed(1)}s`,
+        title: useBrowser ? "Generated locally" : "Generated from server",
+        description: `Created in ${(durationMs / 1000).toFixed(1)}s`,
         actions: [
           {
             label: "Undo",
@@ -449,11 +466,18 @@ export function CommandPalette({ open, onOpenChange, onAboutOpen }: CommandPalet
       setAiGenerating(false);
       setAiStatus("");
     }
-  }, [loadDocument, onOpenChange]);
+  }, [onOpenChange]);
 
-  // Wrapper that requires auth before generating
-  const handleAIGenerate = useCallback((prompt: string) => {
-    requireAuth(() => doAIGenerate(prompt));
+  // Wrapper that chooses browser vs server inference
+  const handleAIGenerate = useCallback(async (prompt: string) => {
+    // Try browser inference first if WebGPU available
+    const hasWebGPU = await isWebGPUAvailable();
+    if (hasWebGPU) {
+      doAIGenerate(prompt, true);
+    } else {
+      // Fall back to server (requires auth)
+      requireAuth(() => doAIGenerate(prompt, false));
+    }
   }, [requireAuth, doAIGenerate]);
 
   // Get contextual AI suggestions
