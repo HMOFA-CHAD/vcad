@@ -515,6 +515,7 @@ interface SketchCursor3DProps {
   cursorWorldPos: Vec3 | null;
   cursorSketchPos: Vec2 | null;
   snapTarget: Vec2 | null;
+  gridSnap: boolean;
   previewLine: { start: Vec2; end: Vec2 } | null;
   previewRect: { p1: Vec2; p2: Vec2 } | null;
   previewCircle: { center: Vec2; radius: number } | null;
@@ -528,6 +529,7 @@ function SketchCursor3D({
   cursorWorldPos,
   cursorSketchPos,
   snapTarget,
+  gridSnap,
   previewLine,
   previewRect,
   previewCircle,
@@ -627,17 +629,17 @@ function SketchCursor3D({
 
   return (
     <group>
-      {/* Crosshair */}
+      {/* Crosshair - cyan when grid snap active */}
       <Line
         points={xCross}
-        color="rgba(255,255,255,0.5)"
-        lineWidth={1}
+        color={gridSnap && !snapTarget ? "#06b6d4" : "rgba(255,255,255,0.5)"}
+        lineWidth={gridSnap && !snapTarget ? 1.5 : 1}
         depthWrite={false}
       />
       <Line
         points={yCross}
-        color="rgba(255,255,255,0.5)"
-        lineWidth={1}
+        color={gridSnap && !snapTarget ? "#06b6d4" : "rgba(255,255,255,0.5)"}
+        lineWidth={gridSnap && !snapTarget ? 1.5 : 1}
         depthWrite={false}
       />
 
@@ -680,16 +682,16 @@ function SketchCursor3D({
         />
       )}
 
-      {/* Snap indicator */}
+      {/* Point snap indicator (green) */}
       {snapPos && (
         <>
           <mesh position={snapPos}>
             <ringGeometry args={[2, 2.5, 16]} />
-            <meshBasicMaterial color="#e879f9" side={THREE.DoubleSide} />
+            <meshBasicMaterial color="#22c55e" side={THREE.DoubleSide} />
           </mesh>
           <mesh position={snapPos}>
             <sphereGeometry args={[0.8, 12, 12]} />
-            <meshBasicMaterial color="#e879f9" />
+            <meshBasicMaterial color="#22c55e" />
           </mesh>
         </>
       )}
@@ -972,6 +974,7 @@ export function SketchPlane3D() {
         cursorWorldPos={cursorWorldPos}
         cursorSketchPos={cursorSketchPos}
         snapTarget={snapTarget}
+        gridSnap={gridSnap}
         previewLine={previewLine}
         previewRect={previewRect}
         previewCircle={previewCircle}

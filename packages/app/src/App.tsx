@@ -20,6 +20,7 @@ import { CelebrationOverlay } from "@/components/CelebrationOverlay";
 import { SignInDelight } from "@/components/SignInDelight";
 import { AboutModal } from "@/components/AboutModal";
 import { SketchToolbar } from "@/components/SketchToolbar";
+import { SketchStatusPanel } from "@/components/SketchStatusPanel";
 import { DrawingToolbar } from "@/components/DrawingToolbar";
 import { FaceSelectionOverlay } from "@/components/FaceSelectionOverlay";
 import { QuotePanel } from "@/components/QuotePanel";
@@ -532,6 +533,7 @@ export function App() {
           {/* Full-bleed viewport */}
           <Viewport />
           <SketchToolbar />
+          <SketchStatusPanel />
           <DrawingToolbar />
           <FaceSelectionOverlay />
 

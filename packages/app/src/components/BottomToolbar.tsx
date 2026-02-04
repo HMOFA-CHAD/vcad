@@ -49,6 +49,13 @@ import {
 import * as Popover from "@radix-ui/react-popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
+  ToolbarButton,
+  TabDropdown,
+  MoreDropdown,
+  TAB_COLORS,
+  MOBILE_BREAKPOINT,
+} from "@/components/ui/toolbar";
+import {
   useDocumentStore,
   useUiStore,
   useSketchStore,
@@ -102,15 +109,6 @@ const BOOLEANS: {
   { type: "intersection", icon: Intersect, label: "Intersection", shortcut: "⌘⇧I" },
 ];
 
-const TAB_COLORS: Record<ToolbarTab, string> = {
-  create: "text-emerald-400",
-  transform: "text-blue-400",
-  combine: "text-violet-400",
-  modify: "text-amber-400",
-  assembly: "text-rose-400",
-  simulate: "text-cyan-400",
-  build: "text-slate-400",
-};
 
 // All tabs in priority order (higher priority = shown first when space is limited)
 const ALL_TABS: { id: ToolbarTab; label: string; icon: typeof Cube }[] = [
@@ -124,7 +122,6 @@ const ALL_TABS: { id: ToolbarTab; label: string; icon: typeof Cube }[] = [
 ];
 
 // Responsive breakpoints and widths
-const MOBILE_BREAKPOINT = 640; // sm breakpoint
 const TAB_WIDTH_DESKTOP = 95; // ~95px per tab on desktop
 const TAB_WIDTH_MOBILE = 44; // Just icon on mobile
 const CHAT_WIDTH = 70;
@@ -784,331 +781,6 @@ function CommandDropdown() {
     </Popover.Root>
     <AuthModal open={showAuth} onOpenChange={setShowAuth} feature={feature} />
   </>
-  );
-}
-
-function ToolbarButton({
-  children,
-  active,
-  disabled,
-  onClick,
-  tooltip,
-  pulse,
-  expanded,
-  label,
-  shortcut,
-  iconColor,
-  className,
-  labelClassName,
-}: {
-  children: React.ReactNode;
-  active?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
-  tooltip: string;
-  pulse?: boolean;
-  expanded?: boolean;
-  label?: string;
-  shortcut?: string;
-  iconColor?: string;
-  className?: string;
-  labelClassName?: string;
-}) {
-  return (
-    <Tooltip content={tooltip} side="top">
-      <button
-        className={cn(
-          "flex items-center justify-center relative gap-1",
-          "h-10 min-w-[40px] px-1.5",
-          "sm:h-8 sm:min-w-0",
-          expanded ? "sm:px-2" : "sm:px-1.5",
-          "disabled:opacity-30 disabled:cursor-not-allowed",
-          pulse && "animate-pulse",
-          className,
-        )}
-        disabled={disabled}
-        onClick={onClick}
-      >
-        <span className={cn(
-          iconColor,
-          "transition-transform",
-          active && "scale-110",
-          !disabled && "hover:scale-110"
-        )}>
-          {children}
-        </span>
-        {expanded && label && (
-          <span className={cn(
-            "hidden sm:inline text-xs whitespace-nowrap",
-            active ? "text-text" : "text-text-muted",
-            labelClassName
-          )}>
-            {label}
-            {shortcut && <span className="ml-1 opacity-60">{shortcut}</span>}
-          </span>
-        )}
-      </button>
-    </Tooltip>
-  );
-}
-
-function TabDropdown({
-  id,
-  label,
-  icon: Icon,
-  index,
-  children,
-  onSelect,
-}: {
-  id: ToolbarTab;
-  label: string;
-  icon: typeof Cube;
-  index: number;
-  children: React.ReactNode;
-  onSelect: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const handleMouseEnter = useCallback(() => {
-    clearTimeout(hoverTimeoutRef.current);
-    setOpen(true);
-  }, []);
-
-  const handleMouseLeave = useCallback(() => {
-    if (!pinned) {
-      hoverTimeoutRef.current = setTimeout(() => setOpen(false), 100);
-    }
-  }, [pinned]);
-
-  const handleClick = useCallback(() => {
-    setPinned((p) => !p);
-    setOpen(true);
-    onSelect();
-  }, [onSelect]);
-
-  const handleOpenChange = useCallback((newOpen: boolean) => {
-    setOpen(newOpen);
-    if (!newOpen) setPinned(false);
-  }, []);
-
-  // Track mobile state for tooltip visibility
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => {
-      mq.removeEventListener("change", handler);
-      clearTimeout(hoverTimeoutRef.current);
-    };
-  }, []);
-
-  const triggerButton = (
-    <button
-      className={cn(
-        "relative flex items-center justify-center gap-1 text-xs",
-        "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
-        "hover:bg-hover/50 transition-all",
-        pinned && "bg-hover/50",
-      )}
-      onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <Icon
-        size={18}
-        weight={pinned ? "fill" : "regular"}
-        className={cn(
-          TAB_COLORS[id],
-          "transition-transform"
-        )}
-      />
-      <span className={cn(
-        "hidden sm:inline font-medium transition-colors",
-        pinned ? "text-text" : "text-text-muted"
-      )}>
-        {label}
-      </span>
-    </button>
-  );
-
-  return (
-    <Popover.Root open={open} onOpenChange={handleOpenChange}>
-      {isMobile ? (
-        <Tooltip content={`${index + 1}. ${label}`} side="top">
-          <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
-        </Tooltip>
-      ) : (
-        <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
-      )}
-      <Popover.Portal>
-        <Popover.Content
-          className="bottom-toolbar-menu z-50 bg-surface p-2"
-          sideOffset={4}
-          side="top"
-          align="center"
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          <div className="flex items-center gap-1">
-            {children}
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
-function MoreDropdown({
-  tabs,
-  activeTab,
-  onSelect,
-  children,
-}: {
-  tabs: typeof ALL_TABS;
-  activeTab: ToolbarTab;
-  onSelect: (tab: ToolbarTab) => void;
-  children: (tab: ToolbarTab) => React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const [selectedSubTab, setSelectedSubTab] = useState<ToolbarTab | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const handleMouseEnter = useCallback(() => {
-    clearTimeout(hoverTimeoutRef.current);
-    setOpen(true);
-  }, []);
-
-  const handleMouseLeave = useCallback(() => {
-    if (!pinned) {
-      hoverTimeoutRef.current = setTimeout(() => setOpen(false), 100);
-    }
-  }, [pinned]);
-
-  const handleClick = useCallback(() => {
-    setPinned((p) => !p);
-    setOpen(true);
-  }, []);
-
-  const handleOpenChange = useCallback((newOpen: boolean) => {
-    setOpen(newOpen);
-    if (!newOpen) setPinned(false);
-  }, []);
-
-  // Track mobile state for tooltip visibility
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => {
-      mq.removeEventListener("change", handler);
-      clearTimeout(hoverTimeoutRef.current);
-    };
-  }, []);
-
-  // Check if the active tab is in the "More" section
-  const isMoreTabActive = tabs.some(t => t.id === activeTab);
-  const activeMoreTab = tabs.find(t => t.id === activeTab);
-
-  const triggerButton = (
-    <button
-      className={cn(
-        "relative flex items-center justify-center gap-1 text-xs",
-        "w-9 h-9 sm:w-auto sm:h-auto sm:px-3 sm:py-2",
-        "hover:bg-hover/50 transition-all",
-        pinned && "bg-hover/50",
-      )}
-      onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {pinned && activeMoreTab ? (
-        <activeMoreTab.icon
-          size={18}
-          weight="fill"
-          className={TAB_COLORS[activeMoreTab.id]}
-        />
-      ) : (
-        <DotsThree size={18} weight={pinned ? "fill" : "bold"} className="text-text-muted" />
-      )}
-      <span className={cn(
-        "hidden sm:inline font-medium transition-colors",
-        pinned ? "text-text" : "text-text-muted"
-      )}>
-        {pinned && activeMoreTab ? activeMoreTab.label : "More"}
-      </span>
-    </button>
-  );
-
-  return (
-    <Popover.Root open={open} onOpenChange={handleOpenChange}>
-      {isMobile ? (
-        <Tooltip content="More" side="top">
-          <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
-        </Tooltip>
-      ) : (
-        <Popover.Trigger asChild>{triggerButton}</Popover.Trigger>
-      )}
-      <Popover.Portal>
-        <Popover.Content
-          className="bottom-toolbar-menu z-50 bg-surface p-2"
-          sideOffset={4}
-          side="top"
-          align="center"
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          {/* Tab selector row */}
-          <div className="flex items-center gap-1 border-b border-border pb-2 mb-2">
-            {tabs.map((tab) => {
-              const isActive = selectedSubTab === tab.id || (!selectedSubTab && activeTab === tab.id);
-              const tabButton = (
-                <button
-                  className={cn(
-                    "flex items-center gap-1.5 px-2 py-1.5 text-xs",
-                    "hover:bg-hover transition-colors",
-                    isActive && "bg-hover/50",
-                  )}
-                  onClick={() => {
-                    setSelectedSubTab(tab.id);
-                    onSelect(tab.id);
-                  }}
-                >
-                  <tab.icon
-                    size={14}
-                    weight={isActive ? "fill" : "regular"}
-                    className={TAB_COLORS[tab.id]}
-                  />
-                  <span className={cn(
-                    "hidden sm:inline",
-                    isActive ? "text-text" : "text-text-muted"
-                  )}>
-                    {tab.label}
-                  </span>
-                </button>
-              );
-              return isMobile ? (
-                <Tooltip key={tab.id} content={tab.label} side="top">
-                  {tabButton}
-                </Tooltip>
-              ) : (
-                <span key={tab.id}>{tabButton}</span>
-              );
-            })}
-          </div>
-          {/* Tools for selected tab */}
-          <div className="flex items-center gap-1">
-            {children(selectedSubTab || (isMoreTabActive ? activeTab : tabs[0]!.id))}
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
   );
 }
 
@@ -1884,6 +1556,7 @@ export function BottomToolbar() {
             icon={icon}
             index={index}
             onSelect={() => handleTabClick(id)}
+            colors={TAB_COLORS}
           >
             {renderTabContent(id)}
           </TabDropdown>
@@ -1895,6 +1568,7 @@ export function BottomToolbar() {
             tabs={overflowTabs}
             activeTab={toolbarTab}
             onSelect={handleTabClick}
+            colors={TAB_COLORS}
           >
             {(tab) => renderTabContent(tab)}
           </MoreDropdown>

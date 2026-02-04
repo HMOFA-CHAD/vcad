@@ -19,12 +19,20 @@ import {
   Crosshair,
   GridFour,
   ArrowsClockwise,
+  PencilSimple,
+  Hammer,
+  CheckCircle,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Separator } from "@/components/ui/separator";
+import {
+  TabDropdown,
+  ToolbarButton,
+  SKETCH_TAB_COLORS,
+  type SketchTab,
+} from "@/components/ui/toolbar";
 import { cn } from "@/lib/utils";
-import { useSketchStore, useDocumentStore, useUiStore, useEngineStore, getSketchPlaneDirections, formatDirection, negateDirection, getSketchPlaneName } from "@vcad/core";
+import { useSketchStore, useDocumentStore, useUiStore, useEngineStore, getSketchPlaneDirections, formatDirection, negateDirection } from "@vcad/core";
 import { useNotificationStore } from "@/stores/notification-store";
 import { analytics } from "@/lib/analytics";
 import type { SketchState, ConstraintTool, SketchPlane } from "@vcad/core";
@@ -66,46 +74,10 @@ function DiscardConfirmDialog({
   );
 }
 
-/** Confirmation dialog for changing sketch plane */
-function ChangePlaneConfirmDialog({
-  onConfirm,
-  onCancel,
-}: {
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 border border-border bg-card p-4 shadow-2xl min-w-[240px]">
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-amber-500">
-          <Warning size={18} weight="fill" />
-          <span className="text-sm font-medium">Change sketch plane?</span>
-        </div>
-        <p className="text-xs text-text-muted">
-          This will clear your current sketch geometry.
-        </p>
-        <div className="flex gap-2">
-          <Button
-            variant="default"
-            size="sm"
-            className="flex-1"
-            onClick={onConfirm}
-          >
-            Change Plane
-          </Button>
-          <Button variant="ghost" size="sm" className="flex-1" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const TOOLS: { tool: SketchState["tool"]; icon: typeof LineSegment; label: string }[] = [
-  { tool: "rectangle", icon: Rectangle, label: "Rectangle" },
-  { tool: "circle", icon: Circle, label: "Circle" },
-  { tool: "line", icon: LineSegment, label: "Line" },
+const TOOLS: { tool: SketchState["tool"]; icon: typeof LineSegment; label: string; shortcut: string }[] = [
+  { tool: "rectangle", icon: Rectangle, label: "Rectangle", shortcut: "R" },
+  { tool: "circle", icon: Circle, label: "Circle", shortcut: "C" },
+  { tool: "line", icon: LineSegment, label: "Line", shortcut: "L" },
 ];
 
 const CONSTRAINT_TOOLS: {
@@ -119,6 +91,13 @@ const CONSTRAINT_TOOLS: {
   { tool: "length", icon: Ruler, label: "Length", requires: 1 },
   { tool: "parallel", icon: GitBranch, label: "Parallel", requires: 2 },
   { tool: "equal", icon: Equals, label: "Equal Length", requires: 2 },
+];
+
+// Tab definitions for the sketch toolbar
+const SKETCH_TABS: { id: SketchTab; label: string; icon: typeof PencilSimple }[] = [
+  { id: "draw", label: "Draw", icon: PencilSimple },
+  { id: "constrain", label: "Constrain", icon: Hammer },
+  { id: "finish", label: "Finish", icon: CheckCircle },
 ];
 
 function NumberInputDialog({
@@ -644,7 +623,6 @@ export function SketchToolbar() {
   const [showLengthDialog, setShowLengthDialog] = useState(false);
   const [showSweepDialog, setShowSweepDialog] = useState(false);
   const [showLoftHeightDialog, setShowLoftHeightDialog] = useState(false);
-  const [showChangePlaneDialog, setShowChangePlaneDialog] = useState(false);
 
   const active = useSketchStore((s) => s.active);
   const plane = useSketchStore((s) => s.plane);
@@ -675,7 +653,6 @@ export function SketchToolbar() {
   const saveProfile = useSketchStore((s) => s.saveProfile);
   const clearForNextProfile = useSketchStore((s) => s.clearForNextProfile);
   const exitLoftMode = useSketchStore((s) => s.exitLoftMode);
-  const enterFaceSelectionMode = useSketchStore((s) => s.enterFaceSelectionMode);
 
   const addExtrude = useDocumentStore((s) => s.addExtrude);
   const addRevolve = useDocumentStore((s) => s.addRevolve);
@@ -699,8 +676,6 @@ export function SketchToolbar() {
     window.addEventListener("vcad:sketch-extrude", handleQuickExtrude);
     return () => window.removeEventListener("vcad:sketch-extrude", handleQuickExtrude);
   }, [active, segments.length, loftMode]);
-
-  const solved = useSketchStore((s) => s.solved);
 
   if (!active) return null;
 
@@ -880,57 +855,217 @@ export function SketchToolbar() {
     cancelExit();
   }
 
-  function handleChangePlane() {
-    if (hasSegments) {
-      // Show confirmation dialog
-      setShowChangePlaneDialog(true);
-    } else {
-      // No segments, just switch directly
-      exitSketchMode();
-      enterFaceSelectionMode();
-    }
-  }
+  // Render content for Draw tab
+  const renderDrawContent = () => (
+    <>
+      {TOOLS.map(({ tool: t, icon: Icon, label, shortcut }) => (
+        <ToolbarButton
+          key={t}
+          tooltip={`${label} (${shortcut})`}
+          active={tool === t && !isConstraintMode}
+          onClick={() => {
+            clearSelection();
+            setTool(t);
+          }}
+          iconColor={SKETCH_TAB_COLORS.draw}
+        >
+          <Icon size={20} />
+          <span className="absolute bottom-0.5 right-0.5 text-[8px] font-mono text-text-muted/50">
+            {shortcut}
+          </span>
+        </ToolbarButton>
+      ))}
+      <ToolbarButton
+        tooltip="Toggle point snap (P)"
+        active={pointSnap}
+        onClick={togglePointSnap}
+        iconColor={pointSnap ? "text-green-400" : undefined}
+      >
+        <Crosshair size={20} />
+        <span className="absolute bottom-0.5 right-0.5 text-[8px] font-mono text-text-muted/50">
+          P
+        </span>
+      </ToolbarButton>
+      <ToolbarButton
+        tooltip="Toggle grid snap (G)"
+        active={gridSnap}
+        onClick={toggleGridSnap}
+        iconColor={gridSnap ? "text-cyan-400" : undefined}
+      >
+        <GridFour size={20} />
+        <span className="absolute bottom-0.5 right-0.5 text-[8px] font-mono text-text-muted/50">
+          G
+        </span>
+      </ToolbarButton>
+    </>
+  );
 
-  function handleConfirmChangePlane() {
-    setShowChangePlaneDialog(false);
-    exitSketchMode();
-    enterFaceSelectionMode();
-    addToast("Select a new face", "info");
-  }
+  // Render content for Constrain tab
+  const renderConstrainContent = () => (
+    <>
+      {CONSTRAINT_TOOLS.map(({ tool: ct, icon: Icon, label, requires }) => (
+        <ToolbarButton
+          key={ct}
+          tooltip={`${label} (select ${requires} segment${requires > 1 ? "s" : ""})`}
+          active={constraintTool === ct}
+          onClick={() => handleConstraintToolClick(ct)}
+          disabled={!hasSegments}
+          iconColor={SKETCH_TAB_COLORS.constrain}
+        >
+          <Icon size={20} />
+        </ToolbarButton>
+      ))}
+      {/* Apply constraint button (shows when ready) */}
+      {isConstraintMode && canApplyConstraint && (
+        <ToolbarButton
+          tooltip="Apply constraint"
+          onClick={handleApplyConstraint}
+          className="bg-green-600 hover:bg-green-700"
+          iconColor="text-white"
+        >
+          <Play size={20} weight="fill" />
+        </ToolbarButton>
+      )}
+      {/* Solve button */}
+      <ToolbarButton
+        tooltip="Solve constraints"
+        onClick={solveSketch}
+        disabled={!hasConstraints}
+        className={constraintStatus === "error" ? "bg-amber-600 hover:bg-amber-700" : undefined}
+        iconColor={SKETCH_TAB_COLORS.constrain}
+      >
+        <Play size={20} />
+      </ToolbarButton>
+      {/* Constraint status indicator */}
+      {hasSegments && (
+        <Tooltip
+          content={
+            constraintStatus === "under"
+              ? "Under-constrained (add more constraints)"
+              : constraintStatus === "solved"
+                ? "Fully constrained"
+                : constraintStatus === "over"
+                  ? "Over-constrained (remove constraints)"
+                  : "Constraints conflict"
+          }
+        >
+          <div className="flex items-center gap-1 px-2">
+            <div
+              className={cn(
+                "w-2 h-2 rounded-full",
+                constraintStatus === "under" && "bg-yellow-500",
+                constraintStatus === "solved" && "bg-green-500",
+                constraintStatus === "over" && "bg-orange-500",
+                constraintStatus === "error" && "bg-red-500"
+              )}
+            />
+            <span
+              className={cn(
+                "text-xs",
+                constraintStatus === "under" && "text-yellow-500",
+                constraintStatus === "solved" && "text-green-500",
+                constraintStatus === "over" && "text-orange-500",
+                constraintStatus === "error" && "text-red-500"
+              )}
+            >
+              {constraints.length}
+            </span>
+          </div>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  // Render content for Finish tab (changes in loft mode)
+  const renderFinishContent = () => {
+    if (loftMode) {
+      return (
+        <>
+          <div className="px-2 text-xs text-accent font-medium">
+            Profile {profiles.length + (hasSegments ? 1 : 0)}
+          </div>
+          <ToolbarButton
+            tooltip="Save profile & add next"
+            onClick={() => setShowLoftHeightDialog(true)}
+            disabled={!hasSegments}
+            iconColor={SKETCH_TAB_COLORS.finish}
+          >
+            <Plus size={20} />
+          </ToolbarButton>
+          <ToolbarButton
+            tooltip="Create Loft"
+            onClick={handleCreateLoft}
+            disabled={profiles.length < 1 || !hasSegments}
+            className={profiles.length >= 1 && hasSegments ? "bg-green-600 hover:bg-green-700" : undefined}
+            iconColor={profiles.length >= 1 && hasSegments ? "text-white" : SKETCH_TAB_COLORS.finish}
+          >
+            <Stack size={20} />
+          </ToolbarButton>
+          <ToolbarButton
+            tooltip="Cancel sketch (Esc)"
+            onClick={handleCancel}
+            iconColor={SKETCH_TAB_COLORS.finish}
+          >
+            <X size={20} />
+          </ToolbarButton>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <ToolbarButton
+          tooltip="Extrude sketch (E)"
+          onClick={() => setShowExtrudeDialog(true)}
+          disabled={!hasSegments}
+          iconColor={SKETCH_TAB_COLORS.finish}
+        >
+          <ArrowUp size={20} />
+          <span className="absolute bottom-0.5 right-0.5 text-[8px] font-mono text-text-muted/50">
+            E
+          </span>
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Revolve sketch"
+          onClick={() => setShowRevolveDialog(true)}
+          disabled={!hasSegments}
+          iconColor={SKETCH_TAB_COLORS.finish}
+        >
+          <ArrowsClockwise size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Sweep sketch"
+          onClick={() => setShowSweepDialog(true)}
+          disabled={!hasSegments}
+          iconColor={SKETCH_TAB_COLORS.finish}
+        >
+          <Spiral size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Clear sketch"
+          onClick={clearSketch}
+          disabled={!hasSegments}
+          iconColor={SKETCH_TAB_COLORS.finish}
+        >
+          <Trash size={20} />
+        </ToolbarButton>
+        <ToolbarButton
+          tooltip="Cancel sketch (Esc)"
+          onClick={handleCancel}
+          iconColor={SKETCH_TAB_COLORS.finish}
+        >
+          <X size={20} />
+          <span className="absolute bottom-0.5 right-0.5 text-[8px] font-mono text-text-muted/50">
+            Esc
+          </span>
+        </ToolbarButton>
+      </>
+    );
+  };
 
   return (
     <>
-      {/* Top-left status indicator - hidden on mobile when orbiting */}
-      <div className={cn(
-        "fixed left-2 sm:left-4 top-2 sm:top-4 z-30 bg-surface border border-border px-2 sm:px-3 py-1.5 sm:py-2 text-xs text-text shadow-lg flex items-center gap-1.5 sm:gap-2",
-        "transition-opacity duration-200",
-        isOrbiting && "opacity-0 pointer-events-none"
-      )}>
-        <span className="font-medium hidden sm:inline">Sketch Mode</span>
-        <span className="font-medium sm:hidden">Sketch</span>
-        <span className="text-text-muted hidden sm:inline">Plane: {getSketchPlaneName(plane)}</span>
-        <span className="text-text-muted sm:hidden">{getSketchPlaneName(plane)}</span>
-        <Tooltip content="Change sketch plane">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleChangePlane}
-            className="h-5 w-5"
-          >
-            <ArrowsClockwise size={14} />
-          </Button>
-        </Tooltip>
-        {isConstraintMode && (
-          <span className="text-amber-400">
-            Constraint: {constraintTool} ({selectedSegments.length} selected)
-          </span>
-        )}
-        {!solved && (
-          <span className="text-red-400 text-[10px] sm:text-xs">Unsolved</span>
-        )}
-      </div>
-
-      {/* Bottom toolbar */}
+      {/* Bottom toolbar with tabs */}
       <div className={cn(
         "fixed left-1/2 bottom-4 sm:bottom-6 z-30 -translate-x-1/2",
         "max-w-[calc(100vw-16px)] sm:max-w-none",
@@ -938,245 +1073,27 @@ export function SketchToolbar() {
         isOrbiting && "opacity-0 pointer-events-none"
       )}>
         <div className={cn(
-          "relative flex items-center gap-0.5 sm:gap-1",
-          "border border-border bg-card px-1.5 sm:px-2 py-1 sm:py-1.5 shadow-2xl",
+          "relative flex items-center gap-0.5",
+          "bg-surface/95 backdrop-blur-sm",
           "overflow-x-auto scrollbar-none"
         )}>
-        {/* Drawing tools */}
-        {TOOLS.map(({ tool: t, icon: Icon, label }) => (
-          <Tooltip key={t} content={label}>
-            <Button
-              variant={tool === t && !isConstraintMode ? "default" : "ghost"}
-              size="icon-sm"
-              className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-              onClick={() => {
-                clearSelection();
-                setTool(t);
-              }}
+          {/* Tab dropdowns */}
+          {SKETCH_TABS.map(({ id, label, icon }) => (
+            <TabDropdown
+              key={id}
+              id={id}
+              label={label}
+              icon={icon}
+              colors={SKETCH_TAB_COLORS}
             >
-              <Icon size={18} className="sm:w-4 sm:h-4" />
-            </Button>
-          </Tooltip>
-        ))}
+              {id === "draw" && renderDrawContent()}
+              {id === "constrain" && renderConstrainContent()}
+              {id === "finish" && renderFinishContent()}
+            </TabDropdown>
+          ))}
+        </div>
 
-        <Separator orientation="vertical" className="mx-0.5 sm:mx-1 h-5" />
-
-        {/* Snap controls */}
-        <Tooltip content="Toggle point snap (P)">
-          <Button
-            variant={pointSnap ? "default" : "ghost"}
-            size="icon-sm"
-            className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-            onClick={togglePointSnap}
-          >
-            <Crosshair size={18} className="sm:w-4 sm:h-4" />
-          </Button>
-        </Tooltip>
-        <Tooltip content="Toggle grid snap (G)">
-          <Button
-            variant={gridSnap ? "default" : "ghost"}
-            size="icon-sm"
-            className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-            onClick={toggleGridSnap}
-          >
-            <GridFour size={18} className="sm:w-4 sm:h-4" />
-          </Button>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-0.5 sm:mx-1 h-5" />
-
-        {/* Constraint tools */}
-        {CONSTRAINT_TOOLS.map(({ tool: ct, icon: Icon, label, requires }) => (
-          <Tooltip key={ct} content={`${label} (select ${requires} segment${requires > 1 ? "s" : ""})`}>
-            <Button
-              variant={constraintTool === ct ? "default" : "ghost"}
-              size="icon-sm"
-              className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-              onClick={() => handleConstraintToolClick(ct)}
-              disabled={!hasSegments}
-            >
-              <Icon size={18} className="sm:w-4 sm:h-4" />
-            </Button>
-          </Tooltip>
-        ))}
-
-        {/* Apply constraint button (shows when ready) */}
-        {isConstraintMode && canApplyConstraint && (
-          <Tooltip content="Apply constraint">
-            <Button
-              variant="default"
-              size="icon-sm"
-              onClick={handleApplyConstraint}
-              className="h-10 w-10 sm:h-8 sm:w-8 shrink-0 bg-green-600 hover:bg-green-700"
-            >
-              <Play size={18} className="sm:w-4 sm:h-4" weight="fill" />
-            </Button>
-          </Tooltip>
-        )}
-
-        <Separator orientation="vertical" className="mx-0.5 sm:mx-1 h-5" />
-
-        {/* Constraint status indicator */}
-        {hasSegments && (
-          <Tooltip
-            content={
-              constraintStatus === "under"
-                ? "Under-constrained (add more constraints)"
-                : constraintStatus === "solved"
-                  ? "Fully constrained"
-                  : constraintStatus === "over"
-                    ? "Over-constrained (remove constraints)"
-                    : "Constraints conflict"
-            }
-          >
-            <div className="flex items-center gap-1 sm:gap-1.5 px-0.5 sm:px-1 shrink-0">
-              <div
-                className={cn(
-                  "w-2 h-2 rounded-full",
-                  constraintStatus === "under" && "bg-yellow-500",
-                  constraintStatus === "solved" && "bg-green-500",
-                  constraintStatus === "over" && "bg-orange-500",
-                  constraintStatus === "error" && "bg-red-500"
-                )}
-              />
-              <span
-                className={cn(
-                  "text-xs",
-                  constraintStatus === "under" && "text-yellow-500",
-                  constraintStatus === "solved" && "text-green-500",
-                  constraintStatus === "over" && "text-orange-500",
-                  constraintStatus === "error" && "text-red-500"
-                )}
-              >
-                {constraints.length}
-              </span>
-            </div>
-          </Tooltip>
-        )}
-
-        {/* Solve */}
-        <Tooltip content="Solve constraints">
-          <Button
-            variant={constraintStatus === "error" ? "default" : "ghost"}
-            size="icon-sm"
-            onClick={solveSketch}
-            disabled={!hasConstraints}
-            className={cn(
-              "h-10 w-10 sm:h-8 sm:w-8 shrink-0",
-              constraintStatus === "error" && "bg-amber-600 hover:bg-amber-700"
-            )}
-          >
-            <Play size={18} className="sm:w-4 sm:h-4" />
-          </Button>
-        </Tooltip>
-
-        {/* Clear */}
-        <Tooltip content="Clear sketch">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-            onClick={clearSketch}
-            disabled={!hasSegments}
-          >
-            <Trash size={18} className="sm:w-4 sm:h-4" />
-          </Button>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-0.5 sm:mx-1 h-5" />
-
-        {/* Loft mode indicator and controls */}
-        {loftMode && (
-          <>
-            <div className="px-1 sm:px-2 text-xs text-accent font-medium shrink-0">
-              <span className="hidden sm:inline">Profile </span>{profiles.length + (hasSegments ? 1 : 0)}
-            </div>
-
-            {/* Add Profile button */}
-            <Tooltip content="Save profile & add next">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-                onClick={() => setShowLoftHeightDialog(true)}
-                disabled={!hasSegments}
-              >
-                <Plus size={18} className="sm:w-4 sm:h-4" />
-              </Button>
-            </Tooltip>
-
-            {/* Create Loft button */}
-            <Tooltip content="Create Loft">
-              <Button
-                variant={profiles.length >= 1 && hasSegments ? "default" : "ghost"}
-                size="icon-sm"
-                onClick={handleCreateLoft}
-                disabled={profiles.length < 1 || !hasSegments}
-                className={cn(
-                  "h-10 w-10 sm:h-8 sm:w-8 shrink-0",
-                  profiles.length >= 1 && hasSegments && "bg-green-600 hover:bg-green-700"
-                )}
-              >
-                <Stack size={18} className="sm:w-4 sm:h-4" />
-              </Button>
-            </Tooltip>
-
-            <Separator orientation="vertical" className="mx-0.5 sm:mx-1 h-5" />
-          </>
-        )}
-
-        {/* Normal sketch mode buttons */}
-        {!loftMode && (
-          <>
-            {/* Extrude */}
-            <Tooltip content="Extrude sketch (E)">
-              <Button
-                variant={hasSegments ? "default" : "ghost"}
-                size="icon-sm"
-                className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-                onClick={() => setShowExtrudeDialog(true)}
-                disabled={!hasSegments}
-              >
-                <ArrowUp size={18} className="sm:w-4 sm:h-4" />
-              </Button>
-            </Tooltip>
-
-            {/* Revolve */}
-            <Tooltip content="Revolve sketch">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-                onClick={() => setShowRevolveDialog(true)}
-                disabled={!hasSegments}
-              >
-                <ArrowsClockwise size={18} className="sm:w-4 sm:h-4" />
-              </Button>
-            </Tooltip>
-
-            {/* Sweep */}
-            <Tooltip content="Sweep sketch">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-10 w-10 sm:h-8 sm:w-8 shrink-0"
-                onClick={() => setShowSweepDialog(true)}
-                disabled={!hasSegments}
-              >
-                <Spiral size={18} className="sm:w-4 sm:h-4" />
-              </Button>
-            </Tooltip>
-          </>
-        )}
-
-        {/* Cancel */}
-        <Tooltip content="Cancel sketch (Esc)">
-          <Button variant="ghost" size="icon-sm" className="h-10 w-10 sm:h-8 sm:w-8 shrink-0" onClick={handleCancel}>
-            <X size={18} className="sm:w-4 sm:h-4" />
-          </Button>
-        </Tooltip>
-
-        {/* Extrude dialog */}
+        {/* Dialogs positioned above toolbar */}
         {showExtrudeDialog && (
           <ExtrudeDialog
             onExtrude={handleExtrude}
@@ -1188,7 +1105,6 @@ export function SketchToolbar() {
           />
         )}
 
-        {/* Revolve dialog */}
         {showRevolveDialog && (
           <RevolveDialog
             onRevolve={handleRevolve}
@@ -1199,7 +1115,6 @@ export function SketchToolbar() {
           />
         )}
 
-        {/* Sweep dialog */}
         {showSweepDialog && (
           <SweepDialog
             onSweep={handleSweep}
@@ -1207,7 +1122,6 @@ export function SketchToolbar() {
           />
         )}
 
-        {/* Loft height dialog */}
         {showLoftHeightDialog && (
           <LoftHeightDialog
             onSetHeight={handleAddProfile}
@@ -1216,7 +1130,6 @@ export function SketchToolbar() {
           />
         )}
 
-        {/* Length dialog */}
         {showLengthDialog && (
           <NumberInputDialog
             label="Length"
@@ -1230,23 +1143,13 @@ export function SketchToolbar() {
           />
         )}
 
-        {/* Discard confirmation dialog */}
         {pendingExit && (
           <DiscardConfirmDialog
             onDiscard={handleDiscardSketch}
             onKeepEditing={handleKeepEditing}
           />
         )}
-
-        {/* Change plane confirmation dialog */}
-        {showChangePlaneDialog && (
-          <ChangePlaneConfirmDialog
-            onConfirm={handleConfirmChangePlane}
-            onCancel={() => setShowChangePlaneDialog(false)}
-          />
-        )}
       </div>
-    </div>
     </>
   );
 }
