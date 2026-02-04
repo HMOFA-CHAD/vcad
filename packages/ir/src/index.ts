@@ -328,6 +328,7 @@ export interface SweepOp {
   twist_angle?: number;        // Total twist in radians (default 0)
   scale_start?: number;        // Scale at start (default 1.0)
   scale_end?: number;          // Scale at end (default 1.0)
+  orientation?: number;        // Initial profile rotation around path tangent (radians, default 0)
   path_segments?: number;      // Segments along path (0 = auto)
   arc_segments?: number;       // Segments per arc in profile (default 8)
 }

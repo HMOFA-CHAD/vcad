@@ -87,6 +87,81 @@ impl WasmSketchProfile {
         )
         .map_err(|e| e.to_string())
     }
+
+    /// Convert to kernel profile with coordinates centered around (0, 0).
+    /// This is useful for sweep operations where the profile should be
+    /// centered on the path.
+    fn to_kernel_profile_centered(&self) -> Result<SketchProfile, String> {
+        // Filter out degenerate (zero-length) segments first
+        let valid_segments: Vec<_> = self
+            .segments
+            .iter()
+            .filter(|seg| {
+                let (start, end) = match seg {
+                    WasmSketchSegment::Line { start, end } => (start, end),
+                    WasmSketchSegment::Arc { start, end, .. } => (start, end),
+                };
+                let dx = end[0] - start[0];
+                let dy = end[1] - start[1];
+                (dx * dx + dy * dy).sqrt() > 1e-9
+            })
+            .collect();
+
+        if valid_segments.is_empty() {
+            return Err("No valid (non-degenerate) segments in profile".into());
+        }
+
+        // Compute centroid of valid segment start points only
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        let mut count = 0;
+
+        for seg in &valid_segments {
+            let (sx, sy) = match seg {
+                WasmSketchSegment::Line { start, .. } => (start[0], start[1]),
+                WasmSketchSegment::Arc { start, .. } => (start[0], start[1]),
+            };
+            sum_x += sx;
+            sum_y += sy;
+            count += 1;
+        }
+
+        let (cx, cy) = if count > 0 {
+            (sum_x / count as f64, sum_y / count as f64)
+        } else {
+            (0.0, 0.0)
+        };
+
+        // Create centered segments from valid segments only
+        let segments: Vec<SketchSegment> = valid_segments
+            .iter()
+            .map(|s| match s {
+                WasmSketchSegment::Line { start, end } => SketchSegment::Line {
+                    start: Point2::new(start[0] - cx, start[1] - cy),
+                    end: Point2::new(end[0] - cx, end[1] - cy),
+                },
+                WasmSketchSegment::Arc {
+                    start,
+                    end,
+                    center,
+                    ccw,
+                } => SketchSegment::Arc {
+                    start: Point2::new(start[0] - cx, start[1] - cy),
+                    end: Point2::new(end[0] - cx, end[1] - cy),
+                    center: Point2::new(center[0] - cx, center[1] - cy),
+                    ccw: *ccw,
+                },
+            })
+            .collect();
+
+        SketchProfile::new(
+            Point3::new(self.origin[0], self.origin[1], self.origin[2]),
+            Vec3::new(self.x_dir[0], self.x_dir[1], self.x_dir[2]),
+            Vec3::new(self.y_dir[0], self.y_dir[1], self.y_dir[2]),
+            segments,
+        )
+        .map_err(|e| e.to_string())
+    }
 }
 
 /// A 3D solid geometry object.
@@ -223,6 +298,7 @@ impl Solid {
         twist_angle: Option<f64>,
         scale_start: Option<f64>,
         scale_end: Option<f64>,
+        orientation: Option<f64>,
     ) -> Result<Solid, JsError> {
         use vcad_kernel::vcad_kernel_geom::Line3d;
         use vcad_kernel::vcad_kernel_sweep::SweepOptions;
@@ -234,7 +310,10 @@ impl Solid {
             return Err(JsError::new("Start and end must have 3 components"));
         }
 
-        let kernel_profile = profile.to_kernel_profile().map_err(|e| JsError::new(&e))?;
+        // Use centered profile so it wraps around the path properly
+        let kernel_profile = profile
+            .to_kernel_profile_centered()
+            .map_err(|e| JsError::new(&e))?;
 
         let path = Line3d::from_points(
             Point3::new(start[0], start[1], start[2]),
@@ -245,6 +324,7 @@ impl Solid {
             twist_angle: twist_angle.unwrap_or(0.0),
             scale_start: scale_start.unwrap_or(1.0),
             scale_end: scale_end.unwrap_or(1.0),
+            orientation_angle: orientation.unwrap_or(0.0),
             ..Default::default()
         };
 
@@ -269,13 +349,17 @@ impl Solid {
         scale_end: Option<f64>,
         path_segments: Option<u32>,
         arc_segments: Option<u32>,
+        orientation: Option<f64>,
     ) -> Result<Solid, JsError> {
         use vcad_kernel::vcad_kernel_sweep::{Helix, SweepOptions};
 
         let profile: WasmSketchProfile = serde_wasm_bindgen::from_value(profile_js)
             .map_err(|e| JsError::new(&format!("Invalid profile: {}", e)))?;
 
-        let kernel_profile = profile.to_kernel_profile().map_err(|e| JsError::new(&e))?;
+        // Use centered profile so it wraps around the helix path properly
+        let kernel_profile = profile
+            .to_kernel_profile_centered()
+            .map_err(|e| JsError::new(&e))?;
 
         let path = Helix::new(radius, pitch, height, turns);
 
@@ -285,6 +369,7 @@ impl Solid {
             scale_end: scale_end.unwrap_or(1.0),
             path_segments: path_segments.unwrap_or(0),
             arc_segments: arc_segments.unwrap_or(8),
+            orientation_angle: orientation.unwrap_or(0.0),
         };
 
         vcad_kernel::Solid::sweep(kernel_profile, &path, options)
@@ -828,8 +913,9 @@ pub fn op_sweep_line(
     twist_angle: Option<f64>,
     scale_start: Option<f64>,
     scale_end: Option<f64>,
+    orientation: Option<f64>,
 ) -> Result<Solid, JsError> {
-    Solid::sweep_line(profile_js, start, end, twist_angle, scale_start, scale_end)
+    Solid::sweep_line(profile_js, start, end, twist_angle, scale_start, scale_end, orientation)
 }
 
 /// Create a solid by sweeping a profile along a helix path.
@@ -849,6 +935,7 @@ pub fn op_sweep_helix(
     scale_end: Option<f64>,
     path_segments: Option<u32>,
     arc_segments: Option<u32>,
+    orientation: Option<f64>,
 ) -> Result<Solid, JsError> {
     Solid::sweep_helix(
         profile_js,
@@ -861,6 +948,7 @@ pub fn op_sweep_helix(
         scale_end,
         path_segments,
         arc_segments,
+        orientation,
     )
 }
 

@@ -25,6 +25,8 @@ pub struct SweepOptions {
     pub scale_end: f64,
     /// Number of line segments per arc in the profile. Default: 8.
     pub arc_segments: u32,
+    /// Initial profile rotation around the path tangent (radians). Default: 0.0
+    pub orientation_angle: f64,
 }
 
 impl Default for SweepOptions {
@@ -35,6 +37,7 @@ impl Default for SweepOptions {
             scale_start: 1.0,
             scale_end: 1.0,
             arc_segments: 8,
+            orientation_angle: 0.0,
         }
     }
 }
@@ -88,9 +91,16 @@ pub fn sweep(
     let n_path_samples = n_path_segments + 1; // number of profile copies
 
     // Compute rotation-minimizing frames along the path
-    let frames = rotation_minimizing_frames(path, n_path_samples);
+    let mut frames = rotation_minimizing_frames(path, n_path_samples);
     if frames.len() < 2 {
         return Err(SweepError::ZeroLengthPath);
+    }
+
+    // Apply initial orientation to all frames (rotates profile around path tangent)
+    if options.orientation_angle.abs() > 1e-12 {
+        for frame in &mut frames {
+            *frame = frame.with_twist(options.orientation_angle);
+        }
     }
 
     // Get profile vertices in 2D (from tessellated profile)
@@ -526,6 +536,29 @@ mod tests {
 
         let solid = sweep(&profile, &path, options).unwrap();
         assert!(!solid.topology.faces.is_empty());
+    }
+
+    #[test]
+    fn test_sweep_with_orientation() {
+        let profile = create_rectangle_profile();
+        let path = Line3d::from_points(Point3::origin(), Point3::new(0.0, 0.0, 10.0));
+
+        let options = SweepOptions {
+            orientation_angle: PI / 4.0, // 45 degree initial rotation
+            ..Default::default()
+        };
+
+        let solid = sweep(&profile, &path, options).unwrap();
+        assert!(!solid.topology.faces.is_empty());
+
+        // Check all half-edges are paired
+        let unpaired = solid
+            .topology
+            .half_edges
+            .values()
+            .filter(|he| he.twin.is_none())
+            .count();
+        assert_eq!(unpaired, 0, "expected no unpaired half-edges");
     }
 
     #[test]

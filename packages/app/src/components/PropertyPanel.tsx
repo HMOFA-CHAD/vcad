@@ -297,6 +297,22 @@ function SweepProperties({ part }: { part: SweepPartInfo }) {
         </div>
       )}
 
+      {/* Orientation - initial profile rotation */}
+      <div>
+        <SectionHeader tooltip="Initial rotation of the profile around the path">
+          Orientation
+        </SectionHeader>
+        <ScrubInput
+          label="Angle"
+          value={(op.orientation ?? 0) * (180 / Math.PI)}
+          step={5}
+          onChange={(v) =>
+            updateSweepOp(part.id, { orientation: v * (Math.PI / 180) })
+          }
+          unit="°"
+        />
+      </div>
+
       {/* Sweep options */}
       <div>
         <SectionHeader tooltip="Twist angle along the sweep path">Twist</SectionHeader>

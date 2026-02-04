@@ -456,7 +456,7 @@ function SweepDialog({
   const [turns, setTurns] = useState(2);
 
   return (
-    <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2  border border-border bg-card p-4 shadow-2xl">
+    <div className="fixed left-1/2 bottom-20 -translate-x-1/2 z-50 border border-border bg-card p-4 shadow-2xl">
       <div className="flex flex-col gap-3">
         <div className="text-xs font-medium text-text">Sweep Path</div>
         <div className="flex gap-2">

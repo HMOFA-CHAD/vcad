@@ -623,6 +623,7 @@ function evaluateOp(
           op.twist_angle,
           op.scale_start,
           op.scale_end,
+          op.orientation,
         );
       } else {
         // Helix path
@@ -637,6 +638,7 @@ function evaluateOp(
           op.scale_end,
           op.path_segments,
           op.arc_segments,
+          op.orientation,
         );
       }
     }

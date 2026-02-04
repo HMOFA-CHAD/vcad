@@ -1,6 +1,6 @@
 import { ScrubInput } from "@/components/ui/scrub-input";
 import { useDocumentStore } from "@vcad/core";
-import type { PrimitivePartInfo } from "@vcad/core";
+import type { PrimitivePartInfo, SweepPartInfo } from "@vcad/core";
 
 interface InlineCubeDimensionsProps {
   part: PrimitivePartInfo;
@@ -109,6 +109,124 @@ export function InlineSphereDimensions({ part }: InlineSphereDimensionsProps) {
         unit="mm"
         compact
       />
+    </div>
+  );
+}
+
+interface InlineSweepPropertiesProps {
+  part: SweepPartInfo;
+}
+
+export function InlineSweepProperties({ part }: InlineSweepPropertiesProps) {
+  const document = useDocumentStore((s) => s.document);
+  const updateSweepOp = useDocumentStore((s) => s.updateSweepOp);
+
+  const node = document.nodes[String(part.sweepNodeId)];
+  if (!node || node.op.type !== "Sweep") return null;
+
+  const op = node.op;
+  const helixPath = op.path.type === "Helix" ? op.path : null;
+
+  return (
+    <div className="space-y-2 px-2 pb-1">
+      {/* Helix path parameters */}
+      {helixPath && (
+        <div className="space-y-1">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">
+            Helix
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            <ScrubInput
+              label="Radius"
+              value={helixPath.radius}
+              min={0.1}
+              step={0.5}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, radius: v } })
+              }
+              unit="mm"
+              compact
+            />
+            <ScrubInput
+              label="Pitch"
+              value={helixPath.pitch}
+              min={0.1}
+              step={0.5}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, pitch: v } })
+              }
+              unit="mm"
+              compact
+            />
+            <ScrubInput
+              label="Height"
+              value={helixPath.height}
+              min={0.1}
+              step={1}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, height: v } })
+              }
+              unit="mm"
+              compact
+            />
+            <ScrubInput
+              label="Turns"
+              value={helixPath.turns}
+              min={0.25}
+              step={0.25}
+              onChange={(v) =>
+                updateSweepOp(part.id, { path: { ...helixPath, turns: v } })
+              }
+              compact
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Orientation, Twist, Scale */}
+      <div className="space-y-1">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">
+          Profile
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <ScrubInput
+            label="Orient"
+            value={(op.orientation ?? 0) * (180 / Math.PI)}
+            step={5}
+            onChange={(v) =>
+              updateSweepOp(part.id, { orientation: v * (Math.PI / 180) })
+            }
+            unit="°"
+            compact
+          />
+          <ScrubInput
+            label="Twist"
+            value={(op.twist_angle ?? 0) * (180 / Math.PI)}
+            step={5}
+            onChange={(v) =>
+              updateSweepOp(part.id, { twist_angle: v * (Math.PI / 180) })
+            }
+            unit="°"
+            compact
+          />
+          <ScrubInput
+            label="Start"
+            value={op.scale_start ?? 1}
+            min={0.1}
+            step={0.1}
+            onChange={(v) => updateSweepOp(part.id, { scale_start: v })}
+            compact
+          />
+          <ScrubInput
+            label="End"
+            value={op.scale_end ?? 1}
+            min={0.1}
+            step={0.1}
+            onChange={(v) => updateSweepOp(part.id, { scale_end: v })}
+            compact
+          />
+        </div>
+      </div>
     </div>
   );
 }
