@@ -13,6 +13,8 @@ export interface ServerInferResult {
   ir: string;
   tokens: number;
   durationMs: number;
+  /** ID of the inference log entry (for rating) */
+  logId?: string;
 }
 
 /**
@@ -53,5 +55,33 @@ export async function generateCADServer(
     ir: result.ir ?? "",
     tokens: result.tokens ?? 0,
     durationMs: result.durationMs ?? 0,
+    logId: result.logId,
   };
+}
+
+/**
+ * Submit a rating for a generated result.
+ *
+ * @param logId - The inference log ID
+ * @param rating - Rating value: -1 (bad), 0 (neutral), 1 (good)
+ * @param authToken - Supabase auth token
+ */
+export async function rateGeneration(
+  logId: string,
+  rating: -1 | 0 | 1,
+  authToken: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/rate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ logId, rating }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(data.error || `Rating failed: ${response.status}`);
+  }
 }

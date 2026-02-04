@@ -19,6 +19,7 @@ const HF_TOKEN = process.env.HF_TOKEN!;
 
 /**
  * Log an inference attempt to the database.
+ * Returns the log ID if successful, undefined otherwise.
  */
 async function logInference(params: {
   userId: string;
@@ -27,19 +28,25 @@ async function logInference(params: {
   tokens?: number;
   durationMs?: number;
   error?: string;
-}): Promise<void> {
+}): Promise<string | undefined> {
   try {
-    await supabaseAdmin.from("inference_logs").insert({
-      user_id: params.userId,
-      prompt: params.prompt,
-      result: params.result ?? null,
-      tokens: params.tokens ?? null,
-      duration_ms: params.durationMs ?? null,
-      error: params.error ?? null,
-    });
+    const { data } = await supabaseAdmin
+      .from("inference_logs")
+      .insert({
+        user_id: params.userId,
+        prompt: params.prompt,
+        result: params.result ?? null,
+        tokens: params.tokens ?? null,
+        duration_ms: params.durationMs ?? null,
+        error: params.error ?? null,
+      })
+      .select("id")
+      .single();
+    return data?.id;
   } catch (e) {
     // Don't fail the request if logging fails
     console.error("Failed to log inference:", e);
+    return undefined;
   }
 }
 
@@ -271,7 +278,7 @@ export default async function handler(
     const durationMs = Date.now() - startTime;
 
     // Log successful inference
-    await logInference({
+    const logId = await logInference({
       userId: user.id,
       prompt,
       result: ir,
@@ -283,6 +290,7 @@ export default async function handler(
       ir,
       tokens: generatedText.length, // Approximate
       durationMs,
+      logId,
     });
   } catch (error) {
     const durationMs = Date.now() - startTime;

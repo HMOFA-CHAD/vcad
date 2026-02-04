@@ -63,7 +63,7 @@ import {
 import type { PrimitiveKind, BooleanType } from "@vcad/core";
 import { downloadBlob } from "@/lib/download";
 import { useNotificationStore } from "@/stores/notification-store";
-import { generateCADServer } from "@/lib/server-inference";
+import { generateCADServer, rateGeneration } from "@/lib/server-inference";
 import { fromCompact, type Document } from "@vcad/ir";
 import { useRequireAuth, AuthModal, useAuthStore } from "@vcad/auth";
 import { useOutputStore, estimatePrice } from "@/stores/output-store";
@@ -277,11 +277,46 @@ function CommandDropdown() {
 
       loadDocument(vcadFile);
 
+      // Build rating actions if we have a logId
+      const ratingActions = result.logId
+        ? [
+            {
+              label: "\u{1F44D}",
+              onClick: async () => {
+                const session = useAuthStore.getState().session;
+                if (session && result.logId) {
+                  try {
+                    await rateGeneration(result.logId, 1, session.access_token);
+                  } catch (e) {
+                    console.error("Failed to submit rating:", e);
+                  }
+                }
+              },
+              variant: "secondary" as const,
+            },
+            {
+              label: "\u{1F44E}",
+              onClick: async () => {
+                const session = useAuthStore.getState().session;
+                if (session && result.logId) {
+                  try {
+                    await rateGeneration(result.logId, -1, session.access_token);
+                  } catch (e) {
+                    console.error("Failed to submit rating:", e);
+                  }
+                }
+              },
+              variant: "secondary" as const,
+            },
+          ]
+        : [];
+
       store.completeAIOperation(progressId, {
         type: "success",
         title: "Generation complete",
         description: `Created in ${(result.durationMs / 1000).toFixed(1)}s`,
         actions: [
+          ...ratingActions,
           {
             label: "Undo",
             onClick: () => useDocumentStore.getState().undo(),

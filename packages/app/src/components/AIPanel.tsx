@@ -4,13 +4,12 @@ import { cn } from "@/lib/utils";
 import { useDocumentStore } from "@vcad/core";
 import { useNotificationStore } from "@/stores/notification-store";
 import { fromCompact, type Document } from "@vcad/ir";
-import type { VcadFile } from "@vcad/core";
 import {
   generateCAD,
   getInferenceStatus,
   type ProgressCallback,
 } from "@/lib/browser-inference";
-import { generateCADServer } from "@/lib/server-inference";
+import { generateCADServer, rateGeneration } from "@/lib/server-inference";
 import { useRequireAuth, AuthModal, useAuthStore } from "@vcad/auth";
 
 interface AIPanelProps {
@@ -34,8 +33,8 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
   const [loading, setLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState("");
   const [loadingProgress, setLoadingProgress] = useState(0);
-  // Default to server since cad0-mini isn't published yet
-  const [inferenceMode, setInferenceMode] = useState<InferenceMode>("server");
+  // Default to auto (will use browser if WebGPU available, else server)
+  const [inferenceMode, setInferenceMode] = useState<InferenceMode>("auto");
   const [browserAvailable, setBrowserAvailable] = useState(true);
   const [modelStatus, setModelStatus] = useState<{
     loaded: boolean;
@@ -68,11 +67,11 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
   }, [open]);
 
   // Determine effective inference mode
-  // Note: Browser mode (cad0-mini) not available until distillation is complete
   const effectiveMode: "browser" | "server" = (() => {
     if (inferenceMode === "server") return "server";
-    if (inferenceMode === "browser" && browserAvailable) return "browser";
-    // Auto/default: use server (cad0-mini not published yet)
+    if (inferenceMode === "browser") return "browser"; // Always use browser if explicitly selected
+    // Auto: prefer browser if available (even before WebGPU check completes)
+    if (inferenceMode === "auto" && browserAvailable) return "browser";
     return "server";
   })();
 
@@ -167,11 +166,46 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
           throw new Error("Generated invalid CAD code. Please try rephrasing your description.");
         }
 
+        // Build rating actions if we have a logId
+        const ratingActions = result.logId
+          ? [
+              {
+                label: "\u{1F44D}",
+                onClick: async () => {
+                  const session = useAuthStore.getState().session;
+                  if (session && result.logId) {
+                    try {
+                      await rateGeneration(result.logId, 1, session.access_token);
+                    } catch (e) {
+                      console.error("Failed to submit rating:", e);
+                    }
+                  }
+                },
+                variant: "secondary" as const,
+              },
+              {
+                label: "\u{1F44E}",
+                onClick: async () => {
+                  const session = useAuthStore.getState().session;
+                  if (session && result.logId) {
+                    try {
+                      await rateGeneration(result.logId, -1, session.access_token);
+                    } catch (e) {
+                      console.error("Failed to submit rating:", e);
+                    }
+                  }
+                },
+                variant: "secondary" as const,
+              },
+            ]
+          : [];
+
         store.completeAIOperation(progressId, {
           type: "success",
           title: "Generated from server",
           description: `Created in ${(result.durationMs / 1000).toFixed(1)}s (${result.tokens} tokens)`,
           actions: [
+            ...ratingActions,
             {
               label: "Undo",
               onClick: () => useDocumentStore.getState().undo(),
@@ -181,15 +215,8 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
         });
       }
 
-      // Load the generated document
-      // Wrap Document in VcadFile format expected by loadDocument
-      const vcadFile: VcadFile = {
-        document,
-        parts: [],
-        nextNodeId: Object.keys(document.nodes).length,
-        nextPartNum: 1,
-      };
-      useDocumentStore.getState().loadDocument(vcadFile);
+      // Merge the generated IR into the current document
+      useDocumentStore.getState().addFromIR(document, prompt.slice(0, 30));
       setPrompt("");
     } catch (err) {
       console.error("AI generation failed:", err);
@@ -289,15 +316,14 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
             </button>
             <button
               onClick={() => setInferenceMode("browser")}
-              disabled={true} // cad0-mini not published yet
+              disabled={loading}
               className={cn(
                 "flex items-center gap-1 px-2 py-1 text-[10px] rounded transition-colors",
                 inferenceMode === "browser"
                   ? "bg-accent text-white"
-                  : "bg-bg text-text-muted hover:text-text",
-                "opacity-50 cursor-not-allowed"
+                  : "bg-bg text-text-muted hover:text-text"
               )}
-              title="Coming soon: local browser inference"
+              title="Uses cad0-mini (0.5B) locally - no login required"
             >
               <Desktop size={10} />
               Local
