@@ -229,6 +229,26 @@ export class Solid {
         return Solid.__wrap(ret[0]);
     }
     /**
+     * Create a solid by extruding a 2D sketch profile with twist and/or scale.
+     *
+     * Takes a sketch profile, extrusion direction, twist angle (radians),
+     * and scale factor at the end (1.0 = no taper).
+     * @param {any} profile_js
+     * @param {Float64Array} direction
+     * @param {number} twist_angle
+     * @param {number} scale_end
+     * @returns {Solid}
+     */
+    static extrudeWithOptions(profile_js, direction, twist_angle, scale_end) {
+        const ptr0 = passArrayF64ToWasm0(direction, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.solid_extrudeWithOptions(profile_js, ptr0, len0, twist_angle, scale_end);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Solid.__wrap(ret[0]);
+    }
+    /**
      * Fillet all edges of the solid with the given radius.
      * @param {number} radius
      * @returns {Solid}
@@ -477,6 +497,57 @@ export class Solid {
         const ptr1 = passArrayF64ToWasm0(end, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
         const ret = wasm.solid_sweepLine(profile_js, ptr0, len0, ptr1, len1, !isLikeNone(twist_angle), isLikeNone(twist_angle) ? 0 : twist_angle, !isLikeNone(scale_start), isLikeNone(scale_start) ? 0 : scale_start, !isLikeNone(scale_end), isLikeNone(scale_end) ? 0 : scale_end, !isLikeNone(orientation), isLikeNone(orientation) ? 0 : orientation);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Solid.__wrap(ret[0]);
+    }
+    /**
+     * Create a solid by extruding text as 2D profiles.
+     *
+     * Converts text to sketch profiles and extrudes them. Each character glyph
+     * becomes a separate profile, and holes (like in 'O') are subtracted.
+     *
+     * # Arguments
+     *
+     * * `text` - The text string to convert
+     * * `origin` - Origin point [x, y, z]
+     * * `x_dir` - X direction vector [x, y, z]
+     * * `y_dir` - Y direction vector [x, y, z]
+     * * `direction` - Extrusion direction [x, y, z] (magnitude = extrusion depth)
+     * * `height` - Text height in mm
+     * * `font` - Font name (currently only "sans-serif" supported)
+     * * `alignment` - Text alignment: "left", "center", or "right"
+     * * `letter_spacing` - Letter spacing multiplier (1.0 = normal)
+     * * `line_spacing` - Line spacing multiplier (1.0 = normal)
+     * @param {string} text
+     * @param {Float64Array} origin
+     * @param {Float64Array} x_dir
+     * @param {Float64Array} y_dir
+     * @param {Float64Array} direction
+     * @param {number} height
+     * @param {string | null} [font]
+     * @param {string | null} [alignment]
+     * @param {number | null} [letter_spacing]
+     * @param {number | null} [line_spacing]
+     * @returns {Solid}
+     */
+    static textExtrude(text, origin, x_dir, y_dir, direction, height, font, alignment, letter_spacing, line_spacing) {
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(origin, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(x_dir, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArrayF64ToWasm0(y_dir, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArrayF64ToWasm0(direction, wasm.__wbindgen_malloc);
+        const len4 = WASM_VECTOR_LEN;
+        var ptr5 = isLikeNone(font) ? 0 : passStringToWasm0(font, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len5 = WASM_VECTOR_LEN;
+        var ptr6 = isLikeNone(alignment) ? 0 : passStringToWasm0(alignment, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len6 = WASM_VECTOR_LEN;
+        const ret = wasm.solid_textExtrude(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, height, ptr5, len5, ptr6, len6, !isLikeNone(letter_spacing), isLikeNone(letter_spacing) ? 0 : letter_spacing, !isLikeNone(line_spacing), isLikeNone(line_spacing) ? 0 : line_spacing);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -1174,6 +1245,38 @@ export function sectionMesh(mesh_js, plane_json, hatch_json) {
 }
 
 /**
+ * Get the bounding box of rendered text.
+ *
+ * Returns the width and height of the text in mm without creating geometry.
+ * Useful for layout calculations before extruding text.
+ *
+ * # Arguments
+ *
+ * * `text` - The text string to measure
+ * * `height` - Text height in mm
+ * * `font` - Font name (currently only "sans-serif" supported)
+ * * `letter_spacing` - Letter spacing multiplier (1.0 = normal)
+ * * `line_spacing` - Line spacing multiplier (1.0 = normal)
+ * @param {string} text
+ * @param {number} height
+ * @param {string | null} [font]
+ * @param {number | null} [letter_spacing]
+ * @param {number | null} [line_spacing]
+ * @returns {any}
+ */
+export function textBounds(text, height, font, letter_spacing, line_spacing) {
+    const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(font) ? 0 : passStringToWasm0(font, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.textBounds(ptr0, len0, height, ptr1, len1, !isLikeNone(letter_spacing), isLikeNone(letter_spacing) ? 0 : letter_spacing, !isLikeNone(line_spacing), isLikeNone(line_spacing) ? 0 : line_spacing);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Convert a vcad IR Document (JSON) to compact IR text format.
  *
  * # Arguments
@@ -1489,7 +1592,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 174, function: Function { arguments: [Externref], shim_idx: 175, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 175, function: Function { arguments: [Externref], shim_idx: 176, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__ha1c57de1520edab9, wasm_bindgen__convert__closures_____invoke__h4889c924fd29fd81);
             return ret;
         },

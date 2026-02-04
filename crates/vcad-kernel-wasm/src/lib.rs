@@ -888,6 +888,163 @@ impl Solid {
     pub fn can_export_step(&self) -> bool {
         self.inner.can_export_step()
     }
+
+    // =========================================================================
+    // Text operations
+    // =========================================================================
+
+    /// Create a solid by extruding text as 2D profiles.
+    ///
+    /// Converts text to sketch profiles and extrudes them. Each character glyph
+    /// becomes a separate profile, and holes (like in 'O') are subtracted.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The text string to convert
+    /// * `origin` - Origin point [x, y, z]
+    /// * `x_dir` - X direction vector [x, y, z]
+    /// * `y_dir` - Y direction vector [x, y, z]
+    /// * `direction` - Extrusion direction [x, y, z] (magnitude = extrusion depth)
+    /// * `height` - Text height in mm
+    /// * `font` - Font name (currently only "sans-serif" supported)
+    /// * `alignment` - Text alignment: "left", "center", or "right"
+    /// * `letter_spacing` - Letter spacing multiplier (1.0 = normal)
+    /// * `line_spacing` - Line spacing multiplier (1.0 = normal)
+    #[wasm_bindgen(js_name = textExtrude)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn text_extrude(
+        text: &str,
+        origin: Vec<f64>,
+        x_dir: Vec<f64>,
+        y_dir: Vec<f64>,
+        direction: Vec<f64>,
+        height: f64,
+        font: Option<String>,
+        alignment: Option<String>,
+        letter_spacing: Option<f64>,
+        line_spacing: Option<f64>,
+    ) -> Result<Solid, JsError> {
+        use vcad_kernel::vcad_kernel_text::{FontRegistry, TextAlignment};
+
+        if origin.len() != 3 || x_dir.len() != 3 || y_dir.len() != 3 || direction.len() != 3 {
+            return Err(JsError::new("origin, x_dir, y_dir, and direction must have 3 components"));
+        }
+
+        // Parse alignment
+        let align = match alignment.as_deref() {
+            Some("center") => TextAlignment::Center,
+            Some("right") => TextAlignment::Right,
+            _ => TextAlignment::Left,
+        };
+
+        // Get font (only builtin sans-serif for now)
+        let font_ref = match font.as_deref() {
+            Some("sans-serif") | None => FontRegistry::builtin_sans(),
+            Some(name) => {
+                return Err(JsError::new(&format!("Unknown font: {}. Use 'sans-serif' or omit for default.", name)));
+            }
+        };
+
+        let letter_sp = letter_spacing.unwrap_or(1.0);
+        let line_sp = line_spacing.unwrap_or(1.0);
+
+        // Convert text to profiles
+        let profiles = vcad_kernel::vcad_kernel_text::text_to_profiles(
+            text,
+            font_ref,
+            height,
+            letter_sp,
+            line_sp,
+            align,
+        );
+
+        if profiles.is_empty() {
+            return Ok(Solid { inner: vcad_kernel::Solid::empty() });
+        }
+
+        // Separate profiles into outer contours and holes based on winding order
+        let dir = Vec3::new(direction[0], direction[1], direction[2]);
+        let origin_pt = Point3::new(origin[0], origin[1], origin[2]);
+        let x_vec = Vec3::new(x_dir[0], x_dir[1], x_dir[2]);
+        let y_vec = Vec3::new(y_dir[0], y_dir[1], y_dir[2]);
+
+        // Determine holes by geometric containment
+        // A profile is a hole if it's contained inside another profile
+        let n = profiles.len();
+        let mut is_hole = vec![false; n];
+
+        for i in 0..n {
+            for j in 0..n {
+                if i != j && profiles[i].is_contained_in(&profiles[j]) {
+                    is_hole[i] = true;
+                    break;
+                }
+            }
+        }
+
+        let mut outer_profiles = Vec::new();
+        let mut hole_profiles = Vec::new();
+
+        for (i, profile) in profiles.into_iter().enumerate() {
+            if is_hole[i] {
+                hole_profiles.push(profile);
+            } else {
+                outer_profiles.push(profile);
+            }
+        }
+
+        // Merge outer profile meshes (bypass boolean union)
+        let mut all_vertices: Vec<f32> = Vec::new();
+        let mut all_normals: Vec<f32> = Vec::new();
+        let mut all_indices: Vec<u32> = Vec::new();
+
+        for profile in &outer_profiles {
+            let world_profile = profile.transform(origin_pt, x_vec, y_vec);
+
+            if let Ok(solid) = vcad_kernel::Solid::extrude(world_profile, dir) {
+                let mesh = solid.to_mesh(32);
+                let vertex_offset = (all_vertices.len() / 3) as u32;
+                all_vertices.extend_from_slice(&mesh.vertices);
+                all_normals.extend_from_slice(&mesh.normals);
+                for idx in mesh.indices {
+                    all_indices.push(idx + vertex_offset);
+                }
+            }
+        }
+
+        // Create solid from merged outer meshes
+        let mut result = if !all_vertices.is_empty() {
+            let merged_mesh = vcad_kernel_tessellate::TriangleMesh {
+                vertices: all_vertices,
+                indices: all_indices,
+                normals: all_normals,
+            };
+            Some(vcad_kernel::Solid::from_mesh(merged_mesh))
+        } else {
+            None
+        };
+
+        // Subtract holes using boolean difference
+        if let Some(solid) = result.take() {
+            let mut current = solid;
+            let hole_dir = dir * 1.1;
+            let hole_offset = dir * -0.05;
+
+            for profile in &hole_profiles {
+                let offset_origin = origin_pt + hole_offset;
+                let world_profile = profile.transform(offset_origin, x_vec, y_vec);
+
+                if let Ok(hole_solid) = vcad_kernel::Solid::extrude(world_profile, hole_dir) {
+                    current = current.difference(&hole_solid);
+                }
+            }
+            result = Some(current);
+        }
+
+        Ok(Solid {
+            inner: result.unwrap_or_else(vcad_kernel::Solid::empty),
+        })
+    }
 }
 
 // =========================================================================
@@ -919,6 +1076,66 @@ pub fn op_chamfer(solid: &Solid, distance: f64) -> Solid {
 #[wasm_bindgen]
 pub fn op_shell(solid: &Solid, thickness: f64) -> Solid {
     solid.shell(thickness)
+}
+
+// =========================================================================
+// Text utilities
+// =========================================================================
+
+/// Text bounds result containing width and height.
+#[derive(Serialize, Deserialize)]
+pub struct TextBoundsResult {
+    /// Width of the rendered text in mm.
+    pub width: f64,
+    /// Height of the rendered text in mm.
+    pub height: f64,
+}
+
+/// Get the bounding box of rendered text.
+///
+/// Returns the width and height of the text in mm without creating geometry.
+/// Useful for layout calculations before extruding text.
+///
+/// # Arguments
+///
+/// * `text` - The text string to measure
+/// * `height` - Text height in mm
+/// * `font` - Font name (currently only "sans-serif" supported)
+/// * `letter_spacing` - Letter spacing multiplier (1.0 = normal)
+/// * `line_spacing` - Line spacing multiplier (1.0 = normal)
+#[wasm_bindgen(js_name = textBounds)]
+pub fn text_bounds(
+    text: &str,
+    height: f64,
+    font: Option<String>,
+    letter_spacing: Option<f64>,
+    line_spacing: Option<f64>,
+) -> Result<JsValue, JsError> {
+    use vcad_kernel::vcad_kernel_text::FontRegistry;
+
+    // Get font (only builtin sans-serif for now)
+    let font_ref = match font.as_deref() {
+        Some("sans-serif") | None => FontRegistry::builtin_sans(),
+        Some(name) => {
+            return Err(JsError::new(&format!(
+                "Unknown font: {}. Use 'sans-serif' or omit for default.",
+                name
+            )));
+        }
+    };
+
+    let letter_sp = letter_spacing.unwrap_or(1.0);
+    let line_sp = line_spacing.unwrap_or(1.0);
+
+    let (width, text_height) =
+        vcad_kernel::vcad_kernel_text::text_bounds(text, font_ref, height, letter_sp, line_sp);
+
+    let result = TextBoundsResult {
+        width,
+        height: text_height,
+    };
+
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
 }
 
 // =========================================================================
@@ -2659,6 +2876,18 @@ fn evaluate_node(doc: &vcad_ir::Document, node_id: vcad_ir::NodeId) -> Result<So
 
         vcad_ir::CsgOp::StepImport { .. } => {
             Err(JsError::new("STEP import not supported in compact IR evaluation"))
+        }
+
+        vcad_ir::CsgOp::Text2D { .. } => {
+            // Text2D doesn't produce geometry by itself - it needs to be extruded.
+            // This case handles direct evaluation of Text2D nodes (should be rare).
+            // Typically Text2D nodes are used as children of Extrude operations.
+
+            // For now, return an error - the proper way to use Text2D is:
+            // 1. Create a Text2D node
+            // 2. Use it as the sketch input to an Extrude operation
+            // The TypeScript evaluate.ts handles converting Text2D inside Extrude
+            Err(JsError::new("Text2D cannot be evaluated directly - use Extrude to convert to solid"))
         }
     }
 }

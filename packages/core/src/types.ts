@@ -170,7 +170,18 @@ export interface MirrorPartInfo {
   translateNodeId: NodeId;
 }
 
-export type PartInfo = PrimitivePartInfo | BooleanPartInfo | ExtrudePartInfo | RevolvePartInfo | SweepPartInfo | LoftPartInfo | ImportedMeshPartInfo | FilletPartInfo | ChamferPartInfo | ShellPartInfo | LinearPatternPartInfo | CircularPatternPartInfo | MirrorPartInfo;
+export interface TextPartInfo {
+  id: string;
+  name: string;
+  kind: "text";
+  textNodeId: NodeId;
+  extrudeNodeId: NodeId;
+  scaleNodeId: NodeId;
+  rotateNodeId: NodeId;
+  translateNodeId: NodeId;
+}
+
+export type PartInfo = PrimitivePartInfo | BooleanPartInfo | ExtrudePartInfo | RevolvePartInfo | SweepPartInfo | LoftPartInfo | ImportedMeshPartInfo | FilletPartInfo | ChamferPartInfo | ShellPartInfo | LinearPatternPartInfo | CircularPatternPartInfo | MirrorPartInfo | TextPartInfo;
 
 export function isPrimitivePart(part: PartInfo): part is PrimitivePartInfo {
   return part.kind === "cube" || part.kind === "cylinder" || part.kind === "sphere";
@@ -222,6 +233,10 @@ export function isCircularPatternPart(part: PartInfo): part is CircularPatternPa
 
 export function isMirrorPart(part: PartInfo): part is MirrorPartInfo {
   return part.kind === "mirror";
+}
+
+export function isTextPart(part: PartInfo): part is TextPartInfo {
+  return part.kind === "text";
 }
 
 export type ToolMode = "select" | "primitive" | "simulate";

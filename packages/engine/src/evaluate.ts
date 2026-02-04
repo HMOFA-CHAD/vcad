@@ -4,6 +4,7 @@ import type {
   NodeId,
   CsgOp,
   Sketch2DOp,
+  Text2DOp,
   SketchSegment2D,
   SweepOp,
   LoftOp,
@@ -522,15 +523,47 @@ function evaluateOp(
         console.log(`${indent}  -> Extrude(sketch=${op.sketch}, dir=(${op.direction.x}, ${op.direction.y}, ${op.direction.z}), twist=${op.twist_angle ?? 0}, scale=${op.scale_end ?? 1})`);
       }
       const sketchNode = nodes[String(op.sketch)];
-      if (!sketchNode || sketchNode.op.type !== "Sketch2D") {
-        throw new Error(`Extrude references invalid sketch node: ${op.sketch}`);
+      if (!sketchNode) {
+        throw new Error(`Extrude references missing node: ${op.sketch}`);
       }
-      const profile = convertSketchToProfile(sketchNode.op);
+
       const direction = new Float64Array([
         op.direction.x,
         op.direction.y,
         op.direction.z,
       ]);
+
+      // Handle Text2D nodes (text extrusion)
+      if (sketchNode.op.type === "Text2D") {
+        const textOp = sketchNode.op as Text2DOp;
+        const origin = new Float64Array([textOp.origin.x, textOp.origin.y, textOp.origin.z]);
+        const xDir = new Float64Array([textOp.x_dir.x, textOp.x_dir.y, textOp.x_dir.z]);
+        const yDir = new Float64Array([textOp.y_dir.x, textOp.y_dir.y, textOp.y_dir.z]);
+
+        const result = Solid.textExtrude(
+          textOp.text,
+          origin,
+          xDir,
+          yDir,
+          direction,
+          textOp.height,
+          textOp.font || undefined,
+          textOp.alignment || undefined,
+          textOp.letter_spacing ?? undefined,
+          textOp.line_spacing ?? undefined,
+        );
+        if (DEBUG_EVAL) {
+          const indent = "  ".repeat(depth);
+          console.log(`${indent}  -> TextExtrude result: ${result.getMesh().indices.length / 3} tris`);
+        }
+        return result;
+      }
+
+      // Handle Sketch2D nodes (normal sketch extrusion)
+      if (sketchNode.op.type !== "Sketch2D") {
+        throw new Error(`Extrude references invalid sketch node: ${op.sketch} (type=${sketchNode.op.type})`);
+      }
+      const profile = convertSketchToProfile(sketchNode.op);
       // Use extrudeWithOptions if twist or scale is specified
       const hasTwist = op.twist_angle !== undefined && Math.abs(op.twist_angle) > 1e-12;
       const hasScale = op.scale_end !== undefined && Math.abs(op.scale_end - 1.0) > 1e-12;
@@ -670,6 +703,15 @@ function evaluateOp(
       if (DEBUG_EVAL) {
         const indent = "  ".repeat(depth);
         console.log(`${indent}  -> ImportedMesh (handled at document level)`);
+      }
+      return Solid.empty();
+
+    case "Text2D":
+      // Text2D nodes don't produce geometry directly — they're referenced by Extrude
+      // Return an empty solid as a placeholder
+      if (DEBUG_EVAL) {
+        const indent = "  ".repeat(depth);
+        console.log(`${indent}  -> Text2D (placeholder, use Extrude to convert)`);
       }
       return Solid.empty();
   }

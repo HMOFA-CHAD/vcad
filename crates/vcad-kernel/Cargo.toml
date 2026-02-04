@@ -19,3 +19,4 @@ vcad-kernel-sweep = { path = "../vcad-kernel-sweep" }
 vcad-kernel-shell = { path = "../vcad-kernel-shell" }
 vcad-kernel-step = { path = "../vcad-kernel-step" }
 vcad-kernel-constraints = { path = "../vcad-kernel-constraints" }
+vcad-kernel-text = { path = "../vcad-kernel-text" }

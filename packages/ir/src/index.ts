@@ -287,6 +287,37 @@ export interface ChamferOp {
   distance: number;
 }
 
+/** Text alignment options for 2D text geometry. */
+export type TextAlignment = "left" | "center" | "right";
+
+/**
+ * 2D text that can be extruded into 3D geometry.
+ *
+ * Creates sketch profiles from text glyphs, which can then be
+ * extruded and used in boolean operations for embossing/engraving.
+ */
+export interface Text2DOp {
+  type: "Text2D";
+  /** Origin point of the text plane in 3D. */
+  origin: Vec3;
+  /** X direction of the text plane (text flows along this axis). */
+  x_dir: Vec3;
+  /** Y direction of the text plane (text height along this axis). */
+  y_dir: Vec3;
+  /** The text string to render. */
+  text: string;
+  /** Font name (e.g., "sans-serif", "monospace", or custom registered font). */
+  font: string;
+  /** Text height in mm. */
+  height: number;
+  /** Letter spacing multiplier (1.0 = normal). */
+  letter_spacing?: number;
+  /** Line spacing multiplier for multi-line text (1.0 = normal). */
+  line_spacing?: number;
+  /** Text alignment. */
+  alignment?: TextAlignment;
+}
+
 /**
  * An imported mesh (e.g., from STEP file).
  * Stores pre-tessellated geometry that can be transformed but not used in booleans.
@@ -365,6 +396,7 @@ export type CsgOp =
   | ShellOp
   | FilletOp
   | ChamferOp
+  | Text2DOp
   | SweepOp
   | LoftOp
   | ImportedMeshOp;

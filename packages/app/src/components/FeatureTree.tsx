@@ -42,6 +42,7 @@ import {
   ArrowsHorizontal,
   Eye,
   EyeSlash,
+  TextT,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -75,6 +76,7 @@ function getPartIcon(part: PartInfo): typeof Cube {
   if (part.kind === "linear-pattern") return DotsThree;
   if (part.kind === "circular-pattern") return ArrowsClockwise;
   if (part.kind === "mirror") return ArrowsHorizontal;
+  if (part.kind === "text") return TextT;
   return KIND_ICONS[part.kind];
 }
 

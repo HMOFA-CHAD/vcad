@@ -28,6 +28,7 @@ pub use vcad_kernel_sketch;
 pub use vcad_kernel_step;
 pub use vcad_kernel_sweep;
 pub use vcad_kernel_tessellate;
+pub use vcad_kernel_text;
 pub use vcad_kernel_topo;
 
 use vcad_kernel_booleans::{boolean_op, BooleanOp, BooleanResult};
@@ -107,6 +108,14 @@ impl Solid {
     pub fn empty() -> Self {
         Self {
             repr: SolidRepr::Empty,
+            segments: 32,
+        }
+    }
+
+    /// Create a solid from a triangle mesh.
+    pub fn from_mesh(mesh: TriangleMesh) -> Self {
+        Self {
+            repr: SolidRepr::Mesh(mesh),
             segments: 32,
         }
     }

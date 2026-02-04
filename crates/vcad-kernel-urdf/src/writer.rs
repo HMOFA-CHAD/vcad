@@ -327,7 +327,10 @@ impl<'a> UrdfWriter<'a> {
                 // For patterns/shell/fillet/chamfer, export base geometry
                 self.node_to_geometry(*child)
             }
-            CsgOp::Sketch2D { .. } | CsgOp::Extrude { .. } | CsgOp::Revolve { .. } => {
+            CsgOp::Sketch2D { .. }
+            | CsgOp::Text2D { .. }
+            | CsgOp::Extrude { .. }
+            | CsgOp::Revolve { .. } => {
                 // Sketch-based geometry - approximate as box
                 Err(UrdfError::Conversion(
                     "Sketch-based geometry cannot be exported to URDF directly".to_string(),

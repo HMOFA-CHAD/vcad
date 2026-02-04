@@ -205,6 +205,26 @@ export class Solid {
      */
     static sweepLine(profile_js: any, start: Float64Array, end: Float64Array, twist_angle?: number | null, scale_start?: number | null, scale_end?: number | null, orientation?: number | null): Solid;
     /**
+     * Create a solid by extruding text as 2D profiles.
+     *
+     * Converts text to sketch profiles and extrudes them. Each character glyph
+     * becomes a separate profile, and holes (like in 'O') are subtracted.
+     *
+     * # Arguments
+     *
+     * * `text` - The text string to convert
+     * * `origin` - Origin point [x, y, z]
+     * * `x_dir` - X direction vector [x, y, z]
+     * * `y_dir` - Y direction vector [x, y, z]
+     * * `direction` - Extrusion direction [x, y, z] (magnitude = extrusion depth)
+     * * `height` - Text height in mm
+     * * `font` - Font name (currently only "sans-serif" supported)
+     * * `alignment` - Text alignment: "left", "center", or "right"
+     * * `letter_spacing` - Letter spacing multiplier (1.0 = normal)
+     * * `line_spacing` - Line spacing multiplier (1.0 = normal)
+     */
+    static textExtrude(text: string, origin: Float64Array, x_dir: Float64Array, y_dir: Float64Array, direction: Float64Array, height: number, font?: string | null, alignment?: string | null, letter_spacing?: number | null, line_spacing?: number | null): Solid;
+    /**
      * Export the solid to STEP format.
      *
      * # Returns
@@ -540,6 +560,22 @@ export function projectMesh(mesh_js: any, view_direction: string): any;
 export function sectionMesh(mesh_js: any, plane_json: string, hatch_json?: string | null): any;
 
 /**
+ * Get the bounding box of rendered text.
+ *
+ * Returns the width and height of the text in mm without creating geometry.
+ * Useful for layout calculations before extruding text.
+ *
+ * # Arguments
+ *
+ * * `text` - The text string to measure
+ * * `height` - Text height in mm
+ * * `font` - Font name (currently only "sans-serif" supported)
+ * * `letter_spacing` - Letter spacing multiplier (1.0 = normal)
+ * * `line_spacing` - Line spacing multiplier (1.0 = normal)
+ */
+export function textBounds(text: string, height: number, font?: string | null, letter_spacing?: number | null, line_spacing?: number | null): any;
+
+/**
  * Convert a vcad IR Document (JSON) to compact IR text format.
  *
  * # Arguments
@@ -598,6 +634,7 @@ export interface InitOutput {
     readonly solid_difference: (a: number, b: number) => number;
     readonly solid_empty: () => number;
     readonly solid_extrude: (a: any, b: number, c: number) => [number, number, number];
+    readonly solid_extrudeWithOptions: (a: any, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly solid_getMesh: (a: number, b: number) => any;
     readonly solid_horizontalSection: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => any;
     readonly solid_intersection: (a: number, b: number) => number;
@@ -612,10 +649,12 @@ export interface InitOutput {
     readonly solid_surfaceArea: (a: number) => number;
     readonly solid_sweepHelix: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => [number, number, number];
     readonly solid_sweepLine: (a: any, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
+    readonly solid_textExtrude: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number) => [number, number, number];
     readonly solid_toStepBuffer: (a: number) => [number, number, number, number];
     readonly solid_translate: (a: number, b: number, c: number, d: number) => number;
     readonly solid_union: (a: number, b: number) => number;
     readonly solid_volume: (a: number) => number;
+    readonly textBounds: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number];
     readonly toCompactIR: (a: number, b: number) => [number, number, number, number];
     readonly wasmannotationlayer_addAlignedDimension: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly wasmannotationlayer_addAngleDimension: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;

@@ -353,6 +353,130 @@ impl SketchProfile {
     pub fn is_empty(&self) -> bool {
         self.segments.is_empty()
     }
+
+    /// Calculate the signed area of the profile in 2D.
+    ///
+    /// Returns positive for counter-clockwise contours (outer shapes)
+    /// and negative for clockwise contours (holes).
+    ///
+    /// Uses the shoelace formula on tessellated vertices.
+    pub fn signed_area(&self) -> f64 {
+        // Tessellate to handle arcs
+        let verts = self.tessellated_vertices_2d(8);
+        if verts.len() < 3 {
+            return 0.0;
+        }
+
+        // Shoelace formula
+        let mut area = 0.0;
+        let n = verts.len();
+        for i in 0..n {
+            let j = (i + 1) % n;
+            area += verts[i].x * verts[j].y;
+            area -= verts[j].x * verts[i].y;
+        }
+        area / 2.0
+    }
+
+    /// Check if this profile represents a hole based on winding order.
+    ///
+    /// In TrueType/OpenType fonts with Y pointing up:
+    /// - Outer contours are clockwise (negative signed area)
+    /// - Holes are counter-clockwise (positive signed area)
+    pub fn is_hole(&self) -> bool {
+        self.signed_area() > 0.0
+    }
+
+    /// Get the 2D bounding box of this profile.
+    ///
+    /// Returns (min, max) points in local 2D coordinates.
+    pub fn bounding_box_2d(&self) -> (Point2, Point2) {
+        let verts = self.tessellated_vertices_2d(8);
+        if verts.is_empty() {
+            return (Point2::new(0.0, 0.0), Point2::new(0.0, 0.0));
+        }
+
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+
+        for v in &verts {
+            min_x = min_x.min(v.x);
+            min_y = min_y.min(v.y);
+            max_x = max_x.max(v.x);
+            max_y = max_y.max(v.y);
+        }
+
+        (Point2::new(min_x, min_y), Point2::new(max_x, max_y))
+    }
+
+    /// Check if a 2D point is inside this profile using ray casting.
+    pub fn contains_point_2d(&self, p: Point2) -> bool {
+        let verts = self.tessellated_vertices_2d(8);
+        if verts.len() < 3 {
+            return false;
+        }
+
+        // Ray casting algorithm
+        let mut inside = false;
+        let n = verts.len();
+        let mut j = n - 1;
+
+        for i in 0..n {
+            let vi = &verts[i];
+            let vj = &verts[j];
+
+            if ((vi.y > p.y) != (vj.y > p.y))
+                && (p.x < (vj.x - vi.x) * (p.y - vi.y) / (vj.y - vi.y) + vi.x)
+            {
+                inside = !inside;
+            }
+            j = i;
+        }
+        inside
+    }
+
+    /// Check if this profile is geometrically contained within another profile.
+    pub fn is_contained_in(&self, other: &SketchProfile) -> bool {
+        // Quick bounding box check
+        let (self_min, self_max) = self.bounding_box_2d();
+        let (other_min, other_max) = other.bounding_box_2d();
+
+        // If self's bbox is not inside other's bbox, it can't be contained
+        if self_min.x < other_min.x || self_max.x > other_max.x
+            || self_min.y < other_min.y || self_max.y > other_max.y
+        {
+            return false;
+        }
+
+        // Check if centroid of self is inside other
+        let centroid = Point2::new(
+            (self_min.x + self_max.x) / 2.0,
+            (self_min.y + self_max.y) / 2.0,
+        );
+        other.contains_point_2d(centroid)
+    }
+
+    /// Transform the profile to a new coordinate system.
+    ///
+    /// Creates a new profile with the same 2D geometry but a different
+    /// 3D position and orientation.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_origin` - New origin point in 3D
+    /// * `new_x_dir` - New X direction vector (will be normalized)
+    /// * `new_y_dir` - New Y direction vector (will be normalized)
+    pub fn transform(&self, new_origin: Point3, new_x_dir: Vec3, new_y_dir: Vec3) -> Self {
+        Self {
+            origin: new_origin,
+            x_dir: Dir3::new_normalize(new_x_dir),
+            y_dir: Dir3::new_normalize(new_y_dir),
+            normal: Dir3::new_normalize(new_x_dir.cross(&new_y_dir)),
+            segments: self.segments.clone(),
+        }
+    }
 }
 
 #[cfg(test)]

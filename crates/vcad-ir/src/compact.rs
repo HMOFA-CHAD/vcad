@@ -2442,6 +2442,11 @@ fn format_op(
             line: 0,
             message: "STEP import not supported in compact format".to_string(),
         }),
+
+        CsgOp::Text2D { .. } => Err(CompactParseError {
+            line: 0,
+            message: "Text2D not supported in compact format".to_string(),
+        }),
     }
 }
 

@@ -181,6 +181,19 @@ impl Vec3 {
     }
 }
 
+/// Text alignment options for 2D text geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TextAlignment {
+    /// Align text to the left (default).
+    #[default]
+    Left,
+    /// Align text to the center.
+    Center,
+    /// Align text to the right.
+    Right,
+}
+
 /// A segment of a 2D sketch profile.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -370,6 +383,33 @@ pub enum CsgOp {
         child: NodeId,
         /// Chamfer distance.
         distance: f64,
+    },
+    /// 2D text that can be extruded into 3D geometry.
+    ///
+    /// Creates sketch profiles from text glyphs, which can then be
+    /// extruded and used in boolean operations for embossing/engraving.
+    Text2D {
+        /// Origin point of the text plane in 3D.
+        origin: Vec3,
+        /// X direction of the text plane (text flows along this axis).
+        x_dir: Vec3,
+        /// Y direction of the text plane (text height along this axis).
+        y_dir: Vec3,
+        /// The text string to render.
+        text: String,
+        /// Font name (e.g., "sans-serif", "monospace", or custom registered font).
+        font: String,
+        /// Text height in mm.
+        height: f64,
+        /// Letter spacing multiplier (1.0 = normal).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        letter_spacing: Option<f64>,
+        /// Line spacing multiplier for multi-line text (1.0 = normal).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        line_spacing: Option<f64>,
+        /// Text alignment.
+        #[serde(default)]
+        alignment: TextAlignment,
     },
     /// Imported geometry from a STEP file.
     #[serde(rename = "step_import")]

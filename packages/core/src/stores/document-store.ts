@@ -19,6 +19,7 @@ import type {
   Background,
   PostProcessing,
   CameraPreset,
+  TextAlignment,
 } from "@vcad/ir";
 import { createDocument, identityTransform } from "@vcad/ir";
 import type {
@@ -37,6 +38,7 @@ import type {
   LinearPatternPartInfo,
   CircularPatternPartInfo,
   MirrorPartInfo,
+  TextPartInfo,
   SketchPlane,
 } from "../types.js";
 import {
@@ -53,6 +55,7 @@ import {
   isLinearPatternPart,
   isCircularPatternPart,
   isMirrorPart,
+  isTextPart,
   getSketchPlaneDirections,
 } from "../types.js";
 
@@ -216,6 +219,14 @@ export interface DocumentState {
     angleDeg: number,
   ) => string | null;
   addMirror: (partId: string, plane: "XY" | "XZ" | "YZ") => string | null;
+  addText: (options: {
+    text: string;
+    height: number;
+    depth: number;
+    alignment?: TextAlignment;
+    letterSpacing?: number;
+    lineSpacing?: number;
+  }) => string | null;
   // Incremental evaluation actions
   clearDirtyNodes: () => Set<NodeId>;
   setParameterDragging: (dragging: boolean) => void;
@@ -439,6 +450,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       delete newDoc.nodes[String(part.patternNodeId)];
     } else if (isMirrorPart(part)) {
       delete newDoc.nodes[String(part.mirrorNodeId)];
+    } else if (isTextPart(part)) {
+      delete newDoc.nodes[String(part.textNodeId)];
+      delete newDoc.nodes[String(part.extrudeNodeId)];
     }
     delete newDoc.nodes[String(part.scaleNodeId)];
     delete newDoc.nodes[String(part.rotateNodeId)];
@@ -1985,6 +1999,109 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     });
 
     return newPartId;
+  },
+
+  addText: (options) => {
+    const { text, height, depth, alignment, letterSpacing, lineSpacing } = options;
+    if (!text.trim()) return null;
+
+    const state = get();
+    let nid = state.nextNodeId;
+    const partNum = state.nextPartNum;
+
+    const textId = nid++;
+    const extrudeId = nid++;
+    const scaleId = nid++;
+    const rotateId = nid++;
+    const translateId = nid++;
+
+    // Default to XY plane at origin
+    const origin = { x: 0, y: 0, z: 0 };
+    const x_dir = { x: 1, y: 0, z: 0 };
+    const y_dir = { x: 0, y: 1, z: 0 };
+
+    const textOp: CsgOp = {
+      type: "Text2D",
+      origin,
+      x_dir,
+      y_dir,
+      text,
+      font: "sans-serif",
+      height,
+      letter_spacing: letterSpacing,
+      line_spacing: lineSpacing,
+      alignment: alignment ?? "left",
+    };
+
+    const extrudeOp: CsgOp = {
+      type: "Extrude",
+      sketch: textId,
+      direction: { x: 0, y: 0, z: depth },
+    };
+
+    const scaleOp: CsgOp = {
+      type: "Scale",
+      child: extrudeId,
+      factor: { x: 1, y: 1, z: 1 },
+    };
+    const rotateOp: CsgOp = {
+      type: "Rotate",
+      child: scaleId,
+      angles: { x: 0, y: 0, z: 0 },
+    };
+    const translateOp: CsgOp = {
+      type: "Translate",
+      child: rotateId,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+
+    const partId = `part-${partNum}`;
+    // Use first few chars of text as name preview
+    const preview = text.length > 10 ? text.slice(0, 10) + "…" : text;
+    const name = `Text "${preview}"`;
+
+    const undoState = pushUndo(state, "Add Text");
+    const newDoc = structuredClone(state.document);
+
+    newDoc.nodes[String(textId)] = makeNode(textId, null, textOp);
+    newDoc.nodes[String(extrudeId)] = makeNode(extrudeId, null, extrudeOp);
+    newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+    newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+    newDoc.nodes[String(translateId)] = makeNode(translateId, name, translateOp);
+    newDoc.roots.push({ root: translateId, material: "default" });
+
+    if (!newDoc.materials["default"]) {
+      newDoc.materials["default"] = {
+        name: "Default",
+        color: [0.55, 0.55, 0.55],
+        metallic: 0.0,
+        roughness: 0.7,
+      };
+    }
+
+    const partInfo: TextPartInfo = {
+      id: partId,
+      name,
+      kind: "text",
+      textNodeId: textId,
+      extrudeNodeId: extrudeId,
+      scaleNodeId: scaleId,
+      rotateNodeId: rotateId,
+      translateNodeId: translateId,
+    };
+
+    const newParts = [...state.parts, partInfo];
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      nextNodeId: nid,
+      nextPartNum: partNum + 1,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return partId;
   },
 
   setPartMaterial: (partId, materialKey) => {

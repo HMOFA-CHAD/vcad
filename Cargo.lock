@@ -2470,6 +2470,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
+name = "ttf-parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
+
+[[package]]
 name = "typenum"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2602,6 +2608,7 @@ dependencies = [
  "vcad-kernel-step",
  "vcad-kernel-sweep",
  "vcad-kernel-tessellate",
+ "vcad-kernel-text",
  "vcad-kernel-topo",
 ]
 
@@ -2808,6 +2815,16 @@ dependencies = [
  "vcad-kernel-math",
  "vcad-kernel-primitives",
  "vcad-kernel-topo",
+]
+
+[[package]]
+name = "vcad-kernel-text"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "ttf-parser",
+ "vcad-kernel-math",
+ "vcad-kernel-sketch",
 ]
 
 [[package]]

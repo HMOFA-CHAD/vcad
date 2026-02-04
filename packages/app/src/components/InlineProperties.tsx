@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import * as THREE from "three";
 import { Html } from "@react-three/drei";
-import { useUiStore, useDocumentStore, useEngineStore, isPrimitivePart } from "@vcad/core";
+import { useUiStore, useDocumentStore, useEngineStore, isPrimitivePart, isTextPart } from "@vcad/core";
 import { ScrubInput } from "@/components/ui/scrub-input";
 import type { CsgOp } from "@vcad/ir";
 
@@ -226,6 +226,10 @@ export function InlineProperties() {
   const primNode = isPrimitivePart(part) ? document.nodes[String(part.primitiveNodeId)] : null;
   const primOp = primNode?.op;
 
+  // Get text info
+  const textNode = isTextPart(part) ? document.nodes[String(part.textNodeId)] : null;
+  const textOp = textNode?.op.type === "Text2D" ? textNode.op : null;
+
   // If the full PropertyPanel is open, just show the name
   const showCompact = featureTreeOpen;
 
@@ -263,6 +267,21 @@ export function InlineProperties() {
 
             {isPrimitivePart(part) && primOp?.type === "Sphere" && (
               <SphereSizeInputs partId={part.id} op={primOp} />
+            )}
+
+            {/* Text info (read-only preview) */}
+            {isTextPart(part) && textOp && (
+              <div className="mb-2 flex flex-col gap-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                  Text
+                </div>
+                <div className="text-xs text-text truncate max-w-[120px]" title={textOp.text}>
+                  "{textOp.text.length > 15 ? textOp.text.slice(0, 15) + "…" : textOp.text}"
+                </div>
+                <div className="grid grid-cols-2 gap-1 text-[10px] text-text-muted">
+                  <span>H: {textOp.height}mm</span>
+                </div>
+              </div>
             )}
 
             {/* Position */}

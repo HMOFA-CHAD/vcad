@@ -44,6 +44,7 @@ import {
   SpinnerGap,
   ChatCircle,
   Path,
+  TextT,
 } from "@phosphor-icons/react";
 import * as Popover from "@radix-ui/react-popover";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -76,6 +77,7 @@ import {
   ShellDialog,
   PatternDialog,
   MirrorDialog,
+  TextDialog,
 } from "@/components/dialogs";
 import { useOnboardingStore, type GuidedFlowStep } from "@/stores/onboarding-store";
 import { useDrawingStore } from "@/stores/drawing-store";
@@ -1138,6 +1140,7 @@ export function BottomToolbar() {
   const [shellDialogOpen, setShellDialogOpen] = useState(false);
   const [patternDialogOpen, setPatternDialogOpen] = useState(false);
   const [mirrorDialogOpen, setMirrorDialogOpen] = useState(false);
+  const [textDialogOpen, setTextDialogOpen] = useState(false);
 
   // Responsive toolbar - track how many tabs fit
   const [visibleTabCount, setVisibleTabCount] = useState(ALL_TABS.length);
@@ -1455,6 +1458,16 @@ export function BottomToolbar() {
               iconColor={color}
             >
               <PencilSimple size={20} />
+            </ToolbarButton>
+            <ToolbarButton
+              tooltip="Add Text"
+              disabled={sketchActive}
+              onClick={() => setTextDialogOpen(true)}
+              expanded={toolbarExpanded}
+              label="Text"
+              iconColor={color}
+            >
+              <TextT size={20} />
             </ToolbarButton>
           </>
         );
@@ -1815,6 +1828,7 @@ export function BottomToolbar() {
         onOpenChange={setInsertDialogOpen}
       />
       <AddJointDialog open={jointDialogOpen} onOpenChange={setJointDialogOpen} />
+      <TextDialog open={textDialogOpen} onOpenChange={setTextDialogOpen} />
       {selectedPartId && (
         <>
           <FilletChamferDialog

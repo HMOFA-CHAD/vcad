@@ -602,6 +602,10 @@ fn evaluate_node(doc: &Document, node_id: NodeId) -> Result<Option<vcad_kernel::
                 }
             }
         }
+        CsgOp::Text2D { .. } => {
+            // Text needs extrusion to become solid
+            None
+        }
     };
 
     Ok(solid)
