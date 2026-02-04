@@ -461,15 +461,161 @@ modal secret create huggingface-secret HUGGING_FACE_HUB_TOKEN=<token>
 modal secret create wandb-secret WANDB_API_KEY=<key>
 ```
 
-## 9. References
+## 9. HuggingFace Spaces Deployment
+
+### 9.1 Overview
+
+Deployed a public demo at [huggingface.co/spaces/campedersen/cad0](https://huggingface.co/spaces/campedersen/cad0) using Gradio with ZeroGPU.
+
+| Component | Choice | Notes |
+|-----------|--------|-------|
+| Framework | Gradio 4.36.0 | Best ZeroGPU integration |
+| GPU | ZeroGPU (serverless) | Free tier, ~30s cold start |
+| Quantization | 4-bit (bitsandbytes) | Fits in serverless GPU memory |
+| Rendering | Browser-side WASM | vcad kernel via jsDelivr CDN |
+
+### 9.2 Python Dependencies
+
+Pin exact versions to avoid resolution conflicts:
+
+```txt
+gradio==4.36.0
+pydantic==2.10.6
+huggingface_hub>=0.20.0,<0.24.0
+transformers>=4.44.0
+tokenizers>=0.19.0
+torch>=2.0.0
+accelerate>=0.34.0
+bitsandbytes>=0.46.0
+triton
+spaces
+```
+
+**Key learnings:**
+- `pydantic` version conflicts are common — pin explicitly
+- `huggingface_hub` upper bound prevents breaking changes
+- `triton` required for bitsandbytes on ZeroGPU
+
+### 9.3 ZeroGPU Pattern
+
+Use the `@spaces.GPU` decorator to request GPU allocation:
+
+```python
+import spaces
+
+@spaces.GPU
+def text_to_cad(prompt, temperature=0.1):
+    """Main inference function."""
+    model = load_model()  # Lazy load on first call
+    # ... inference code
+```
+
+**Critical:** Model loading must happen inside the GPU-decorated function or be lazy-loaded. Global model initialization fails on ZeroGPU.
+
+### 9.4 Model Output Cleanup
+
+The model generates hallucinated continuations after valid IR. Post-process with stop sequences:
+
+```python
+for stop in ["User", "user", "\n\n\n", "Assistant"]:
+    if stop in response:
+        response = response.split(stop)[0]
+
+# Filter to valid IR lines only
+lines = response.strip().split('\n')
+ir_lines = []
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+    if ir_lines and not (line[0] in 'CYTUDSMRFBXH' or line[0].isdigit()):
+        break
+    if line[0] in 'CYTUDSMRFBXH':
+        ir_lines.append(line)
+```
+
+### 9.5 Browser-Side WASM Rendering
+
+Server-side rendering in HF Spaces is complex (Docker, Node.js dependencies). Browser-side WASM is simpler and faster.
+
+**CDN approach:** Serve kernel directly from GitHub via jsDelivr:
+
+```javascript
+const KERNEL_BASE = 'https://cdn.jsdelivr.net/gh/ecto/vcad@main/packages/kernel-wasm';
+
+async function loadKernel() {
+    const module = await import(KERNEL_BASE + '/vcad_kernel_wasm.js');
+    const wasmBuffer = await (await fetch(KERNEL_BASE + '/vcad_kernel_wasm_bg.wasm')).arrayBuffer();
+    module.initSync({ module: wasmBuffer });
+    return module;
+}
+```
+
+**Why jsDelivr:**
+- Serves raw files from GitHub with proper CORS headers
+- No deployment needed — updates when repo updates
+- Reliable CDN with global edge caching
+
+### 9.6 Gradio JavaScript Integration
+
+Trigger browser-side rendering after Python inference:
+
+```python
+submit_btn.click(
+    fn=text_to_cad,
+    inputs=[prompt, temperature],
+    outputs=[ir_output, ir_hidden]
+).then(
+    fn=None,
+    inputs=[ir_hidden],
+    js="(ir) => { if (window.renderCompactIR && ir) window.renderCompactIR(ir); }"
+)
+```
+
+**Pattern:** Use a hidden Textbox to pass data to JS. The `.then()` chain executes client-side JS after server response.
+
+### 9.7 URL Sharing
+
+Added `?ir=` parameter support to vcad.io for easy sharing:
+
+```javascript
+// In HF Space
+open_btn.click(
+    fn=None,
+    inputs=[ir_output],
+    js="(ir) => { window.open('https://vcad.io/?ir=' + encodeURIComponent(ir), '_blank'); }"
+)
+```
+
+```typescript
+// In vcad.io url-document.ts
+const rawIr = searchParams.get("ir");
+if (rawIr) {
+    return { doc: rawIr, raw: true };  // Skip decompression
+}
+```
+
+### 9.8 Deployment Commands
+
+```bash
+# Login to HuggingFace
+huggingface-cli login
+
+# Upload Space
+cd packages/hf-space
+huggingface-cli upload campedersen/cad0 . . --repo-type space
+```
+
+## 10. References
 
 - [W&B Dashboard](https://wandb.ai/ecto/cad0)
 - [Modal Dashboard](https://modal.com/apps/ecto/main/deployed/cad0-training)
 - [HuggingFace: cad0](https://huggingface.co/campedersen/cad0)
+- [HuggingFace Space: cad0 Demo](https://huggingface.co/spaces/campedersen/cad0)
 - [Compact IR Spec](../../docs/features/compact-ir.md)
 - [Qwen2.5-Coder Paper](https://arxiv.org/abs/2409.12186)
 
 ---
 
 *Document created: 2026-02-02*
-*Last updated: 2026-02-02*
+*Last updated: 2026-02-03*
