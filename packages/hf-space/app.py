@@ -1,5 +1,5 @@
 """
-cad0 Demo Space - Text to CAD
+cad0 Demo Space - Text to CAD with WASM rendering
 """
 
 import gradio as gr
@@ -8,11 +8,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import spaces
 import urllib.parse
 
-# Model config
 MODEL_ID = "campedersen/cad0"
 BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 
-# Load tokenizer at startup
 print("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
 
@@ -61,7 +59,6 @@ def generate(prompt, temperature=0.1):
 
     response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
 
-    # Clean up response
     for stop in ["User", "user", "\n\n\n", "Assistant"]:
         if stop in response:
             response = response.split(stop)[0]
@@ -69,7 +66,6 @@ def generate(prompt, temperature=0.1):
     if "Compact IR" in response:
         response = response.split("Compact IR")[0]
 
-    # Extract IR lines
     lines = response.strip().split('\n')
     ir_lines = []
     for line in lines:
@@ -91,19 +87,191 @@ def text_to_cad(prompt, temperature=0.1):
         return "Enter a prompt", ""
 
     ir = generate(prompt, temperature)
-    vcad_url = f"https://vcad.io/?ir={urllib.parse.quote(ir)}"
+    return ir, ir  # Return IR twice - once for display, once to trigger JS
 
-    return ir, vcad_url
 
+VIEWER_HTML = """
+<div id="viewer-container" style="width:100%;height:400px;background:#1a1a1a;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;position:relative;overflow:hidden;">
+    <canvas id="render-canvas" width="400" height="400" style="display:none;"></canvas>
+    <div id="viewer-placeholder" style="color:#666;text-align:center;">
+        <p style="font-size:48px;margin:0;">🔧</p>
+        <p>Generate IR to see preview</p>
+    </div>
+    <div id="viewer-status" style="position:absolute;bottom:8px;left:8px;color:#666;font-size:12px;"></div>
+</div>
+<script type="module">
+// Serve from jsDelivr CDN (GitHub raw files)
+const KERNEL_BASE = 'https://cdn.jsdelivr.net/gh/ecto/vcad@main/packages/kernel-wasm';
+
+let kernel = null;
+let kernelLoading = false;
+
+async function loadKernel() {
+    if (kernel) return kernel;
+    if (kernelLoading) {
+        while (kernelLoading) await new Promise(r => setTimeout(r, 100));
+        return kernel;
+    }
+
+    kernelLoading = true;
+    const status = document.getElementById('viewer-status');
+    if (status) status.textContent = 'Loading kernel...';
+
+    try {
+        const module = await import(KERNEL_BASE + '/vcad_kernel_wasm.js');
+        const wasmResponse = await fetch(KERNEL_BASE + '/vcad_kernel_wasm_bg.wasm');
+        const wasmBuffer = await wasmResponse.arrayBuffer();
+        module.initSync({ module: wasmBuffer });
+        kernel = module;
+        if (status) status.textContent = '';
+        console.log('vcad kernel loaded');
+    } catch (e) {
+        console.error('Failed to load kernel:', e);
+        if (status) status.textContent = 'Kernel load failed';
+    }
+
+    kernelLoading = false;
+    return kernel;
+}
+
+function project(x, y, z, angle = 45, elevation = 25) {
+    const radAngle = (angle * Math.PI) / 180;
+    const radElev = (elevation * Math.PI) / 180;
+    const x1 = x * Math.cos(radAngle) - z * Math.sin(radAngle);
+    const z1 = x * Math.sin(radAngle) + z * Math.cos(radAngle);
+    const y1 = y * Math.cos(radElev) - z1 * Math.sin(radElev);
+    const z2 = y * Math.sin(radElev) + z1 * Math.cos(radElev);
+    return { x: x1, y: y1, z: z2 };
+}
+
+function renderMesh(ctx, mesh, width, height) {
+    const { positions, indices } = mesh;
+    if (!positions || positions.length === 0) return false;
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (let i = 0; i < positions.length; i += 3) {
+        const p = project(positions[i], positions[i + 1], positions[i + 2]);
+        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    }
+
+    const rangeX = maxX - minX || 1;
+    const rangeY = maxY - minY || 1;
+    const scale = Math.min((width - 60) / rangeX, (height - 60) / rangeY);
+    const offsetX = width / 2 - ((minX + maxX) / 2) * scale;
+    const offsetY = height / 2 + ((minY + maxY) / 2) * scale;
+
+    const triangles = [];
+    for (let i = 0; i < indices.length; i += 3) {
+        const i0 = indices[i], i1 = indices[i + 1], i2 = indices[i + 2];
+        const v0 = project(positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]);
+        const v1 = project(positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]);
+        const v2 = project(positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]);
+
+        const nx = (v1.y - v0.y) * (v2.z - v0.z) - (v1.z - v0.z) * (v2.y - v0.y);
+        const ny = (v1.z - v0.z) * (v2.x - v0.x) - (v1.x - v0.x) * (v2.z - v0.z);
+        const nz = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
+        const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+        const light = Math.max(0.3, (nx / len * 0.3 + ny / len * 0.5 + nz / len * 0.8));
+
+        triangles.push({
+            points: [
+                { x: v0.x * scale + offsetX, y: -v0.y * scale + offsetY },
+                { x: v1.x * scale + offsetX, y: -v1.y * scale + offsetY },
+                { x: v2.x * scale + offsetX, y: -v2.y * scale + offsetY },
+            ],
+            z: (v0.z + v1.z + v2.z) / 3,
+            light,
+        });
+    }
+
+    triangles.sort((a, b) => a.z - b.z);
+
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, width, height);
+
+    for (const tri of triangles) {
+        const g = Math.floor(200 * tri.light);
+        const b = Math.floor(220 * tri.light);
+        ctx.fillStyle = `rgb(${Math.floor(g * 0.4)}, ${g}, ${Math.floor(b * 0.5)})`;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(tri.points[0].x, tri.points[0].y);
+        ctx.lineTo(tri.points[1].x, tri.points[1].y);
+        ctx.lineTo(tri.points[2].x, tri.points[2].y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    return true;
+}
+
+window.renderCompactIR = async function(ir) {
+    if (!ir || !ir.trim()) return;
+
+    const canvas = document.getElementById('render-canvas');
+    const placeholder = document.getElementById('viewer-placeholder');
+    const status = document.getElementById('viewer-status');
+    if (!canvas) return;
+
+    const k = await loadKernel();
+    if (!k) {
+        if (placeholder) {
+            placeholder.innerHTML = '<p style="color:#888;">Use "Open in vcad.io" to view</p>';
+            placeholder.style.display = 'block';
+        }
+        canvas.style.display = 'none';
+        return;
+    }
+
+    try {
+        if (status) status.textContent = 'Rendering...';
+        const solid = k.evaluateCompactIR(ir);
+
+        if (solid.isEmpty()) {
+            if (placeholder) {
+                placeholder.innerHTML = '<p style="color:#f87171;">Empty solid</p>';
+                placeholder.style.display = 'block';
+            }
+            canvas.style.display = 'none';
+            if (status) status.textContent = '';
+            return;
+        }
+
+        const mesh = solid.getMesh(32);
+        const ctx = canvas.getContext('2d');
+
+        if (renderMesh(ctx, mesh, canvas.width, canvas.height)) {
+            canvas.style.display = 'block';
+            if (placeholder) placeholder.style.display = 'none';
+            if (status) status.textContent = `${mesh.indices.length / 3} triangles`;
+        }
+    } catch (e) {
+        console.error('Render error:', e);
+        if (placeholder) {
+            placeholder.innerHTML = '<p style="color:#f87171;">Render error</p>';
+            placeholder.style.display = 'block';
+        }
+        canvas.style.display = 'none';
+        if (status) status.textContent = e.message || 'Error';
+    }
+};
+
+// Preload kernel
+loadKernel();
+</script>
+"""
 
 DESCRIPTION = """
 Generate **parametric CAD geometry** from natural language descriptions.
 
-**How it works:** Describe a part → cad0 outputs Compact IR → open in vcad.io to view
+**How it works:** Describe a part → cad0 outputs Compact IR → rendered with vcad WASM kernel
 
-**Compact IR syntax:** `C w h d` (box), `Y r h` (cylinder), `T idx x y z` (translate), `U a b` (union), `D a b` (difference)
-
-**Model:** Qwen2.5-Coder-7B fine-tuned on 530K synthetic CAD examples
+**Compact IR:** `C w h d` (box), `Y r h` (cylinder), `T idx x y z` (translate), `U a b` (union), `D a b` (difference)
 
 [Model](https://huggingface.co/campedersen/cad0) · [Blog](https://campedersen.com/cad0) · [vcad.io](https://vcad.io)
 """
@@ -126,25 +294,24 @@ with gr.Blocks(theme=gr.themes.Base(), title="cad0: Text to CAD") as demo:
 
         with gr.Column(scale=1):
             gr.Markdown("### 2. Compact IR")
-            ir_output = gr.Textbox(label="Generated IR", lines=10, show_label=False)
+            ir_output = gr.Textbox(label="Generated IR", lines=8, show_label=False)
+            ir_hidden = gr.Textbox(visible=False)  # Hidden field to trigger JS
 
         with gr.Column(scale=1):
-            gr.Markdown("### 3. View in vcad.io")
-            vcad_link = gr.Markdown("*Generate IR to get link*")
-            open_btn = gr.Button("Open in vcad.io →", variant="secondary", interactive=False)
-
-    def on_generate(prompt, temperature):
-        ir, url = text_to_cad(prompt, temperature)
-        link_md = f"[**Open in vcad.io →**]({url})" if url else "*Generate IR to get link*"
-        return ir, link_md, gr.update(interactive=bool(url))
+            gr.Markdown("### 3. Preview")
+            viewer = gr.HTML(VIEWER_HTML)
+            open_btn = gr.Button("Open in vcad.io →", variant="secondary")
 
     submit_btn.click(
-        fn=on_generate,
+        fn=text_to_cad,
         inputs=[prompt, temperature],
-        outputs=[ir_output, vcad_link, open_btn]
+        outputs=[ir_output, ir_hidden]
+    ).then(
+        fn=None,
+        inputs=[ir_hidden],
+        js="(ir) => { if (window.renderCompactIR && ir) window.renderCompactIR(ir); }"
     )
 
-    # Open vcad.io in new tab when button clicked
     open_btn.click(
         fn=None,
         inputs=[ir_output],
@@ -154,7 +321,7 @@ with gr.Blocks(theme=gr.themes.Base(), title="cad0: Text to CAD") as demo:
     gr.Examples(
         examples=[
             ["L-bracket: 50mm x 30mm x 3mm thick", 0.1],
-            ["50x30mm mounting plate with 4 corner holes", 0.1],
+            ["mounting plate 50x30mm with 4 corner holes", 0.1],
             ["enclosure box 80x60x40mm", 0.1],
             ["cylindrical standoff 10mm diameter, 25mm tall", 0.1],
         ],
