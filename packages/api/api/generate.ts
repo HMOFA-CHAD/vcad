@@ -178,17 +178,32 @@ function cleanGeneratedIR(text: string): string {
   return validLines.join("\n").trim();
 }
 
-export default async function handler(
-  req: VercelRequest,
-  res: VercelResponse
-): Promise<void> {
-  // CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
+// Allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  "https://vcad.io",
+  "https://www.vcad.io",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
+function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type"
   );
+}
+
+export default async function handler(
+  req: VercelRequest,
+  res: VercelResponse
+): Promise<void> {
+  // CORS headers
+  setCorsHeaders(req, res);
 
   if (req.method === "OPTIONS") {
     res.status(200).end();

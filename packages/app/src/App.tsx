@@ -7,6 +7,7 @@ import {
 } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { NotificationContainer, ActivityPanel } from "@/components/ui/notifications";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppShell } from "@/components/AppShell";
 import { CornerIcons } from "@/components/CornerIcons";
 import { BottomToolbar } from "@/components/BottomToolbar";
@@ -16,6 +17,7 @@ import { PropertyPanel } from "@/components/PropertyPanel";
 import { GuidedFlowOverlay } from "@/components/GuidedFlowOverlay";
 import { GhostPromptController } from "@/components/GhostPromptController";
 import { CelebrationOverlay } from "@/components/CelebrationOverlay";
+import { SignInDelight } from "@/components/SignInDelight";
 import { AboutModal } from "@/components/AboutModal";
 import { SketchToolbar } from "@/components/SketchToolbar";
 import { DrawingToolbar } from "@/components/DrawingToolbar";
@@ -518,14 +520,15 @@ export function App() {
   if (error && !engineReady) return <ErrorScreen message={error} />;
 
   return (
-    <TooltipProvider>
-      <div
-        className="contents"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <AppShell>
+    <ErrorBoundary>
+      <TooltipProvider>
+        <div
+          className="contents"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <AppShell>
           {/* Full-bleed viewport */}
           <Viewport />
           <SketchToolbar />
@@ -545,6 +548,7 @@ export function App() {
           <GuidedFlowOverlay />
           <GhostPromptController />
           <CelebrationOverlay />
+          <SignInDelight />
 
           {/* Quote panel (slides in from right when Make It Real clicked) */}
           <QuotePanel />
@@ -604,6 +608,7 @@ export function App() {
         <ActivityPanel />
         <WhatsNewPanel />
       </div>
-    </TooltipProvider>
+      </TooltipProvider>
+    </ErrorBoundary>
   );
 }
