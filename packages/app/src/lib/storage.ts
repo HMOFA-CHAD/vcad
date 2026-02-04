@@ -24,6 +24,7 @@ export interface DocumentMeta {
   createdAt: number;
   modifiedAt: number;
   syncStatus: "local" | "synced" | "pending";
+  cloudId?: string;
 }
 
 export interface DocumentLock {
@@ -100,6 +101,7 @@ export async function listDocuments(): Promise<DocumentMeta[]> {
       createdAt: d.createdAt,
       modifiedAt: d.modifiedAt,
       syncStatus: d.syncStatus,
+      cloudId: d.cloudId,
     }))
     .reverse();
 }

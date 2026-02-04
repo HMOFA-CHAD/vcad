@@ -7,11 +7,20 @@ import {
   Pencil,
   CloudSlash,
   Cloud,
+  CloudArrowDown,
   HardDrives,
+  SpinnerGap,
+  WifiSlash,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useCallback } from "react";
 import { useDocumentStore } from "@vcad/core";
+import {
+  useAuthStore,
+  listCloudDocuments,
+  fetchCloudDocument,
+  type CloudDocumentMeta,
+} from "@vcad/auth";
 import { useNotificationStore } from "@/stores/notification-store";
 import {
   listDocuments,
@@ -21,7 +30,6 @@ import {
   generateDocumentName,
   getStorageUsage,
   isDocumentLocked,
-  type DocumentMeta,
 } from "@/lib/storage";
 
 function formatDate(timestamp: number): string {
@@ -59,10 +67,24 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
+/**
+ * Unified document metadata combining local and cloud documents.
+ */
+interface UnifiedDocumentMeta {
+  id: string;           // Local ID or cloud ID if cloud-only
+  cloudId?: string;     // Cloud ID if synced
+  localId?: string;     // Local ID if exists locally
+  name: string;
+  modifiedAt: number;
+  source: "local" | "cloud" | "both";
+  syncStatus: "local" | "synced" | "pending" | "cloud-only";
+}
+
 interface DocumentRowProps {
-  doc: DocumentMeta;
+  doc: UnifiedDocumentMeta;
   isSelected: boolean;
   isLocked: boolean;
+  isDownloading: boolean;
   onSelect: () => void;
   onOpen: () => void;
   onDelete: () => void;
@@ -73,6 +95,7 @@ function DocumentRow({
   doc,
   isSelected,
   isLocked,
+  isDownloading,
   onSelect,
   onOpen,
   onDelete,
@@ -82,10 +105,10 @@ function DocumentRow({
   const [editName, setEditName] = useState(doc.name);
 
   const handleDoubleClick = useCallback(() => {
-    if (!isLocked) {
+    if (!isLocked && !isDownloading) {
       onOpen();
     }
-  }, [isLocked, onOpen]);
+  }, [isLocked, isDownloading, onOpen]);
 
   const handleRename = useCallback(() => {
     if (editName.trim() && editName !== doc.name) {
@@ -94,12 +117,16 @@ function DocumentRow({
     setIsEditing(false);
   }, [editName, doc.name, onRename]);
 
+  // Cloud-only documents can't be edited or deleted until downloaded
+  const isCloudOnly = doc.syncStatus === "cloud-only";
+
   return (
     <div
       className={cn(
         "group flex items-center gap-3 px-3 py-2 cursor-pointer border border-transparent",
         "hover:bg-surface/50",
-        isSelected && "bg-accent/10 border-accent/30"
+        isSelected && "bg-accent/10 border-accent/30",
+        isDownloading && "opacity-60"
       )}
       onClick={onSelect}
       onDoubleClick={handleDoubleClick}
@@ -129,8 +156,12 @@ function DocumentRow({
       </div>
 
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {isLocked ? (
+        {isDownloading ? (
+          <span className="text-[10px] text-text-muted px-2">Downloading...</span>
+        ) : isLocked ? (
           <span className="text-[10px] text-text-muted px-2">In use</span>
+        ) : isCloudOnly ? (
+          <span className="text-[10px] text-text-muted px-2">Click to download</span>
         ) : (
           <>
             <button
@@ -160,12 +191,17 @@ function DocumentRow({
 
       <div className="text-text-muted shrink-0" title={
         doc.syncStatus === "synced" ? "Synced" :
-        doc.syncStatus === "pending" ? "Pending sync" : "Local only"
+        doc.syncStatus === "pending" ? "Pending sync" :
+        doc.syncStatus === "cloud-only" ? "Cloud only (click to download)" : "Local only"
       }>
-        {doc.syncStatus === "synced" ? (
+        {isDownloading ? (
+          <SpinnerGap size={14} className="text-accent animate-spin" />
+        ) : doc.syncStatus === "synced" ? (
           <Cloud size={14} className="text-accent" />
         ) : doc.syncStatus === "pending" ? (
           <Cloud size={14} className="text-warning" />
+        ) : doc.syncStatus === "cloud-only" ? (
+          <CloudArrowDown size={14} className="text-accent" />
         ) : (
           <CloudSlash size={14} />
         )}
@@ -181,23 +217,52 @@ export function DocumentPicker({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [documents, setDocuments] = useState<DocumentMeta[]>([]);
+  const [documents, setDocuments] = useState<UnifiedDocumentMeta[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
+  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
   const [storageUsage, setStorageUsage] = useState({ used: 0, quota: 0, percentage: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadingCloud, setLoadingCloud] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
+  const user = useAuthStore((s) => s.user);
   const currentDocId = useDocumentStore((s) => s.documentId);
+
+  // Track online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   const loadDocuments = useCallback(async () => {
     setLoading(true);
     try {
-      const docs = await listDocuments();
-      setDocuments(docs);
+      // Always load local documents first (fast)
+      const localDocs = await listDocuments();
+
+      // Convert to unified format
+      const unifiedDocs: UnifiedDocumentMeta[] = localDocs.map((d) => ({
+        id: d.id,
+        cloudId: d.cloudId,
+        localId: d.id,
+        name: d.name,
+        modifiedAt: d.modifiedAt,
+        source: d.cloudId ? "both" : "local",
+        syncStatus: d.syncStatus,
+      }));
+
+      setDocuments(unifiedDocs);
 
       // Check which docs are locked
       const locked = new Set<string>();
-      for (const doc of docs) {
+      for (const doc of localDocs) {
         if (await isDocumentLocked(doc.id)) {
           locked.add(doc.id);
         }
@@ -207,12 +272,28 @@ export function DocumentPicker({
       // Get storage usage
       const usage = await getStorageUsage();
       setStorageUsage(usage);
+
+      // If signed in and online, also fetch cloud documents
+      if (user && !isOffline) {
+        setLoadingCloud(true);
+        try {
+          const cloudDocs = await listCloudDocuments();
+
+          // Merge cloud documents with local
+          mergeCloudDocuments(unifiedDocs, cloudDocs, setDocuments);
+        } catch (err) {
+          console.error("Failed to load cloud documents:", err);
+          // Don't fail the whole load, just skip cloud docs
+        } finally {
+          setLoadingCloud(false);
+        }
+      }
     } catch (err) {
       console.error("Failed to load documents:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user, isOffline]);
 
   useEffect(() => {
     if (open) {
@@ -231,6 +312,45 @@ export function DocumentPicker({
   const handleOpenDocument = useCallback(async () => {
     if (!selectedId) return;
 
+    const doc = documents.find((d) => d.id === selectedId);
+    if (!doc) return;
+
+    // Cloud-only document - download first
+    if (doc.syncStatus === "cloud-only" && doc.cloudId) {
+      setDownloadingIds((prev) => new Set(prev).add(selectedId));
+      try {
+        const localId = await fetchCloudDocument(doc.cloudId);
+
+        // Update the document in our list
+        setDocuments((prev) =>
+          prev.map((d) =>
+            d.id === selectedId
+              ? { ...d, id: localId, localId, syncStatus: "synced" as const, source: "both" as const }
+              : d
+          )
+        );
+
+        // Now open it
+        const stored = await loadDocument(localId);
+        if (stored) {
+          useDocumentStore.getState().loadDocument(stored.document);
+          useDocumentStore.getState().setDocumentMeta(stored.id, stored.name);
+          onOpenChange(false);
+        }
+      } catch (err) {
+        console.error("Failed to download document:", err);
+        useNotificationStore.getState().addToast("Failed to download document", "error");
+      } finally {
+        setDownloadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(selectedId);
+          return next;
+        });
+      }
+      return;
+    }
+
+    // Local document
     const isLocked = await isDocumentLocked(selectedId);
     if (isLocked) {
       useNotificationStore.getState().addToast(
@@ -254,9 +374,20 @@ export function DocumentPicker({
       console.error("Failed to open document:", err);
       useNotificationStore.getState().addToast("Failed to open document", "error");
     }
-  }, [selectedId, onOpenChange]);
+  }, [selectedId, documents, onOpenChange]);
 
   const handleDeleteDocument = useCallback(async (id: string) => {
+    const doc = documents.find((d) => d.id === id);
+
+    // Can't delete cloud-only documents
+    if (doc?.syncStatus === "cloud-only") {
+      useNotificationStore.getState().addToast(
+        "Download the document first to delete it",
+        "error"
+      );
+      return;
+    }
+
     if (id === currentDocId) {
       useNotificationStore.getState().addToast(
         "Cannot delete the current document",
@@ -276,9 +407,20 @@ export function DocumentPicker({
       console.error("Failed to delete document:", err);
       useNotificationStore.getState().addToast("Failed to delete document", "error");
     }
-  }, [selectedId, currentDocId]);
+  }, [selectedId, currentDocId, documents]);
 
   const handleRenameDocument = useCallback(async (id: string, name: string) => {
+    const doc = documents.find((d) => d.id === id);
+
+    // Can't rename cloud-only documents
+    if (doc?.syncStatus === "cloud-only") {
+      useNotificationStore.getState().addToast(
+        "Download the document first to rename it",
+        "error"
+      );
+      return;
+    }
+
     try {
       await renameDocumentInDb(id, name);
       setDocuments((prev) =>
@@ -293,7 +435,11 @@ export function DocumentPicker({
       console.error("Failed to rename document:", err);
       useNotificationStore.getState().addToast("Failed to rename document", "error");
     }
-  }, [currentDocId]);
+  }, [currentDocId, documents]);
+
+  const selectedDoc = documents.find((d) => d.id === selectedId);
+  const isSelectedCloudOnly = selectedDoc?.syncStatus === "cloud-only";
+  const isSelectedDownloading = selectedId ? downloadingIds.has(selectedId) : false;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -309,9 +455,20 @@ export function DocumentPicker({
         >
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border">
-            <Dialog.Title className="text-sm font-bold text-text">
-              Documents
-            </Dialog.Title>
+            <div className="flex items-center gap-2">
+              <Dialog.Title className="text-sm font-bold text-text">
+                Documents
+              </Dialog.Title>
+              {loadingCloud && (
+                <SpinnerGap size={12} className="text-accent animate-spin" />
+              )}
+              {isOffline && user && (
+                <div className="flex items-center gap-1 text-[10px] text-text-muted" title="Offline - showing local documents only">
+                  <WifiSlash size={12} />
+                  Offline
+                </div>
+              )}
+            </div>
             <Dialog.Close className="p-1 text-text-muted hover:bg-border/50 hover:text-text transition-colors cursor-pointer">
               <X size={16} />
             </Dialog.Close>
@@ -348,6 +505,7 @@ export function DocumentPicker({
                     doc={doc}
                     isSelected={selectedId === doc.id}
                     isLocked={lockedIds.has(doc.id)}
+                    isDownloading={downloadingIds.has(doc.id)}
                     onSelect={() => setSelectedId(doc.id)}
                     onOpen={handleOpenDocument}
                     onDelete={() => handleDeleteDocument(doc.id)}
@@ -371,19 +529,56 @@ export function DocumentPicker({
             </div>
             <button
               onClick={handleOpenDocument}
-              disabled={!selectedId || lockedIds.has(selectedId)}
+              disabled={!selectedId || lockedIds.has(selectedId) || isSelectedDownloading}
               className={cn(
                 "px-4 py-1.5 text-xs font-medium transition-colors",
-                selectedId && !lockedIds.has(selectedId)
+                selectedId && !lockedIds.has(selectedId) && !isSelectedDownloading
                   ? "bg-accent text-white hover:bg-accent/90"
                   : "bg-border text-text-muted cursor-not-allowed"
               )}
             >
-              Open
+              {isSelectedCloudOnly ? "Download & Open" : "Open"}
             </button>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+/**
+ * Merge cloud documents into the unified document list.
+ * De-duplicates by cloud ID and adds cloud-only documents.
+ */
+function mergeCloudDocuments(
+  currentDocs: UnifiedDocumentMeta[],
+  cloudDocs: CloudDocumentMeta[],
+  setDocuments: React.Dispatch<React.SetStateAction<UnifiedDocumentMeta[]>>
+) {
+  // Create a map of existing cloud IDs
+  const existingCloudIds = new Set(
+    currentDocs.filter((d) => d.cloudId).map((d) => d.cloudId)
+  );
+
+  // Find cloud-only documents
+  const cloudOnlyDocs: UnifiedDocumentMeta[] = cloudDocs
+    .filter((c) => !existingCloudIds.has(c.id))
+    .map((c) => ({
+      id: c.id, // Use cloud ID as the document ID
+      cloudId: c.id,
+      localId: undefined,
+      name: c.name,
+      modifiedAt: c.device_modified_at,
+      source: "cloud" as const,
+      syncStatus: "cloud-only" as const,
+    }));
+
+  if (cloudOnlyDocs.length > 0) {
+    setDocuments((prev) => {
+      // Combine and sort by modified date
+      const combined = [...prev, ...cloudOnlyDocs];
+      combined.sort((a, b) => b.modifiedAt - a.modifiedAt);
+      return combined;
+    });
+  }
 }

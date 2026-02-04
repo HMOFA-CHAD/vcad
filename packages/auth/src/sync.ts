@@ -18,6 +18,19 @@ export interface CloudDocument {
 }
 
 /**
+ * Lightweight cloud document metadata (no content).
+ * Used for listing documents without downloading full content.
+ */
+export interface CloudDocumentMeta {
+  id: string;
+  local_id: string;
+  name: string;
+  device_modified_at: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
  * Interface for local document storage.
  * This should be implemented by the app's storage module.
  */
@@ -345,4 +358,88 @@ export function initSyncListeners(): void {
       }
     }
   });
+}
+
+/**
+ * List cloud documents (metadata only, no content).
+ * Returns documents sorted by modified date, newest first.
+ *
+ * Use this for browsing documents without downloading full content.
+ */
+export async function listCloudDocuments(): Promise<CloudDocumentMeta[]> {
+  const { user } = useAuthStore.getState();
+  if (!isAuthEnabled() || !user) {
+    return [];
+  }
+
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from("documents")
+    .select("id, local_id, name, device_modified_at, created_at, updated_at")
+    .order("device_modified_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []) as CloudDocumentMeta[];
+}
+
+/**
+ * Fetch a single document from cloud by its cloud ID.
+ * Downloads the full document content and saves it locally.
+ *
+ * @param cloudId The cloud document ID to fetch
+ * @returns The local document ID after saving
+ */
+export async function fetchCloudDocument(cloudId: string): Promise<string> {
+  const { user } = useAuthStore.getState();
+  if (!isAuthEnabled() || !user) {
+    throw new Error("User not signed in");
+  }
+
+  const supabase = requireSupabase();
+  const storage = requireStorage();
+
+  // Fetch full document from cloud
+  const { data: cloudDoc, error } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("id", cloudId)
+    .single();
+
+  if (error) throw error;
+  if (!cloudDoc) throw new Error("Document not found");
+
+  const doc = cloudDoc as CloudDocument;
+
+  // Check if we already have this document locally
+  const localDocs = await storage.getAllDocuments();
+  const existingLocal = localDocs.find((d) => d.cloudId === cloudId);
+
+  if (existingLocal) {
+    // Update existing local document
+    await storage.updateDocument(existingLocal.id, {
+      name: doc.name,
+      document: doc.content,
+      modifiedAt: doc.device_modified_at,
+      version: doc.version,
+      syncStatus: "synced",
+    });
+    return existingLocal.id;
+  }
+
+  // Create new local document
+  const newDoc: LocalDocument = {
+    id: doc.local_id,
+    name: doc.name,
+    document: doc.content,
+    createdAt: new Date(doc.created_at).getTime(),
+    modifiedAt: doc.device_modified_at,
+    version: doc.version,
+    syncStatus: "synced",
+    cloudId: doc.id,
+  };
+
+  await storage.saveDocument(newDoc);
+  return newDoc.id;
 }
