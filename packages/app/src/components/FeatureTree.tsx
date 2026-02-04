@@ -46,12 +46,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ContextMenu } from "@/components/ContextMenu";
-import { useDocumentStore, useUiStore, isBooleanPart, isPrimitivePart } from "@vcad/core";
-import type { PrimitiveKind, PartInfo, BooleanPartInfo, PrimitivePartInfo } from "@vcad/core";
+import { useDocumentStore, useUiStore, isBooleanPart, isPrimitivePart, isSweepPart } from "@vcad/core";
+import type { PrimitiveKind, PartInfo, BooleanPartInfo, PrimitivePartInfo, SweepPartInfo } from "@vcad/core";
 import type { PartInstance, Joint, JointKind } from "@vcad/ir";
 import { cn } from "@/lib/utils";
 import { getPartSummary } from "./tree/part-summary";
-import { InlineCubeDimensions, InlineCylinderDimensions, InlineSphereDimensions } from "./tree/InlineDimensions";
+import { InlineCubeDimensions, InlineCylinderDimensions, InlineSphereDimensions, InlineSweepProperties } from "./tree/InlineDimensions";
 import { InlinePositionSection, InlineRotationSection } from "./tree/InlineTransform";
 import { InlineMaterial } from "./tree/InlineMaterial";
 import { SceneSection } from "./tree/SceneSection";
@@ -215,18 +215,21 @@ function TreeNode({
 
   // Render inline dimensions if expanded
   function renderInlineDimensions() {
-    if (!isPrimitivePart(part)) return null;
-    const primPart = part as PrimitivePartInfo;
-    switch (primPart.kind) {
-      case "cube":
-        return <InlineCubeDimensions part={primPart} />;
-      case "cylinder":
-        return <InlineCylinderDimensions part={primPart} />;
-      case "sphere":
-        return <InlineSphereDimensions part={primPart} />;
-      default:
-        return null;
+    if (isPrimitivePart(part)) {
+      const primPart = part as PrimitivePartInfo;
+      switch (primPart.kind) {
+        case "cube":
+          return <InlineCubeDimensions part={primPart} />;
+        case "cylinder":
+          return <InlineCylinderDimensions part={primPart} />;
+        case "sphere":
+          return <InlineSphereDimensions part={primPart} />;
+      }
     }
+    if (isSweepPart(part)) {
+      return <InlineSweepProperties part={part as SweepPartInfo} />;
+    }
+    return null;
   }
 
   return (

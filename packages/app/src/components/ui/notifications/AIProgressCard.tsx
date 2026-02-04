@@ -95,6 +95,16 @@ export function AIProgressCard({
   const currentStage = progress.stages.find((s) => s.status === "running");
   const currentLabel = currentStage?.label ?? "Processing...";
 
+  // Format download progress
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  };
+
+  const downloadText = progress.downloadProgress
+    ? `${formatBytes(progress.downloadProgress.loaded)} / ${formatBytes(progress.downloadProgress.total)}`
+    : null;
+
   return (
     <div
       role="status"
@@ -121,7 +131,7 @@ export function AIProgressCard({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-text-muted">
-            {progress.progress}%
+            {downloadText ?? `${progress.progress}%`}
           </span>
           {progress.cancelable && (
             <button

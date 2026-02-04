@@ -29,7 +29,13 @@ Format:
 Node IDs are sequential from 0. Output ONLY the IR code, no explanations.`;
 
 /** Progress callback type. */
-export type ProgressCallback = (loaded: number, total: number, status: string) => void;
+export type ProgressCallback = (
+  loaded: number,
+  total: number,
+  status: string,
+  /** Download progress in bytes (only set during model download) */
+  downloadBytes?: { loaded: number; total: number }
+) => void;
 
 /** Token streaming callback. */
 export type TokenCallback = (token: string, partial: string) => void;
@@ -163,7 +169,11 @@ export async function loadModel(
         progress_callback: (progress: { status: string; progress?: number; loaded?: number; total?: number }) => {
           if (progress.status === "progress" && progress.progress != null) {
             const pct = Math.round(10 + progress.progress * 0.85);
-            onProgress?.(pct, 100, "Downloading model...");
+            // Pass through byte-level progress when available
+            const downloadBytes = (progress.loaded != null && progress.total != null)
+              ? { loaded: progress.loaded, total: progress.total }
+              : undefined;
+            onProgress?.(pct, 100, "Downloading model...", downloadBytes);
           } else if (progress.status === "ready") {
             onProgress?.(95, 100, "Initializing model...");
           }

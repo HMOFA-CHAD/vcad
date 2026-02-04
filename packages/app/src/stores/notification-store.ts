@@ -33,6 +33,11 @@ export interface AIProgress extends NotificationBase {
   progress: number; // 0-100
   cancelable: boolean;
   onCancel?: () => void;
+  /** Optional download progress in bytes (for model downloads) */
+  downloadProgress?: {
+    loaded: number;
+    total: number;
+  };
 }
 
 /** Option for decision cards */
@@ -155,7 +160,8 @@ interface NotificationStore {
   updateAIProgress: (
     id: string,
     stageIndex: number,
-    progress: number
+    progress: number,
+    downloadProgress?: { loaded: number; total: number }
   ) => void;
   completeAIOperation: (
     id: string,
@@ -298,7 +304,7 @@ export const useNotificationStore = create<NotificationStore>((set, get) => {
       return id;
     },
 
-    updateAIProgress: (id, stageIndex, progress) => {
+    updateAIProgress: (id, stageIndex, progress, downloadProgress) => {
       set((state) => ({
         notifications: state.notifications.map((n) => {
           if (n.id !== id || n.kind !== "ai-progress") return n;
@@ -309,7 +315,12 @@ export const useNotificationStore = create<NotificationStore>((set, get) => {
             return stage;
           });
 
-          return { ...n, stages, progress };
+          return {
+            ...n,
+            stages,
+            progress,
+            ...(downloadProgress && { downloadProgress }),
+          };
         }),
       }));
     },

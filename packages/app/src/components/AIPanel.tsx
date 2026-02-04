@@ -95,14 +95,14 @@ export function AIPanel({ open, onOpenChange }: AIPanelProps) {
 
       if (effectiveMode === "browser") {
         // Browser-based inference
-        const progressCallback: ProgressCallback = (loaded, total, status) => {
+        const progressCallback: ProgressCallback = (loaded, total, status, downloadBytes) => {
           const pct = Math.round((loaded / total) * 100);
           setLoadingProgress(pct);
           setLoadingStatus(status);
 
           // Update notification progress
-          if (status.includes("Loading") || status.includes("Initializing")) {
-            store.updateAIProgress(progressId, 0, Math.min(pct, 30));
+          if (status.includes("Loading") || status.includes("Initializing") || status.includes("Downloading")) {
+            store.updateAIProgress(progressId, 0, Math.min(pct, 30), downloadBytes);
           } else if (status.includes("Generating") || status.includes("Processing")) {
             store.updateAIProgress(progressId, 2, 30 + Math.min(pct * 0.5, 50));
           }
