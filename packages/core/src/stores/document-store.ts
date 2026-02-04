@@ -119,6 +119,8 @@ export interface DocumentState {
   ) => string | null;
   duplicateParts: (partIds: string[]) => string[];
   loadDocument: (file: VcadFile) => void;
+  /** Merge generated IR document into current document (for AI generation) */
+  addFromIR: (generatedDoc: Document, name?: string) => string | null;
   addExtrude: (
     plane: SketchPlane,
     origin: Vec3,
@@ -873,6 +875,133 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       undoStack: [],
       redoStack: [],
     });
+  },
+
+  addFromIR: (generatedDoc, name) => {
+    const state = get();
+
+    // Build ID remapping: generated doc uses 0-based IDs, remap to current nextNodeId
+    const idMap = new Map<NodeId, NodeId>();
+    let nid = state.nextNodeId;
+
+    // First pass: allocate new IDs for all nodes
+    for (const oldId of Object.keys(generatedDoc.nodes)) {
+      idMap.set(Number(oldId), nid++);
+    }
+
+    // Clone and remap all nodes
+    const undoState = pushUndo(state, "AI Generate");
+    const newDoc = structuredClone(state.document);
+
+    for (const [oldIdStr, node] of Object.entries(generatedDoc.nodes)) {
+      const oldId = Number(oldIdStr);
+      const newId = idMap.get(oldId)!;
+      const clonedOp = structuredClone(node.op);
+
+      // Remap child references in the operation
+      if ("child" in clonedOp && typeof clonedOp.child === "number") {
+        clonedOp.child = idMap.get(clonedOp.child) ?? clonedOp.child;
+      }
+      if ("left" in clonedOp && typeof clonedOp.left === "number") {
+        clonedOp.left = idMap.get(clonedOp.left) ?? clonedOp.left;
+      }
+      if ("right" in clonedOp && typeof clonedOp.right === "number") {
+        clonedOp.right = idMap.get(clonedOp.right) ?? clonedOp.right;
+      }
+      if ("sketch" in clonedOp && typeof clonedOp.sketch === "number") {
+        clonedOp.sketch = idMap.get(clonedOp.sketch) ?? clonedOp.sketch;
+      }
+      if ("sketches" in clonedOp && Array.isArray(clonedOp.sketches)) {
+        clonedOp.sketches = clonedOp.sketches.map(
+          (id: number) => idMap.get(id) ?? id
+        );
+      }
+
+      newDoc.nodes[String(newId)] = makeNode(newId, node.name, clonedOp);
+    }
+
+    // Add roots from generated document, wrapping each with transform nodes
+    const newParts = [...state.parts];
+    let partNum = state.nextPartNum;
+    let firstPartId: string | null = null;
+
+    for (const rootEntry of generatedDoc.roots) {
+      const remappedRootId = idMap.get(rootEntry.root);
+      if (remappedRootId === undefined) continue;
+
+      // Wrap the generated root with scale/rotate/translate nodes
+      const scaleId = nid++;
+      const rotateId = nid++;
+      const translateId = nid++;
+
+      const scaleOp: CsgOp = {
+        type: "Scale",
+        child: remappedRootId,
+        factor: { x: 1, y: 1, z: 1 },
+      };
+      const rotateOp: CsgOp = {
+        type: "Rotate",
+        child: scaleId,
+        angles: { x: 0, y: 0, z: 0 },
+      };
+      const translateOp: CsgOp = {
+        type: "Translate",
+        child: rotateId,
+        offset: { x: 0, y: 0, z: 0 },
+      };
+
+      const partId = `part-${partNum}`;
+      const partName = name ?? `AI Part ${partNum}`;
+
+      newDoc.nodes[String(scaleId)] = makeNode(scaleId, null, scaleOp);
+      newDoc.nodes[String(rotateId)] = makeNode(rotateId, null, rotateOp);
+      newDoc.nodes[String(translateId)] = makeNode(translateId, partName, translateOp);
+
+      // Add to document roots (the translateId is our new root)
+      newDoc.roots.push({
+        root: translateId,
+        material: rootEntry.material ?? "default",
+      });
+
+      // Create PartInfo - use imported-mesh kind but with proper transform node IDs
+      // This allows transform operations to work while keeping the AI-generated geometry
+      const partInfo: ImportedMeshPartInfo = {
+        id: partId,
+        name: partName,
+        kind: "imported-mesh",
+        meshNodeId: remappedRootId,
+        scaleNodeId: scaleId,
+        rotateNodeId: rotateId,
+        translateNodeId: translateId,
+        source: "ai-generated",
+      };
+
+      newParts.push(partInfo);
+      if (!firstPartId) firstPartId = partId;
+      partNum++;
+    }
+
+    // Ensure default material exists
+    if (!newDoc.materials["default"]) {
+      newDoc.materials["default"] = {
+        name: "Default",
+        color: [0.55, 0.55, 0.55],
+        metallic: 0.0,
+        roughness: 0.7,
+      };
+    }
+
+    set({
+      document: newDoc,
+      parts: newParts,
+      partIndex: buildPartIndex(newParts),
+      nextNodeId: nid,
+      nextPartNum: partNum,
+      isDirty: true,
+      ...undoState,
+    });
+
+    return firstPartId;
   },
 
   addExtrude: (plane, origin, segments, direction) => {
