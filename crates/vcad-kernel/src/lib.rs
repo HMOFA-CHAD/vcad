@@ -825,6 +825,64 @@ impl Solid {
 }
 
 // =============================================================================
+// Operator overloads for ergonomic boolean operations
+// =============================================================================
+
+impl std::ops::Add for Solid {
+    type Output = Solid;
+
+    /// Boolean union: `a + b` is equivalent to `a.union(&b)`.
+    fn add(self, other: Solid) -> Solid {
+        self.union(&other)
+    }
+}
+
+impl std::ops::Add for &Solid {
+    type Output = Solid;
+
+    /// Boolean union: `&a + &b` is equivalent to `a.union(&b)`.
+    fn add(self, other: &Solid) -> Solid {
+        self.union(other)
+    }
+}
+
+impl std::ops::Sub for Solid {
+    type Output = Solid;
+
+    /// Boolean difference: `a - b` is equivalent to `a.difference(&b)`.
+    fn sub(self, other: Solid) -> Solid {
+        self.difference(&other)
+    }
+}
+
+impl std::ops::Sub for &Solid {
+    type Output = Solid;
+
+    /// Boolean difference: `&a - &b` is equivalent to `a.difference(&b)`.
+    fn sub(self, other: &Solid) -> Solid {
+        self.difference(other)
+    }
+}
+
+impl std::ops::BitAnd for Solid {
+    type Output = Solid;
+
+    /// Boolean intersection: `a & b` is equivalent to `a.intersection(&b)`.
+    fn bitand(self, other: Solid) -> Solid {
+        self.intersection(&other)
+    }
+}
+
+impl std::ops::BitAnd for &Solid {
+    type Output = Solid;
+
+    /// Boolean intersection: `&a & &b` is equivalent to `a.intersection(&b)`.
+    fn bitand(self, other: &Solid) -> Solid {
+        self.intersection(other)
+    }
+}
+
+// =============================================================================
 // Mesh computation helpers (same algorithms as vcad lib.rs)
 // =============================================================================
 
@@ -1341,5 +1399,42 @@ mod tests {
             matches!(result, Err(StepExportError::Empty)),
             "empty solid should return Empty error"
         );
+    }
+
+    #[test]
+    fn test_operator_add() {
+        let a = Solid::cube(10.0, 10.0, 10.0);
+        let b = Solid::cube(10.0, 10.0, 10.0).translate(5.0, 0.0, 0.0);
+        let result = a + b;
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_operator_sub() {
+        let a = Solid::cube(10.0, 10.0, 10.0);
+        let b = Solid::cube(5.0, 5.0, 15.0);
+        let result = a - b;
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_operator_bitand() {
+        let a = Solid::cube(10.0, 10.0, 10.0);
+        let b = Solid::cube(10.0, 10.0, 10.0).translate(5.0, 5.0, 5.0);
+        let result = a & b;
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_operator_ref() {
+        let a = Solid::cube(10.0, 10.0, 10.0);
+        let b = Solid::cube(10.0, 10.0, 10.0);
+        // Test reference operators
+        let union = &a + &b;
+        let diff = &a - &b;
+        let inter = &a & &b;
+        assert!(!union.is_empty());
+        assert!(!diff.is_empty());
+        assert!(!inter.is_empty());
     }
 }
