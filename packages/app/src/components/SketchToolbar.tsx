@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useSketchStore, useDocumentStore, useUiStore, useEngineStore, getSketchPlaneDirections, formatDirection, negateDirection, getSketchPlaneName } from "@vcad/core";
 import { useNotificationStore } from "@/stores/notification-store";
+import { analytics } from "@/lib/analytics";
 import type { SketchState, ConstraintTool, SketchPlane } from "@vcad/core";
 import type { Vec3, SketchSegment2D } from "@vcad/ir";
 
@@ -731,6 +732,8 @@ export function SketchToolbar() {
     });
     if (partId) {
       select(partId);
+      analytics.extrudeApplied();
+      analytics.sketchCompleted(constraints.length);
       const label = options.twistAngle || options.scaleEnd
         ? "Created Twisted Extrude"
         : "Created Extrude";

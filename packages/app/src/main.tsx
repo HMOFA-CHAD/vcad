@@ -38,6 +38,11 @@ if (posthogKey) {
     person_profiles: "identified_only",
     capture_pageview: true,
     capture_pageleave: true,
+    // Session recording
+    session_recording: {
+      maskAllInputs: false,
+      maskInputOptions: { password: true },
+    },
   });
 }
 

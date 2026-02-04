@@ -60,6 +60,8 @@ export function AuthProvider({
         if (typeof posthog !== "undefined") {
           posthog.identify(session.user.id, {
             email: session.user.email,
+            auth_provider: session.user.app_metadata?.provider,
+            created_at: session.user.created_at,
           });
         }
         onSignIn?.();
@@ -77,6 +79,8 @@ export function AuthProvider({
         if (typeof posthog !== "undefined") {
           posthog.identify(session.user.id, {
             email: session.user.email,
+            auth_provider: session.user.app_metadata?.provider,
+            created_at: session.user.created_at,
           });
         }
         onSignIn?.();

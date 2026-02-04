@@ -81,6 +81,7 @@ import { useOnboardingStore, type GuidedFlowStep } from "@/stores/onboarding-sto
 import { useDrawingStore } from "@/stores/drawing-store";
 import { useSlicerStore } from "@/stores/slicer-store";
 import { useCamStore } from "@/stores/cam-store";
+import { analytics } from "@/lib/analytics";
 
 const PRIMITIVES: { kind: PrimitiveKind; icon: typeof Cube; label: string }[] = [
   { kind: "cube", icon: Cube, label: "Box" },
@@ -252,6 +253,7 @@ function CommandDropdown() {
     try {
       store.updateAIProgress(progressId, 0, 10);
       setAiStatus("Connecting to server...");
+      analytics.aiGenerationStarted(prompt);
 
       const currentSession = useAuthStore.getState().session;
       if (!currentSession) {
@@ -310,6 +312,8 @@ function CommandDropdown() {
             },
           ]
         : [];
+
+      analytics.aiGenerationCompleted(result.durationMs);
 
       store.completeAIOperation(progressId, {
         type: "success",
@@ -1369,6 +1373,7 @@ export function BottomToolbar() {
     const partId = addPrimitive(kind);
     select(partId);
     setTransformMode("translate");
+    analytics.primitiveAdded(kind);
 
     // Advance guided flow if applicable
     if (guidedFlowActive) {
@@ -1385,6 +1390,7 @@ export function BottomToolbar() {
     const ids = Array.from(selectedPartIds);
     const newId = applyBoolean(type, ids[0]!, ids[1]!);
     if (newId) select(newId);
+    analytics.booleanApplied(type);
 
     // Advance guided flow if subtracting during tutorial
     if (guidedFlowActive && guidedFlowStep === "subtract" && type === "difference") {
@@ -1436,6 +1442,7 @@ export function BottomToolbar() {
               active={faceSelectionMode}
               disabled={sketchActive}
               onClick={() => {
+                analytics.sketchStarted();
                 if (parts.length > 0) {
                   enterFaceSelectionMode();
                 } else {
@@ -1624,6 +1631,7 @@ export function BottomToolbar() {
                 if (simMode === "running") {
                   pauseSim();
                 } else {
+                  analytics.physicsSimulationRun();
                   playSim();
                 }
               }}
@@ -1677,6 +1685,7 @@ export function BottomToolbar() {
               tooltip={buildTooltip}
               disabled={!hasSceneParts}
               onClick={() => {
+                analytics.quotePanelOpened();
                 window.dispatchEvent(new CustomEvent("vcad:hero-view"));
                 openQuotePanel();
               }}
@@ -1715,6 +1724,7 @@ export function BottomToolbar() {
                 if (scene) {
                   const blob = exportStlBlob(scene);
                   downloadBlob(blob, "model.stl");
+                  analytics.documentExported("stl");
                   useNotificationStore.getState().addToast("Exported model.stl", "success");
                 }
               }}
@@ -1731,6 +1741,7 @@ export function BottomToolbar() {
                 if (scene) {
                   const blob = exportGltfBlob(scene);
                   downloadBlob(blob, "model.glb");
+                  analytics.documentExported("glb");
                   useNotificationStore.getState().addToast("Exported model.glb", "success");
                 }
               }}
@@ -1748,6 +1759,7 @@ export function BottomToolbar() {
                   try {
                     const blob = exportStepBlob(scene);
                     downloadBlob(blob, "model.step");
+                    analytics.documentExported("step");
                     useNotificationStore.getState().addToast("Exported model.step", "success");
                   } catch (e) {
                     useNotificationStore.getState().addToast(
@@ -1767,6 +1779,7 @@ export function BottomToolbar() {
               tooltip={!scene?.parts?.length ? "Print (add geometry first)" : "Open Print Settings"}
               disabled={!scene?.parts?.length || sketchActive}
               onClick={() => {
+                analytics.printPanelOpened();
                 useSlicerStore.getState().openPrintPanel();
               }}
               expanded={toolbarExpanded}
