@@ -15,6 +15,7 @@
  */
 
 import { behavior, type ToolDef } from "./tool-def.js";
+import { getSession } from "./session-core.js";
 
 const paramValue = {
   description:
@@ -221,6 +222,64 @@ const sceneSpecSchema = {
   },
 };
 
+const shieldExtractSchema = {
+  type: "object" as const,
+  required: ["shells", "source", "detectors"],
+  description:
+    "Which parts of `document_id` are the shield. Each shell part must be a " +
+    "concentric spherical shell (sphere minus a smaller concentric sphere, " +
+    "or a solid ball); thicknesses are measured from the BRep. Fail-closed: " +
+    "a cylindrical/box shield, an off-centre or overlapping shell, or a " +
+    "material outside the library errors naming the part — the transport " +
+    "is 1-D spherical, so nothing is folded into a sphere silently.",
+  properties: {
+    shells: {
+      type: "array" as const,
+      minItems: 1,
+      items: {
+        type: "object" as const,
+        required: ["part"],
+        properties: {
+          part: {
+            type: "string" as const,
+            description: "Shell part (name or part id).",
+          },
+          material: {
+            type: "string" as const,
+            description:
+              "Library material (hdpe, paraffin, borated-hdpe-5, water, lead, " +
+              "concrete, air, void). Omitted = the part's document material.",
+          },
+        },
+      },
+    },
+    fill_material: {
+      type: "string" as const,
+      description:
+        "Material for the core, the gaps between shells and the world beyond " +
+        "the last shell. Default \"air\".",
+    },
+    source: shieldSpecSchema.properties.source,
+    detectors: shieldSpecSchema.properties.detectors,
+    world_radius_mm: {
+      type: "number" as const,
+      description:
+        "Outer radius of the modelled world, mm. Default: 10% past the " +
+        "outermost detector shell.",
+    },
+    center: {
+      type: "array" as const,
+      items: { type: "number" as const },
+      minItems: 3,
+      maxItems: 3,
+      description:
+        "Source point [x, y, z] mm (e.g. the chamber centre); every shell " +
+        "must be centred on it. Default: the shells' common centre.",
+    },
+    run: shieldSpecSchema.properties.run,
+  },
+};
+
 type Json = Record<string, unknown>;
 
 function textResult(payload: unknown) {
@@ -245,7 +304,8 @@ export const toolDefs: ToolDef[] = [
       "flux) OR `scene` (room-scale 3D: priority-ordered box/sphere/cylinder cells — " +
       "chamber wall, HDPE castle, concrete floor/walls/door — with room return, an " +
       "optional voxel dose map, and detectors that report expected instrument readings: " +
-      "moderated He-3/BF3 counts/min, bubble-dosimeter bubbles/h, CR-39 tracks/cm2/h). " +
+      "moderated He-3/BF3 counts/min, bubble-dosimeter bubbles/h, CR-39 tracks/cm2/h) " +
+      "OR `document_id` + `extract` (spherical shells measured from a session document). " +
       "Every number carries 1-sigma batch error bars (rse) — " +
       "as data plus `vcad.neutronics-claims/1` and unified-receipt claims. " +
       "Fail-closed: truncated histories or a tally that scored nothing refuses claims " +
@@ -258,29 +318,84 @@ export const toolDefs: ToolDef[] = [
     inputSchema: {
       type: "object" as const,
       properties: {
-        spec: shieldSpecSchema,
+        spec: {
+          ...shieldSpecSchema,
+          description:
+            shieldSpecSchema.description +
+            " Pass this, `scene`, OR `document_id` + `extract`.",
+        },
+        document_id: {
+          type: "string" as const,
+          description:
+            "Session document to extract the shield from (instead of `spec`): " +
+            "the layer stack is measured from the document's own evaluated " +
+            "solids. Requires `extract`.",
+        },
+        extract: shieldExtractSchema,
         scene: sceneSpecSchema,
         parameters: {
           type: "object" as const,
           additionalProperties: { type: "number" as const },
-          description: "Bindings for named spec parameters, `{name: value}`.",
+          description:
+            "Bindings for named spec parameters, `{name: value}`. With " +
+            "`document_id` these override the document's parameter values.",
         },
       },
     },
     handler: (args, ctx) => {
       const a = args as Json;
-      const hasSpec = a.spec !== undefined;
-      const hasScene = a.scene !== undefined;
-      if (hasSpec === hasScene) {
+      const params = (a.parameters ?? {}) as Record<string, number>;
+      const given = ["spec", "scene", "document_id"].filter((k) => a[k] !== undefined);
+      if (given.length === 0) {
         throw new Error(
-          "simulate_neutron_shield takes exactly one of `spec` (1D spherical) or `scene` (3D room)",
+          "simulate_neutron_shield: pass `spec` (1D spherical), `scene` (3D room), or `document_id` + `extract`",
         );
       }
-      const params = JSON.stringify(a.parameters ?? {});
-      const out = hasScene
-        ? ctx.engine.neutronicsSimulateScene(JSON.stringify(a.scene), params)
-        : ctx.engine.neutronicsSimulate(JSON.stringify(a.spec), params);
-      return textResult(out);
+      if (given.length > 1) {
+        throw new Error(
+          `simulate_neutron_shield: pass exactly one of \`spec\`, \`scene\`, \`document_id\` — not both (${given.join(" + ")})`,
+        );
+      }
+      if (a.scene !== undefined) {
+        return textResult(
+          ctx.engine.neutronicsSimulateScene(JSON.stringify(a.scene), JSON.stringify(params)),
+        );
+      }
+      if (a.spec !== undefined) {
+        return textResult(
+          ctx.engine.neutronicsSimulate(JSON.stringify(a.spec), JSON.stringify(params)),
+        );
+      }
+      if (a.extract === undefined) {
+        throw new Error(
+          "simulate_neutron_shield: `document_id` requires `extract` (shell parts, source, detectors)",
+        );
+      }
+      const documentId = String(a.document_id);
+      const ex = ctx.engine.extractShieldSpec(
+        JSON.stringify(getSession(documentId)),
+        JSON.stringify(a.extract),
+      ) as {
+        spec: unknown;
+        parameters: Record<string, number>;
+        center: number[];
+        layer_parts: Array<string | null>;
+      };
+      const parameters = { ...ex.parameters, ...params };
+      const out = ctx.engine.neutronicsSimulate(
+        JSON.stringify(ex.spec),
+        JSON.stringify(parameters),
+      ) as Json;
+      return textResult({
+        ...out,
+        extracted: {
+          document_id: documentId,
+          spec: ex.spec,
+          parameters,
+          center: ex.center,
+          layer_parts: ex.layer_parts,
+        },
+      });
     },
     behavior: behavior({}),
   },
