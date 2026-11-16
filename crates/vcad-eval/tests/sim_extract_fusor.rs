@@ -366,6 +366,7 @@ fn brep_of(d: &Document, name: &str) -> vcad_kernel::vcad_kernel_primitives::BRe
         root_cache: None,
         mesh_segments: 0,
         on_root: None,
+        on_root_ready: None,
     };
     let scene = vcad_eval::evaluate_document(d, &opts).unwrap();
     let idx = d
@@ -513,17 +514,17 @@ fn cylindrical_shell_is_rejected_by_name() {
 fn overlapping_shells_and_unknown_materials_are_rejected() {
     let d = doc(
         "[root-named [difference [sphere 250.0] [sphere 350.0]] \"hdpe\" \"overlap\"]\n\
-         [root-named [difference [sphere 400.0] [sphere 450.0]] \"steel\" \"steel_shell\"]\n",
+         [root-named [difference [sphere 400.0] [sphere 450.0]] \"titanium\" \"ti_shell\"]\n",
     );
     let err = extract_shield_spec(&d, &shield_sel(&["shield", "overlap"])).unwrap_err();
     assert!(matches!(err, SimExtractError::ShellOverlap { .. }), "{err}");
-    let err = extract_shield_spec(&d, &shield_sel(&["shield", "steel_shell"])).unwrap_err();
+    let err = extract_shield_spec(&d, &shield_sel(&["shield", "ti_shell"])).unwrap_err();
     assert!(
-        matches!(&err, SimExtractError::UnknownMaterial { material, .. } if material == "steel"),
+        matches!(&err, SimExtractError::UnknownMaterial { material, .. } if material == "titanium"),
         "{err}"
     );
     // An explicit library material overrides the document's render material.
-    let mut s = shield_sel(&["shield", "steel_shell"]);
+    let mut s = shield_sel(&["shield", "ti_shell"]);
     s.shells[1].material = Some("lead".into());
     let ex = extract_shield_spec(&d, &s).expect("override");
     assert!(ex.spec.layers.iter().any(|l| l.material == "lead"));

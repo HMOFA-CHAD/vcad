@@ -249,7 +249,7 @@ pub enum SimExtractError {
     /// A shield material is not in the neutronics library.
     #[error(
         "{part}: material {material:?} is not in the neutronics library \
-         (hdpe, paraffin, borated-hdpe-5, water, lead, concrete, air, void); \
+         (hdpe, paraffin, borated-hdpe-5, water, lead, concrete, air, steel, void); \
          set an explicit `material` on the selection"
     )]
     UnknownMaterial {
@@ -289,6 +289,7 @@ fn extraction_eval_options() -> EvalOptions {
         root_cache: None,
         mesh_segments: 0,
         on_root: None,
+        on_root_ready: None,
     }
 }
 

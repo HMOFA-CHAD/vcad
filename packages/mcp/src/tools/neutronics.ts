@@ -248,7 +248,7 @@ const shieldExtractSchema = {
             type: "string" as const,
             description:
               "Library material (hdpe, paraffin, borated-hdpe-5, water, lead, " +
-              "concrete, air, void). Omitted = the part's document material.",
+              "concrete, air, steel, void). Omitted = the part's document material.",
           },
         },
       },
