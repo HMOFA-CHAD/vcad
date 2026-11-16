@@ -927,6 +927,8 @@ export interface KernelModule {
     paramsJson: string,
     optionsJson: string,
   ) => unknown;
+  /** Raw instrument file → claims-ledger measurements (format/text/context JSON). */
+  importMeasurementFile?: (format: string, text: string, contextJson: string) => unknown;
   /** PcbBoard → AntennaSpec extraction (Document/AntennaExtraction JSON). */
   extractAntennaSpec?: (docJson: string, selectionJson: string) => unknown;
   /** Forward 2D FDTD photonics run (device spec/options JSON). */
@@ -1431,6 +1433,7 @@ export class Engine {
       feaCheckShell: (wasmModule as Record<string, unknown>).feaCheckShell as KernelModule["feaCheckShell"],
       emSimulate: (wasmModule as Record<string, unknown>).emSimulate as KernelModule["emSimulate"],
       antennaAnalyze: (wasmModule as Record<string, unknown>).antennaAnalyze as KernelModule["antennaAnalyze"],
+      importMeasurementFile: (wasmModule as Record<string, unknown>).importMeasurementFile as KernelModule["importMeasurementFile"],
       extractAntennaSpec: (wasmModule as Record<string, unknown>).extractAntennaSpec as KernelModule["extractAntennaSpec"],
       photonicsSimulate: (wasmModule as Record<string, unknown>).photonicsSimulate as KernelModule["photonicsSimulate"],
       neutronicsSimulate: (wasmModule as Record<string, unknown>).neutronicsSimulate as KernelModule["neutronicsSimulate"],
@@ -1999,6 +2002,23 @@ export class Engine {
       );
     }
     return fn(specJson, paramsJson, optionsJson);
+  }
+
+  /**
+   * Reduce a raw instrument file to measurements for the claims ledger:
+   * `touchstone_s1p` (NanoVNA → antenna), `rew_impedance` (REW → port tuning
+   * f_b), `thermocouple_csv` (log → one temperature). Fail-closed parsers
+   * live in the kernel crates; see `importMeasurementFile` in
+   * `vcad-kernel-wasm`.
+   */
+  importMeasurementFile(format: string, text: string, contextJson: string): unknown {
+    const fn = this.kernel.importMeasurementFile;
+    if (typeof fn !== "function") {
+      throw new Error(
+        "importMeasurementFile is not exported by this kernel WASM build — rebuild packages/kernel-wasm",
+      );
+    }
+    return fn(format, text, contextJson);
   }
 
   /**

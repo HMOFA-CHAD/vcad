@@ -349,6 +349,7 @@ export const TOOL_METADATA: Record<string, ToolMetadata> = {
     outputSchema: objectOut({
       unified: { type: "object" },
       receipt: { type: "object" },
+      scorecard: { type: "object" },
       document_id: { type: "string" },
     }),
   },
@@ -360,6 +361,8 @@ export const TOOL_METADATA: Record<string, ToolMetadata> = {
       document_id: { type: "string" },
     }),
   },
+  attach_claims: { title: "Attach Solver Claims", annotations: RW },
+  import_measurement: { title: "Import Measurement", annotations: RW },
   route_diff_pair: { title: "Route Differential Pair", annotations: RW },
   length_match_traces: { title: "Length Match Traces", annotations: RW },
   critique_route: { title: "Critique Route", annotations: RO },

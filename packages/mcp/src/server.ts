@@ -143,6 +143,7 @@ import { toolDefs as parametersToolDefs, setParameterAssetResolver } from "./too
 import { resolveLoonAssets } from "./tools/loon-assets.js";
 import { toolDefs as designConstraintsToolDefs } from "./tools/design-constraints.js";
 import { toolDefs as printCheckToolDefs } from "./tools/print-check.js";
+import { toolDefs as claimsLedgerToolDefs } from "./tools/claims-ledger.js";
 import { toolDefs as renderToolDefs } from "./tools/render.js";
 import { toolDefs as verifyToolDefs } from "./tools/verify.js";
 import { toolDefs as verifySpecToolDefs } from "./tools/verify-spec.js";
@@ -330,6 +331,7 @@ const STATIC_TOOL_DEFS: readonly ToolDef[] = [
   ...parametersToolDefs,
   ...designConstraintsToolDefs,
   ...printCheckToolDefs,
+  ...claimsLedgerToolDefs,
   ...renderToolDefs,
   ...verifyToolDefs,
   ...verifySpecToolDefs,
@@ -373,6 +375,9 @@ const STATIC_TOOL_DEFS: readonly ToolDef[] = [
  * is presentation only — dispatch and behavior key off the def, not this list.
  * A boot-time check asserts this covers `STATIC_TOOL_DEFS` + `server_info`.
  */
+/** Tools whose only document write is the claims ledger — never a source divergence. */
+const LEDGER_WRITERS: ReadonlySet<string> = new Set(["attach_claims", "import_measurement", "record_measurement"]);
+
 const LIST_TOOL_ORDER: readonly string[] = [
   // ── Session lifecycle ──────────────────────────────────────
   "open_document",
@@ -557,6 +562,8 @@ const LIST_TOOL_ORDER: readonly string[] = [
   "verify_substitution",
   "build_receipt",
   "verify_receipt",
+  "attach_claims",
+  "import_measurement",
   "route_diff_pair",
   "length_match_traces",
   "critique_route",
@@ -1591,6 +1598,8 @@ export async function createServer(
           writtenId === incomingId &&
           (name !== "create_cad_loon" || args.mode === "add") &&
           name !== "undo" &&
+          // Claims-ledger writes record predictions/measurements, not design.
+          !LEDGER_WRITERS.has(name) &&
           markSourceDiverged(incomingId, name)
         ) {
           noteSourceDivergence(result, incomingId);
