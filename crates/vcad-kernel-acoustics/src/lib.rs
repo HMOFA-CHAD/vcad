@@ -69,6 +69,7 @@ pub mod linalg;
 pub mod lumped;
 pub mod medium;
 pub mod optimize;
+pub mod ported;
 pub mod radiation;
 pub mod receipt;
 pub mod rew;
@@ -76,6 +77,6 @@ pub mod spec;
 pub mod strike;
 pub mod sweep;
 
-pub use cavity::{Cavity, EndCondition, Segment};
+pub use cavity::{Cavity, EndCondition, Obstacle, Segment};
 pub use complex::Cplx;
 pub use medium::Medium;
