@@ -17,6 +17,16 @@ use vcad_mcp::{
     Server, ServerConfig, StoreError, StoreEvent, StoreListener,
 };
 
+/// Tests that set `VCAD_HOME` (process-global) hold this while they run.
+static VCAD_HOME_LOCK: Mutex<()> = Mutex::new(());
+
+fn scoped_vcad_home() -> (std::sync::MutexGuard<'static, ()>, tempfile::TempDir) {
+    let guard = VCAD_HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let home = tempfile::tempdir().unwrap();
+    std::env::set_var("VCAD_HOME", home.path());
+    (guard, home)
+}
+
 // ── Fake vcad.app ────────────────────────────────────────────────────
 
 /// A window: its document and its undo history `(previous, label)`.
@@ -462,8 +472,7 @@ fn headless_engine_edits_and_undo() {
 #[test]
 fn proxied_tools_edit_the_live_app_document() {
     // VCAD_HOME scopes the app's node mirror dir to this test.
-    let home = tempfile::tempdir().unwrap();
-    std::env::set_var("VCAD_HOME", home.path());
+    let (_lock, _home) = scoped_vcad_home();
     let fake = Arc::new(FakeApp::default());
     fake.open(Document::default(), None).unwrap();
     let front = fake.front.lock().unwrap().clone().unwrap();
@@ -495,6 +504,108 @@ fn proxied_tools_edit_the_live_app_document() {
     // Tools that take no document are forwarded untouched.
     let r = h.ok("upstream_echo", json!({"x": 1}));
     assert!(r["structuredContent"]["echo"].get("document_id").is_none());
+}
+
+/// The real app pins window ids as `app_window#<epoch>`, which aren't valid
+/// session filenames: the core must mirror them under an alias node can load
+/// (it once silently skipped the mirror, and node answered "Unknown
+/// document_id").
+#[test]
+fn proxied_tools_reach_app_window_ids() {
+    let (_lock, _home) = scoped_vcad_home();
+    let fake = Arc::new(FakeApp::default());
+    let front = DocumentId::from("app_window#0");
+    fake.docs
+        .lock()
+        .unwrap()
+        .insert(front.clone(), (Document::default(), vec![]));
+    *fake.front.lock().unwrap() = Some(front.clone());
+    let cfg = ServerConfig {
+        proxy: Some(vcad_mcp::proxy::ProxyConfig {
+            program: env!("CARGO_BIN_EXE_vcad-mcp").into(),
+            args: vec![],
+            env: vec![("VCAD_MCP_TEST_UPSTREAM".into(), "1".into())],
+        }),
+        ..ServerConfig::default()
+    };
+    let h = H::new(Server::new(
+        Arc::new(AppStore::with_bridge(fake.clone())),
+        cfg,
+    ));
+    // Named explicitly, the way an agent following the app's prompt does.
+    let r = h.ok("upstream_touch", json!({"document_id": "app_window#0"}));
+    assert_eq!(r["_meta"]["io.vcad/servedBy"], "node-proxy");
+    assert!(fake
+        .read(&front)
+        .unwrap()
+        .parameters
+        .contains_key("touched"));
+    // Node only saw the alias; the agent never does.
+    assert_eq!(r["structuredContent"]["touched"], "app_window#0");
+    let text = serde_json::to_string(&r).unwrap();
+    assert!(!text.contains("appdoc_"), "{text}");
+    // And by default (front window).
+    let r = h.ok("upstream_touch", json!({}));
+    assert_eq!(r["_meta"]["io.vcad/servedBy"], "node-proxy");
+}
+
+/// The same, against the real node server (`packages/mcp`): `.glb` and
+/// `.step` exports of an `app_window#N` document are proxied to node, which
+/// must find the mirrored session. Needs a built server — set
+/// `VCAD_MCP_NODE_ENTRY=/path/to/packages/mcp/dist/index.js`; skipped
+/// otherwise (CI's Rust job doesn't build the TS workspace).
+#[test]
+fn real_node_exports_app_window_documents() {
+    let Some(entry) = std::env::var_os("VCAD_MCP_NODE_ENTRY") else {
+        eprintln!("skipped: set VCAD_MCP_NODE_ENTRY to packages/mcp/dist/index.js");
+        return;
+    };
+    let (_lock, _home) = scoped_vcad_home();
+    let fake = Arc::new(FakeApp::default());
+    let front = DocumentId::from("app_window#0");
+    let doc = vcad_loon::eval_vcad("[cube 20 20 10]", None).unwrap();
+    fake.docs
+        .lock()
+        .unwrap()
+        .insert(front.clone(), (doc, vec![]));
+    *fake.front.lock().unwrap() = Some(front.clone());
+    let cfg = ServerConfig {
+        proxy: Some(vcad_mcp::proxy::ProxyConfig {
+            program: "node".into(),
+            args: vec![entry.to_string_lossy().into_owned()],
+            env: vec![],
+        }),
+        ..ServerConfig::default()
+    };
+    let h = H::new(Server::new(
+        Arc::new(AppStore::with_bridge(fake.clone())),
+        cfg,
+    ));
+    let out = tempfile::tempdir().unwrap();
+    for name in ["cube.glb", "cube.step"] {
+        let path = out.path().join(name);
+        let r = h.ok(
+            "export_cad",
+            json!({"document_id": "app_window#0", "filename": path.to_str().unwrap()}),
+        );
+        assert_eq!(r["_meta"]["io.vcad/servedBy"], "node-proxy", "{r}");
+        assert_ne!(r["isError"], true, "{r}");
+        // Node writes to its staging dir; the caller only sees its own path.
+        let text = serde_json::to_string(&r).unwrap();
+        assert!(
+            !text.contains("export-staging") && !text.contains("appdoc_"),
+            "{text}"
+        );
+        assert!(text.contains(path.to_str().unwrap()), "{text}");
+        let len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        assert!(len > 100, "{name}: {len} bytes; {r}");
+    }
+    // Exporting is read-only: no undo step lands in the window.
+    assert!(
+        fake.applied.lock().unwrap().is_empty(),
+        "{:?}",
+        fake.applied.lock().unwrap()
+    );
 }
 
 /// vcad.app's export path: `export_cad` on the front window writes STL and
