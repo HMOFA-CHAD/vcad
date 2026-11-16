@@ -959,6 +959,12 @@ export interface KernelModule {
   extractDeviceSpec?: (docJson: string, selectionJson: string) => unknown;
   /** Document → ShieldSpec extraction (Document/ShieldExtraction JSON). */
   extractShieldSpec?: (docJson: string, selectionJson: string) => unknown;
+  /** Document → AxisymSpec extraction (Document/AxisymMagExtraction JSON). */
+  extractAxisymMagSpec?: (docJson: string, selectionJson: string) => unknown;
+  /** Document → StackupSpec extraction (Document/StackupExtraction JSON). */
+  extractStackupSpec?: (docJson: string, selectionJson: string) => unknown;
+  /** Signed analytic radial fit gap between two part groups. */
+  signedRadialGap?: (docJson: string, queryJson: string) => unknown;
   /** Lattice gauge theory Monte Carlo run (SimSpec JSON). */
   latticeGaugeSimulate?: (specJson: string) => unknown;
   /** Static structural analysis of a box solid. */
@@ -1542,6 +1548,9 @@ export class Engine {
       particleSimulate3d: (wasmModule as Record<string, unknown>).particleSimulate3d as KernelModule["particleSimulate3d"],
       extractDeviceSpec: (wasmModule as Record<string, unknown>).extractDeviceSpec as KernelModule["extractDeviceSpec"],
       extractShieldSpec: (wasmModule as Record<string, unknown>).extractShieldSpec as KernelModule["extractShieldSpec"],
+      extractAxisymMagSpec: (wasmModule as Record<string, unknown>).extractAxisymMagSpec as KernelModule["extractAxisymMagSpec"],
+      extractStackupSpec: (wasmModule as Record<string, unknown>).extractStackupSpec as KernelModule["extractStackupSpec"],
+      signedRadialGap: (wasmModule as Record<string, unknown>).signedRadialGap as KernelModule["signedRadialGap"],
       particleOptimize: (wasmModule as Record<string, unknown>).particleOptimize as KernelModule["particleOptimize"],
       toleranceAnalyze: (wasmModule as Record<string, unknown>).toleranceAnalyze as KernelModule["toleranceAnalyze"],
       thermalSolve: (wasmModule as Record<string, unknown>).thermalSolve as KernelModule["thermalSolve"],
@@ -2267,6 +2276,50 @@ export class Engine {
     if (typeof fn !== "function") {
       throw new Error(
         "extractShieldSpec is not exported by this kernel WASM build — rebuild packages/kernel-wasm",
+      );
+    }
+    return fn(docJson, selectionJson);
+  }
+
+  /**
+   * Extract an axisymmetric magnetostatic `AxisymSpec` from a document's
+   * revolved steel / magnet / coil parts. Returns `{spec, parameters,
+   * axis, parts, grid}`. Fail-closed; see `vcad_eval::sim_extract::em`.
+   */
+  extractAxisymMagSpec(docJson: string, selectionJson: string): unknown {
+    const fn = this.kernel.extractAxisymMagSpec;
+    if (typeof fn !== "function") {
+      throw new Error(
+        "extractAxisymMagSpec is not exported by this kernel WASM build — rebuild packages/kernel-wasm",
+      );
+    }
+    return fn(docJson, selectionJson);
+  }
+
+  /**
+   * Extract a linear tolerance `StackupSpec` from a document's clearance
+   * assertion + toleranced parameters. Returns `{spec, parameters, gap_mm,
+   * fit_parts, contributors, independent, fixed_geometry_mm}`. Fail-closed;
+   * see `vcad_eval::sim_extract::tolerance`.
+   */
+  signedRadialGap(
+    docJson: string,
+    query: { label: string; group_a: string[]; group_b: string[]; fit_window_mm: number },
+  ): { gap_mm: number; parts: [string, string] } {
+    const fn = this.kernel.signedRadialGap;
+    if (typeof fn !== "function") {
+      throw new Error(
+        "signedRadialGap is not exported by this kernel WASM build — rebuild packages/kernel-wasm",
+      );
+    }
+    return fn(docJson, JSON.stringify(query)) as { gap_mm: number; parts: [string, string] };
+  }
+
+  extractStackupSpec(docJson: string, selectionJson: string): unknown {
+    const fn = this.kernel.extractStackupSpec;
+    if (typeof fn !== "function") {
+      throw new Error(
+        "extractStackupSpec is not exported by this kernel WASM build — rebuild packages/kernel-wasm",
       );
     }
     return fn(docJson, selectionJson);
