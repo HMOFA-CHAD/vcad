@@ -1,4 +1,4 @@
-//! 3D constructive geometry for room-scale transport (M5).
+//! 3D constructive geometry for room-scale transport (M7).
 //!
 //! The 1D [`crate::geometry`] stacks answer "how thick?"; a real bench
 //! needs "what does the operator's chair see, with the floor, the walls

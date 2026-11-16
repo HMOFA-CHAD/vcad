@@ -1,4 +1,4 @@
-//! The M5 headline: a 6" D-D fusor in a 4 × 5 × 2.5 m concrete room,
+//! The M7 headline: a 6" D-D fusor in a 4 × 5 × 2.5 m concrete room,
 //! with and without a 15 cm HDPE castle — dose map, and the expected
 //! readings of the instruments the open-fusor build will actually carry
 //! (moderated ³He counter at 0.5 m, bubble dosimeter, CR-39).

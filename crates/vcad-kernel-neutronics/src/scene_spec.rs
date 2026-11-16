@@ -1,4 +1,4 @@
-//! The `.vcad` seam for room-scale scenes (M5): a serde schema for a
+//! The `.vcad` seam for room-scale scenes (M7): a serde schema for a
 //! [`crate::scene::Scene`] + source + detectors-with-instruments + dose
 //! mesh, with named parameters.
 //!

@@ -1,4 +1,4 @@
-//! Detector response functions (M5): "how many counts per minute does
+//! Detector response functions (M7): "how many counts per minute does
 //! *this* instrument show at *this* position?"
 //!
 //! A response function R(E) is events per unit fluence at energy E

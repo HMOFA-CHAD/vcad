@@ -91,7 +91,7 @@ pub enum ClaimError {
         /// The claim that could not be priced.
         name: String,
     },
-    /// The 3D scene spec failed to resolve or run (M5).
+    /// The 3D scene spec failed to resolve or run (M7).
     Scene(String),
 }
 
@@ -266,7 +266,7 @@ fn scene_caveats() -> Vec<String> {
     ]
 }
 
-/// Claims for a 3D scene run (M5): per-detector dose rate, thermal
+/// Claims for a 3D scene run (M7): per-detector dose rate, thermal
 /// fluence, and **expected instrument readings** (counts/min, bubbles/h,
 /// tracks/cm²/h — RSE combines the room MC with the response-table MC),
 /// the resolved dose-map maximum, per-cell capture rates, and leakage.

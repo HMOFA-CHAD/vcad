@@ -1,4 +1,4 @@
-//! Analog Monte Carlo through a 3D [`Scene`] (M5): dose maps, room
+//! Analog Monte Carlo through a 3D [`Scene`] (M7): dose maps, room
 //! return, and detector-position responses.
 //!
 //! Same physics contract as [`crate::transport`] in its default

@@ -544,7 +544,7 @@ pub fn by_name(name: &str) -> Option<Material> {
 }
 
 // ---------------------------------------------------------------------------
-// M5: chamber steel and detector fill gases.
+// M7: chamber steel and detector fill gases.
 // ---------------------------------------------------------------------------
 
 /// Helium-3 (detector fill gas).

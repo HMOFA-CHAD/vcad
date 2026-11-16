@@ -29,7 +29,7 @@
 //! 5. [`dose`] — ambient dose equivalent H*(10) via bundled ICRP-74-style
 //!    flux-to-dose factors.
 //!
-//! 6. [`scene`] + [`transport3d`] (M5) — 3D priority-CSG scenes (boxes,
+//! 6. [`scene`] + [`transport3d`] (M7) — 3D priority-CSG scenes (boxes,
 //!    spheres, cylinders: chamber wall, HDPE castle, concrete room) with
 //!    room return, a voxel H*(10) dose map with per-voxel RSE, and
 //!    virtual point detectors folding [`response`] functions (moderated
