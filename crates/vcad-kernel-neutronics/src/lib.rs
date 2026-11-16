@@ -67,6 +67,7 @@ pub mod response;
 pub mod rng;
 pub mod scatter;
 pub mod scene;
+pub mod scene_spec;
 pub mod spec;
 pub mod tally;
 pub mod transport;
