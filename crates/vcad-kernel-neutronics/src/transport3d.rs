@@ -75,9 +75,8 @@ pub enum SceneSource {
 impl SceneSource {
     fn energy_ev(&self) -> f64 {
         match self {
-            SceneSource::Point { energy_ev, .. } | SceneSource::IsotropicFluence { energy_ev, .. } => {
-                *energy_ev
-            }
+            SceneSource::Point { energy_ev, .. }
+            | SceneSource::IsotropicFluence { energy_ev, .. } => *energy_ev,
         }
     }
 }
@@ -339,7 +338,11 @@ pub fn run_scene(config: &SceneConfig) -> Result<SceneResult, SceneRunError> {
     }
     match &config.source {
         SceneSource::Point { position_mm, .. } => {
-            let p = [position_mm[0] * 0.1, position_mm[1] * 0.1, position_mm[2] * 0.1];
+            let p = [
+                position_mm[0] * 0.1,
+                position_mm[1] * 0.1,
+                position_mm[2] * 0.1,
+            ];
             if config.scene.locate(p).is_none() {
                 return Err(SceneRunError::SourceOutsideWorld);
             }
@@ -365,10 +368,8 @@ pub fn run_scene(config: &SceneConfig) -> Result<SceneResult, SceneRunError> {
 
     let (mesh_min, mesh_w, mesh_n) = match &config.mesh {
         Some(m) => {
-            let mut w = [0.0; 3];
-            for a in 0..3 {
-                w[a] = (m.max_mm[a] - m.min_mm[a]) * 0.1 / m.shape[a] as f64;
-            }
+            let w: [f64; 3] =
+                std::array::from_fn(|a| (m.max_mm[a] - m.min_mm[a]) * 0.1 / m.shape[a] as f64);
             (
                 [m.min_mm[0] * 0.1, m.min_mm[1] * 0.1, m.min_mm[2] * 0.1],
                 w,
@@ -843,7 +844,7 @@ mod tests {
         for _ in 0..1000 {
             let u = iso_dir(&mut rng);
             let mu = rng.uniform_mu();
-            let v = rotate_dir(u, mu, 6.28 * rng.uniform());
+            let v = rotate_dir(u, mu, std::f64::consts::TAU * rng.uniform());
             assert!((dot(v, v) - 1.0).abs() < 1e-12);
             assert!((dot(u, v) - mu).abs() < 1e-9);
         }
@@ -936,7 +937,11 @@ mod tests {
     #[test]
     fn analog_balance_exact_and_reproducible() {
         let scene = Scene::new(vec![
-            Cell::new("shield", Shape::sphere_mm([0.0; 3], 150.0), crate::materials::hdpe()),
+            Cell::new(
+                "shield",
+                Shape::sphere_mm([0.0; 3], 150.0),
+                crate::materials::hdpe(),
+            ),
             Cell::new("world", Shape::box_centered_mm([0.0; 3], [400.0; 3]), air()),
         ])
         .unwrap();

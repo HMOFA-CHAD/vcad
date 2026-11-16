@@ -99,8 +99,16 @@ impl Shape {
     /// Axis-aligned box centered at `center` with half-extents, mm.
     pub fn box_centered_mm(center: [f64; 3], half: [f64; 3]) -> Shape {
         Shape::box_mm(
-            [center[0] - half[0], center[1] - half[1], center[2] - half[2]],
-            [center[0] + half[0], center[1] + half[1], center[2] + half[2]],
+            [
+                center[0] - half[0],
+                center[1] - half[1],
+                center[2] - half[2],
+            ],
+            [
+                center[0] + half[0],
+                center[1] + half[1],
+                center[2] + half[2],
+            ],
         )
     }
 
@@ -446,11 +454,18 @@ fn inside_world(world: &Shape, cell: &Shape, tol: f64) -> bool {
         })
     };
     match (world, cell) {
-        (Shape::Sphere { center: wc, radius: wr }, Shape::Sphere { center, radius }) => {
-            dist2(*wc, *center).sqrt() + radius <= wr + tol
-        }
         (
-            Shape::Sphere { center: wc, radius: wr },
+            Shape::Sphere {
+                center: wc,
+                radius: wr,
+            },
+            Shape::Sphere { center, radius },
+        ) => dist2(*wc, *center).sqrt() + radius <= wr + tol,
+        (
+            Shape::Sphere {
+                center: wc,
+                radius: wr,
+            },
             Shape::Cylinder {
                 base,
                 axis,

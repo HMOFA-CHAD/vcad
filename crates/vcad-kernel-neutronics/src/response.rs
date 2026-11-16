@@ -155,8 +155,7 @@ pub fn cr39(tracks_per_cm2_per_msv: f64, threshold_ev: f64) -> ResponseFunction 
             threshold_ev,
         },
         table_rse: 0.0,
-        citation: "proton-recoil CR-39 dosimetry; system calibration per ISO 21909-1"
-            .to_string(),
+        citation: "proton-recoil CR-39 dosimetry; system calibration per ISO 21909-1".to_string(),
         caveat: format!(
             "threshold-H*(10) proxy at {tracks_per_cm2_per_msv} tracks/cm2/mSv above \
              {threshold_ev:.3e} eV; real response varies ~2x over 0.2-5 MeV and with \
@@ -178,8 +177,7 @@ pub fn rem_meter(counts_per_usv: f64) -> ResponseFunction {
         citation: "ideal H*(10) response (ICRP-74 curve); the yardstick real rem meters \
                    approximate"
             .to_string(),
-        caveat: "real Andersson-Braun-type rem balls over-respond in the keV range"
-            .to_string(),
+        caveat: "real Andersson-Braun-type rem balls over-respond in the keV range".to_string(),
     }
 }
 
@@ -426,7 +424,9 @@ impl ComputedResponse {
         ResponseFunction {
             name: name.to_string(),
             event_unit: "count".to_string(),
-            model: ResponseModel::Tabulated(self.points.iter().map(|(e, r)| (*e, r.mean)).collect()),
+            model: ResponseModel::Tabulated(
+                self.points.iter().map(|(e, r)| (*e, r.mean)).collect(),
+            ),
             table_rse,
             citation: "computed: isotropic-fluence MC through the counter geometry; gas capture \
                        3He(n,p) 5333 b / 10B(n,a) 3837 b at 2200 m/s, 1/v (Mughabghab 2006)"
@@ -459,7 +459,11 @@ mod tests {
         let sigma = 0.1; // 1/cm → x = 0.5
         let rb_mm = 60.0;
         let scene = Scene::new(vec![
-            Cell::new("ball", Shape::sphere_mm([0.0; 3], a_mm), Material::pure_absorber(sigma)),
+            Cell::new(
+                "ball",
+                Shape::sphere_mm([0.0; 3], a_mm),
+                Material::pure_absorber(sigma),
+            ),
             Cell::new("world", Shape::sphere_mm([0.0; 3], rb_mm), Material::void()),
         ])
         .unwrap();
@@ -534,8 +538,10 @@ mod tests {
         let c = cr39(20.0, 2.0e5);
         assert!((c.at(2.45e6) / b.at(2.45e6) - (20.0e-3 / 3.0)).abs() < 1e-12);
         assert!(rem_meter(1.0).at(0.0253) > 0.0);
-        assert!(ModeratedCounter::new(CounterGas::He3 { pressure_atm: -1.0 }, 25.0, 100.0, 10.0)
-            .compute(10, 2, 1)
-            .is_err());
+        assert!(
+            ModeratedCounter::new(CounterGas::He3 { pressure_atm: -1.0 }, 25.0, 100.0, 10.0)
+                .compute(10, 2, 1)
+                .is_err()
+        );
     }
 }

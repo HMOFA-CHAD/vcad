@@ -309,7 +309,9 @@ pub fn scene_claims_from_run(
             rse: dose.rse,
             unit: "uSv/h".to_string(),
             basis: "predicted".to_string(),
-            note: format!("ambient dose equivalent H*(10), neutron only, room return included; {at}"),
+            note: format!(
+                "ambient dose equivalent H*(10), neutron only, room return included; {at}"
+            ),
         });
         let th = d.fluence_per_source[THERMAL_GROUP].scaled(rate);
         if th.rse.is_finite() {

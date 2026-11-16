@@ -116,7 +116,7 @@ fn default_cr39_threshold() -> f64 {
     2.0e5
 }
 fn default_resp_hist() -> usize {
-    4_000
+    10_000
 }
 fn default_resp_batches() -> usize {
     10
@@ -620,7 +620,10 @@ pub fn report(resolved: &ResolvedScene, result: &SceneResult) -> SceneReport {
         MeshReport {
             mesh: m.mesh.clone(),
             dose_usv_per_h: d.iter().map(|e| e.mean).collect(),
-            rse: d.iter().map(|e| e.rse.is_finite().then_some(e.rse)).collect(),
+            rse: d
+                .iter()
+                .map(|e| e.rse.is_finite().then_some(e.rse))
+                .collect(),
         }
     });
     let captures = result
@@ -689,7 +692,9 @@ mod tests {
         // Ideal rem meter at 10 counts/µSv reads exactly 10 × dose/60
         // per minute (same tracks, same h(E)).
         let rem = &d.instruments[1];
-        assert!((rem.per_minute - 10.0 * d.dose_usv_per_h.mean / 60.0).abs() < 1e-9 * rem.per_minute);
+        assert!(
+            (rem.per_minute - 10.0 * d.dose_usv_per_h.mean / 60.0).abs() < 1e-9 * rem.per_minute
+        );
         assert_eq!(rep.mesh.as_ref().unwrap().dose_usv_per_h.len(), 100);
         assert_eq!(rep.captures.len(), 3);
         let js = serde_json::to_string(&rep).unwrap();
@@ -716,7 +721,9 @@ mod tests {
         s.source.energy_ev = ParamValue::Literal(14.1e6);
         assert!(matches!(
             s.resolve(&b),
-            Err(SceneSpecError::Spec(SpecError::EnergyOutsideStructure { .. }))
+            Err(SceneSpecError::Spec(
+                SpecError::EnergyOutsideStructure { .. }
+            ))
         ));
         let mut s = base.clone();
         b.insert("t".to_string(), 5000.0); // shield bigger than the room
@@ -737,7 +744,10 @@ mod tests {
             sensitivity_bubbles_per_usv: 0.0,
             threshold_ev: 1e5,
         };
-        assert!(matches!(s.resolve(&b), Err(SceneSpecError::BadInstrument(_))));
+        assert!(matches!(
+            s.resolve(&b),
+            Err(SceneSpecError::BadInstrument(_))
+        ));
         let mut s = base;
         s.detectors.clear();
         s.mesh = None;
