@@ -8345,6 +8345,9 @@ fn tessellate_revolved_trimmed(
     let blend_neighbour = std::iter::once(face.outer_loop)
         .chain(face.inner_loops.iter().copied())
         .flat_map(|l| topo.loop_half_edges(l))
+        // `get`, not indexing: a boolean can leave a twin pointing at a
+        // half-edge or loop it has since removed, and a lookup that only
+        // asks "is my neighbour a blend" must not panic on that.
         .filter_map(|he| topo.half_edges[he].twin)
         .filter_map(|tw| topo.half_edges.get(tw)?.loop_id)
         .filter_map(|l| topo.loops.get(l)?.face)
