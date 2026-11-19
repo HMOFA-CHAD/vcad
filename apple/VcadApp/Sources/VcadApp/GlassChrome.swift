@@ -1,7 +1,11 @@
 import SwiftUI
 import RealityKit
 #if os(macOS)
+#if canImport(AppKit)
 import AppKit
+#else
+import UIKit
+#endif
 #endif
 
 // The Liquid Glass shell (vcad 1.0): a slim toolbar, floating glass sidebar
@@ -47,6 +51,15 @@ enum Glass {
 enum DockSpace: String, CaseIterable, Identifiable {
     case design, assembly, drawing, electronics, fab
     var id: String { rawValue }
+    /// The workspaces this platform hosts. The drawing sheet and the PCB
+    /// editor are Mac views (DrawingWorkspace / NativeElectronicsView).
+    static var hosted: [DockSpace] {
+        #if os(macOS)
+        allCases
+        #else
+        [.design, .assembly, .fab]
+        #endif
+    }
     var label: String {
         switch self {
         case .design: "Design"
@@ -197,7 +210,7 @@ private struct GlassSurface<S: InsettableShape>: ViewModifier {
             content
                 .background(Color(nsColor: .windowBackgroundColor), in: shape)
                 .overlay(shape.strokeBorder(.separator, lineWidth: 1))
-        } else if #available(macOS 26.0, *) {
+        } else if #available(macOS 26.0, iOS 26.0, *) {
             content.glassEffect(tint.map { .regular.tint($0) } ?? .regular, in: shape)
         } else {
             content
@@ -215,6 +228,18 @@ extension View {
     }
     func glassCapsule(tint: Color? = nil) -> some View {
         modifier(GlassSurface(shape: Capsule(style: .continuous), tint: tint))
+    }
+}
+
+extension View {
+    /// iPhone: keep a popover a popover — at compact width SwiftUI otherwise
+    /// turns it into a full-screen sheet over the viewport.
+    @ViewBuilder func keepsPopover() -> some View {
+        #if os(iOS)
+        presentationCompactAdaptation(.popover)
+        #else
+        self
+        #endif
     }
 }
 
@@ -481,6 +506,7 @@ struct GlassToolbar: View {
     /// Export, Export Drawing and Render items plus the print workspace.
     private var exportMenu: some View {
         Menu {
+            #if os(macOS)
             Button("STL…") { exportDocumentPanel(model, format: .stl) }.disabled(!model.canExport)
             Button("STEP…") { exportDocumentPanel(model, format: .step) }.disabled(!model.canExportDocument)
             Button("GLB…") { exportDocumentPanel(model, format: .glb) }.disabled(!model.canExportDocument)
@@ -491,10 +517,13 @@ struct GlassToolbar: View {
             Button("Drawing as DXF…") { DrawingStore.shared.model = model; DrawingStore.shared.export(.dxf) }
                 .disabled(!model.canExportDocument)
             Divider()
+            #endif
             Button("3D Print…") { withAnimation(Motion.panel) { model.workspace = .manufacture } }
                 .disabled(!model.canExport)
+            #if os(macOS)
             Button("Render Photoreal…") { PhotorealRenderController.shared.show(for: model) }
                 .disabled(!model.canExportDocument)
+            #endif
         } label: {
             Image(systemName: "square.and.arrow.up").font(.system(size: 15, weight: .regular))
                 .frame(width: 30, height: 26).contentShape(Rectangle())
@@ -509,7 +538,9 @@ struct GlassToolbar: View {
 
     /// The local agent: lit while one is working in this document, and the
     /// way in to connecting Claude, Codex or Cursor.
+    @ViewBuilder
     private var agentsButton: some View {
+        #if os(macOS)
         // Ticks only when the "working" glow can expire on its own; a
         // free-running clock would keep the idle window compositing.
         TimelineView(.explicit([model.agentLinkActiveAt.map { $0.addingTimeInterval(4) }]
@@ -520,6 +551,7 @@ struct GlassToolbar: View {
                        working ? "Agent working — connect agents…" : "Connect agents…",
                        active: working) { AgentInstallPrompt.run() }
         }
+        #endif
     }
 
     private func iconButton(_ symbol: String, _ help: String, active: Bool, _ action: @escaping () -> Void) -> some View {
@@ -634,6 +666,9 @@ enum DockTools {
     /// Drawing: exclusive modes only. On/off display toggles live in the
     /// inspector and the View menu, so the dock never shows three "active".
     private static func drawing(_ m: EditorModel) -> [Tool] {
+        #if !os(macOS)
+        return []      // the drawing workspace is Mac-only (DrawingWorkspace.swift)
+        #else
         let s = DrawingStore.shared
         return keyed([
             Tool(id: "dwg.select", label: "Select", symbol: "cursorarrow", isActive: s.tool == .select) { s.tool = .select },
@@ -646,6 +681,7 @@ enum DockTools {
             Tool(id: "dwg.frame", label: "Feature Control Frame", symbol: "square.grid.3x1.below.line.grid.1x2",
                  isActive: { if case .gdt(let k) = s.tool { return k != .datum }; return false }()) { s.tool = .gdt(.position) },
         ], ["dwg.select": "v", "dwg.dimension": "m", "dwg.centerline": "l", "dwg.section": "t", "dwg.detail": "d", "dwg.datum": "a", "dwg.frame": "g"])
+        #endif
     }
 
     /// Electronics: the editing modes plus the two board-wide verbs. An empty
@@ -718,12 +754,14 @@ enum DockTools {
                 Tool(id: "ec.gerber", label: "Export Gerbers", symbol: "square.and.arrow.up", isActive: false) { t.exportGerbers(ec, m) },
                 Tool(id: "ec.import2", label: "Import Board", symbol: "square.and.arrow.down", isActive: false) { t.importBoard(ec, m) },
             ]
+        #if os(macOS)
         case .drawing:
             let s = DrawingStore.shared
             return [
                 Tool(id: "dwg.dxf", label: "Export DXF", symbol: "square.and.arrow.up", isActive: false) { s.export(.dxf) },
                 Tool(id: "dwg.pdf", label: "Export PDF", symbol: "doc.richtext", isActive: false) { s.export(.pdf) },
             ]
+        #endif
         default:
             return []
         }
@@ -790,7 +828,7 @@ struct WorkspacePicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(DockSpace.allCases) { s in
+            ForEach(DockSpace.hosted) { s in
                 Button { choose(s) } label: {
                     HStack(spacing: 8) {
                         Image(systemName: s.symbol).frame(width: 18)
@@ -826,6 +864,16 @@ struct GlassDock: View {
     @Namespace private var morph
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // A slot per tool. iPhone: narrower and taller (a fingertip, and the
+    // whole Design dock has to fit 402 pt).
+    #if os(iOS)
+    private static let slot = CGSize(width: 33, height: 40)
+    private static let dividerPad: CGFloat = 1
+    #else
+    private static let slot = CGSize(width: 38, height: 32)
+    private static let dividerPad: CGFloat = 4
+    #endif
+
     var body: some View {
         HStack(spacing: 4) {
             workspaceMenu
@@ -848,7 +896,7 @@ struct GlassDock: View {
             }
             .disabled(!model.usesDocumentTree)
             dockButton("ellipsis", "All tools", active: ui.paletteOpen) { ui.paletteOpen.toggle() }
-                .popover(isPresented: $ui.paletteOpen, arrowEdge: .top) { ToolPalette(model: model) }
+                .popover(isPresented: $ui.paletteOpen, arrowEdge: .top) { ToolPalette(model: model).keepsPopover() }
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 6).padding(.vertical, 3)
@@ -869,7 +917,7 @@ struct GlassDock: View {
         .onChange(of: model.workspace, initial: true) { _, _ in ui.sync(from: model) }
     }
 
-    private var divider: some View { Divider().frame(height: 22).padding(.horizontal, 4) }
+    private var divider: some View { Divider().frame(height: 22).padding(.horizontal, Self.dividerPad) }
 
     /// "Fillet  F" — or why it is unavailable.
     static func tooltip(_ t: Tool) -> String {
@@ -884,10 +932,14 @@ struct GlassDock: View {
     private var workspaceMenu: some View {
         Button { workspacePickerOpen.toggle() } label: {
             HStack(spacing: 4) {
+                #if os(iOS)
+                Image(systemName: ui.space.symbol).font(.system(size: 16, weight: .semibold))
+                #else
                 Text(ui.space.label).font(.callout.weight(.semibold))
+                #endif
                 Image(systemName: "chevron.up").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 10).frame(height: 32).contentShape(Capsule())
+            .padding(.horizontal, 10).frame(height: Self.slot.height).contentShape(Capsule())
         }
         .fixedSize()
         .help("Workspace (⌃⌘1–5)")
@@ -898,13 +950,14 @@ struct GlassDock: View {
                 workspacePickerOpen = false
                 ui.enter(s, model: model)
             }
+            .keepsPopover()
         }
     }
 
     @ViewBuilder private func toolButton(_ tool: Tool) -> some View {
         Button { if tool.enabled { tool.action() } } label: {
             Image(systemName: tool.symbol).font(.system(size: 16, weight: .medium))
-                .frame(width: 38, height: 32)
+                .frame(width: Self.slot.width, height: Self.slot.height)
                 .background {
                     if tool.isActive {
                         // Gray, not blue: blue/orange belong to the 3D selection.
@@ -928,7 +981,7 @@ struct GlassDock: View {
         Button { openGroup = openGroup == name ? nil : name } label: {
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: active?.symbol ?? tools[0].symbol).font(.system(size: 16, weight: .medium))
-                    .frame(width: 38, height: 32)
+                    .frame(width: Self.slot.width, height: Self.slot.height)
                 Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold))
                     .foregroundStyle(.secondary).offset(x: -3, y: -3)
             }
@@ -952,14 +1005,14 @@ struct GlassDock: View {
                     .buttonStyle(.plain).disabled(!t.enabled).opacity(t.enabled ? 1 : 0.35)
                     .help(Self.tooltip(t)).accessibilityLabel(t.label)
                 }
-            }.padding(Theme.Space.s)
+            }.padding(Theme.Space.s).keepsPopover()
         }
     }
 
     private func dockButton(_ symbol: String, _ label: String, active: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 15, weight: .medium))
-                .frame(width: 34, height: 32)
+                .frame(width: Self.slot.width - 4, height: Self.slot.height)
                 .background(active ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: Capsule(style: .continuous))
                 .contentShape(Capsule())
         }
@@ -976,7 +1029,7 @@ struct ToolPalette: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             Picker("Workspace", selection: $tab) {
-                ForEach(DockSpace.allCases) { Text($0.label).tag($0) }
+                ForEach(DockSpace.hosted) { Text($0.label).tag($0) }
             }.pickerStyle(.segmented).labelsHidden()
             let tools = (tab == .design ? designAll : DockTools.tools(tab, model: model)) + DockTools.extras(tab, model: model)
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(84), spacing: 6), count: 4), spacing: 6) {
@@ -1461,6 +1514,7 @@ extension GlassUI {
             RenderGate.wake(for: 2)  // a paused view never delivers a snapshot
             ar.snapshot(saveToHDR: false) { img in
                 guard let img else { return }
+                #if os(macOS)
                 let thumb = NSImage(size: NSSize(width: 96, height: 60))
                 thumb.lockFocus()
                 let src = img.size, aspect = 96.0 / 60.0
@@ -1469,6 +1523,11 @@ extension GlassUI {
                          from: NSRect(x: (src.width - w) / 2, y: (src.height - h) / 2, width: w, height: h),
                          operation: .copy, fraction: 1)
                 thumb.unlockFocus()
+                #else
+                let thumb = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 60)).image { _ in
+                    img.draw(in: CGRect(x: 0, y: 0, width: 96, height: 60))
+                }
+                #endif
                 Task { @MainActor in GlassUI.shared.thumbnails[frame] = thumb }
             }
         }
@@ -1792,7 +1851,11 @@ struct FloatingPanelHost: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
+            #if os(iOS)
+            .frame(maxWidth: min(p.width, Theme.Width.inspector))
+            #else
             .frame(width: p.width)
+            #endif
             .glassPanel()
             .id(p.id)
             .transition(.move(edge: .top).combined(with: .opacity))
