@@ -1,0 +1,274 @@
+#if os(macOS)
+import AppKit
+import SwiftUI
+
+// MARK: - Scripted UI audit (VCAD_UI_AUDIT_DIR)
+
+/// `VCAD_UI_AUDIT_DIR=/path open vcad.app --args --vcad-open part.vcad`
+/// walks every workspace, the ··· palette on every tab, the history strip,
+/// the shortcut sheet and command search, in light and dark, at a small and a
+/// large window size, and writes a PNG of every visible app window per state
+/// (popovers are their own windows). Each window also logs its content's
+/// fitting size against its frame, so a popover whose content overflows is
+/// caught as a number, not just by eye. Reproducible without screen-recording
+/// rights: it only captures this process's own windows.
+@MainActor
+enum UIAuditDemo {
+    static func runIfRequested(_ m: EditorModel) async {
+        guard let dir = ProcessInfo.processInfo.environment["VCAD_UI_AUDIT_DIR"] else { return }
+        let url = URL(fileURLWithPath: dir)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        func wait(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(s * 1e9)) }
+        for _ in 0..<160 where m.docPartMeshes.isEmpty { await wait(0.25) }
+        await wait(2)
+        let ctl = ReleaseWindowController.shared
+        let ui = GlassUI.shared
+        var log = ""
+
+        // Offscreen: the shortcut sheet laid out in a large and a small window.
+        for (name, width) in [("large", CGFloat(1600)), ("small", CGFloat(820))] {
+            let host = NSHostingView(rootView: ShortcutSheet(model: m).frame(width: width))
+            host.frame = NSRect(x: 0, y: 0, width: width, height: 900)
+            host.frame.size.height = host.fittingSize.height
+            let win = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            win.appearance = NSAppearance(named: .darkAqua)
+            win.contentView = host
+            host.layoutSubtreeIfNeeded(); host.display()
+            if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                host.cacheDisplay(in: host.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?
+                    .write(to: url.appendingPathComponent("offscreen-shortcuts-\(name).png"))
+            }
+            win.contentView = nil
+        }
+        // Offscreen: every dock ▾ group popover (normal and compact dock) and
+        // the workspace picker, in both appearances.
+        for (scheme, appearance) in [("dark", NSAppearance.Name.darkAqua), ("light", .aqua)] {
+            for space in DockSpace.allCases {
+                var seen = Set<String>()
+                for compact in [false, true] {
+                    for case let .group(name, tools) in DockItem.items(DockTools.tools(space, model: m), compact: compact)
+                    where seen.insert(name).inserted {
+                        let slug = name.lowercased().replacingOccurrences(of: " ", with: "-")
+                        offscreen(ToolGroupGrid(tools: tools) { _ in }.background(Color(nsColor: .windowBackgroundColor)),
+                                  appearance: appearance,
+                                  to: url.appendingPathComponent("\(scheme)-group-\(space.rawValue)-\(slug).png"))
+                        log += "group \(space.rawValue)/\(name)\(compact ? " (compact)" : ""): "
+                            + tools.map(\.label).joined(separator: ", ") + "\n"
+                    }
+                }
+            }
+            offscreen(WorkspacePicker(current: .design) { _ in }.background(Color(nsColor: .windowBackgroundColor)),
+                      appearance: appearance, to: url.appendingPathComponent("\(scheme)-workspace-picker.png"))
+            // The title bar's two popovers: task details and the CNC connection.
+            offscreen(ProgressDetails(model: m) {}.background(Color(nsColor: .windowBackgroundColor)),
+                      appearance: appearance, to: url.appendingPathComponent("\(scheme)-progress-details.png"))
+            offscreen(CNCConnectionView(cnc: m.cnc).padding(18).frame(width: 320)
+                        .background(Color(nsColor: .windowBackgroundColor)),
+                      appearance: appearance, to: url.appendingPathComponent("\(scheme)-cnc-connection.png"))
+        }
+        // The menu bar, every menu and submenu, as text with its checks.
+        try? menuReport().write(to: url.appendingPathComponent("menus.txt"), atomically: true, encoding: .utf8)
+
+        if ProcessInfo.processInfo.environment["VCAD_UI_AUDIT_QUICK"] == "1" {
+            try? log.write(to: url.appendingPathComponent("windows.txt"), atomically: true, encoding: .utf8)
+            FileHandle.standardError.write(Data("[VCAD_UI_AUDIT] done → \(dir)\n".utf8))
+            return
+        }
+
+        func snap(_ name: String) async {
+            RenderGate.wake(for: 2)
+            await wait(0.9)
+            log += String(format: "%@ CAMERA ws=%@ dist=%.3f scale=%.5f pan=(%.3f,%.3f,%.3f) parts=%d\n", name,
+                          m.workspace.rawValue, m.distance, m.displayScale,
+                          m.panOffset.x, m.panOffset.y, m.panOffset.z, m.docPartMeshes.count)
+            for (i, w) in NSApp.windows.enumerated() where w.isVisible && w.frame.width > 2 {
+                let tag = "\(name)-w\(i)-\(type(of: w))"
+                if let png = capture(w) { try? png.write(to: url.appendingPathComponent(tag + ".png")) }
+                let fit = w.contentView?.fittingSize ?? .zero
+                let size = w.contentView?.bounds.size ?? .zero
+                let over = fit.width > size.width + 0.5 || fit.height > size.height + 0.5
+                log += String(format: "%@ frame=%.0fx%.0f fitting=%.0fx%.0f%@\n", tag,
+                              size.width, size.height, fit.width, fit.height, over ? " OVERFLOW" : "")
+            }
+        }
+
+        /// Every workspace (Fab's CNC studio included), the ··· palette on
+        /// every tab, history, the shortcut sheet, the command palette, and a
+        /// selection with Measurements open.
+        func surfaces(_ p: String) async {
+            for space in DockSpace.allCases {
+                ui.enter(space, model: m)
+                await snap("\(p)-\(space.rawValue)")
+            }
+            m.workspace = .manufacture; await snap("\(p)-cnc-studio")
+            ui.enter(.design, model: m)
+            for space in DockSpace.allCases {
+                ui.space = space
+                ui.paletteOpen = true
+                await snap("\(p)-palette-\(space.rawValue)")
+                ui.paletteOpen = false
+                await wait(0.3)
+            }
+            ui.space = .design
+            ui.historyOpen = true; await snap("\(p)-history"); ui.historyOpen = false; await wait(0.5)
+            ui.shortcutsShown = true; await snap("\(p)-shortcuts"); ui.shortcutsShown = false; await wait(0.5)
+            m.showsCommandPalette = true; await snap("\(p)-command-palette"); m.showsCommandPalette = false
+            let shown = m.measurementsShown
+            m.selectParts([0]); m.measurementsShown = true
+            await snap("\(p)-selected-measurements")
+            m.measurementsShown = shown; m.selectParts([])
+        }
+
+        // Released to the desktop first: chrome floats over whatever is behind.
+        ctl.setWindowed(false)
+        for (scheme, appearance) in [("dark", NSAppearance.Name.darkAqua), ("light", .aqua)] {
+            NSApp.appearance = NSAppearance(named: appearance)
+            let d = m.distance
+            await snap("released-\(scheme)")
+            m.distance = d * 0.32
+            await snap("released-\(scheme)-close")
+            m.distance = d
+            await surfaces("released-\(scheme)")
+        }
+
+        let small = NSSize(width: 820, height: 620), large = NSSize(width: 1600, height: 1000)
+        ctl.setWindowed(true)
+        for (scheme, appearance) in [("dark", NSAppearance.Name.darkAqua), ("light", .aqua)] {
+            NSApp.appearance = NSAppearance(named: appearance)
+            for (sizeName, size) in [("large", large), ("small", small)] {
+                if let w = ctl.hostWindow {
+                    var f = w.frame; f.size = size
+                    w.setFrame(f, display: true)
+                }
+                await surfaces("\(scheme)-\(sizeName)")
+            }
+        }
+        // Settings and the welcome window, in both appearances.
+        for (scheme, appearance) in [("dark", NSAppearance.Name.darkAqua), ("light", .aqua)] {
+            NSApp.appearance = NSAppearance(named: appearance)
+            // Settings in an offscreen window (a background app's
+            // showSettingsWindow: opens nothing).
+            let host = NSHostingView(rootView: SettingsView())
+            host.frame = NSRect(x: 0, y: 0, width: 600, height: 800)
+            let fit = host.fittingSize
+            host.frame = NSRect(origin: .zero, size: fit)
+            let win = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            win.appearance = NSAppearance(named: appearance)
+            win.contentView = host
+            host.layoutSubtreeIfNeeded(); host.display()
+            if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                host.cacheDisplay(in: host.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?
+                    .write(to: url.appendingPathComponent("\(scheme)-settings.png"))
+            }
+            log += String(format: "%@-settings fitting=%.0fx%.0f\n", scheme, fit.width, fit.height)
+            win.contentView = nil
+            for (tab, view) in [("agents", AnyView(Form { AgentConnectionsForm() }.formStyle(.grouped))),
+                                ("agent", AnyView(Form { AgentSettingsForm() }.formStyle(.grouped))),
+                                ("renderer", AnyView(Form { RendererSettingsForm() }.formStyle(.grouped)))] {
+                offscreen(view.frame(width: 480), appearance: appearance,
+                          to: url.appendingPathComponent("\(scheme)-settings-\(tab).png"))
+            }
+            WelcomeWindowController.shared.show(model: m)
+            await snap("\(scheme)-welcome")
+        }
+        NSApp.appearance = nil
+        try? log.write(to: url.appendingPathComponent("windows.txt"), atomically: true, encoding: .utf8)
+        FileHandle.standardError.write(Data("[VCAD_UI_AUDIT] done → \(dir)\n".utf8))
+    }
+
+    /// Every menu-bar item as an indented tree, then the problems: the same
+    /// shortcut on two items, empty submenus, untitled items, and "..." where
+    /// the rest of the bar uses "…".
+    private static func menuReport() -> String {
+        guard let bar = NSApp.mainMenu else { return "no main menu\n" }
+        var out = "", shortcuts: [String: [String]] = [:], problems: [String] = []
+        func chord(_ i: NSMenuItem) -> String? {
+            guard !i.keyEquivalent.isEmpty else { return nil }
+            let f = i.keyEquivalentModifierMask
+            var s = ""
+            if f.contains(.control) { s += "⌃" }
+            if f.contains(.option) { s += "⌥" }
+            if f.contains(.shift) || i.keyEquivalent != i.keyEquivalent.lowercased() { s += "⇧" }
+            if f.contains(.command) { s += "⌘" }
+            return s + i.keyEquivalent.uppercased()
+        }
+        func walk(_ menu: NSMenu, _ path: String, _ depth: Int) {
+            menu.update()
+            for i in menu.items {
+                if i.isSeparatorItem { out += String(repeating: "  ", count: depth) + "──\n"; continue }
+                if i.isHidden { continue }
+                let here = path.isEmpty ? i.title : "\(path) ▸ \(i.title)"
+                let key = chord(i)
+                out += String(repeating: "  ", count: depth) + i.title
+                    + (key.map { "   [\($0)]" } ?? "") + (i.isEnabled ? "" : "   (disabled)") + "\n"
+                if i.title.trimmingCharacters(in: .whitespaces).isEmpty && i.view == nil {
+                    problems.append("untitled item in \(path)")
+                }
+                if i.title.hasSuffix("...") { problems.append("\"...\" not \"…\": \(here)") }
+                if let key { shortcuts[key, default: []].append(here) }
+                if let sub = i.submenu {
+                    if sub.items.filter({ !$0.isHidden }).isEmpty, depth > 0 {
+                        problems.append("empty submenu: \(here)")
+                    }
+                    walk(sub, here, depth + 1)
+                }
+            }
+        }
+        walk(bar, "", 0)
+        for (k, items) in shortcuts.sorted(by: { $0.key < $1.key }) where items.count > 1 {
+            problems.append("shortcut \(k) on \(items.count) items: " + items.joined(separator: " | "))
+        }
+        return out + "\n== problems (\(problems.count)) ==\n" + problems.joined(separator: "\n") + "\n"
+    }
+
+    /// A view laid out in an offscreen window and drawn by AppKit.
+    private static func offscreen(_ view: some View, appearance: NSAppearance.Name, to file: URL) {
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 600, height: 900)
+        host.frame = NSRect(origin: .zero, size: host.fittingSize)
+        let win = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        win.appearance = NSAppearance(named: appearance)
+        win.contentView = host
+        host.layoutSubtreeIfNeeded(); host.display()
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: file)
+        }
+        win.contentView = nil
+    }
+
+    /// The window as the window server composites it (glass included) when
+    /// that works for our own window, else AppKit's cached display of the
+    /// whole frame view (no glass backdrop, but every control and label).
+    private static func capture(_ w: NSWindow) -> Data? {
+        typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") {
+            let fn = unsafeBitCast(sym, to: Capture.self)
+            if let img = fn(.null, 1 << 3, UInt32(w.windowNumber), 1 << 0)?.takeRetainedValue(),
+               img.width > 1, !isBlank(img) {
+                return NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])
+            }
+        }
+        guard let view = w.contentView?.superview ?? w.contentView,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// True when every sampled pixel is fully transparent (a capture the
+    /// window server refused without saying so).
+    private static func isBlank(_ img: CGImage) -> Bool {
+        let W = 32, H = 32
+        guard let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: W * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = ctx.data else { return true }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: W, height: H))
+        let px = data.bindMemory(to: UInt8.self, capacity: W * H * 4)
+        for i in 0..<(W * H) where px[i * 4 + 3] != 0 { return false }
+        return true
+    }
+}
+#endif
