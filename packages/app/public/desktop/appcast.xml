@@ -5,6 +5,15 @@
         <link>https://vcad.io/desktop/</link>
         <description>vcad for Mac updates</description>
         <language>en</language>
+    <item>
+      <title>vcad 1.1.1</title>
+      <pubDate>Thu, 19 Nov 2026 22:53:02 +0000</pubDate>
+      <sparkle:version>10013</sparkle:version>
+      <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://github.com/muni-works/vcad/releases/tag/desktop-v1.1.1</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/muni-works/vcad/releases/download/desktop-v1.1.1/vcad-1.1.1.dmg" type="application/octet-stream" sparkle:edSignature="qhYzlByNENyJSBmhgNCIBanTdHrJUJlTMRzCpZyphIJdIjV02ruETPeNsCqsLYJnqEMQaI3Y15nlfOet6XQrDw==" length="36809370"/>
+    </item>
         <item>
             <title>1.1.0</title>
             <pubDate>Thu, 19 Nov 2026 07:11:29 +0000</pubDate>
